@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import fs from "fs";
 import path from "path";
+import { SEED_DB_BASE64 } from "./db-seed";
 
 // Auto-seed /tmp SQLite database on Vercel or serverless cloud environments
 function ensureDatabaseFile() {
@@ -13,22 +14,15 @@ function ensureDatabaseFile() {
   if (dbUrl.includes("/tmp/") || dbUrl.startsWith("file:/tmp/")) {
     const tmpMatch = dbUrl.replace(/^file:/, "");
     if (!fs.existsSync(tmpMatch)) {
-      const candidates = [
-        path.join(process.cwd(), "prisma", "faida.db"),
-        path.join(__dirname, "..", "..", "prisma", "faida.db"),
-      ];
-      for (const candidate of candidates) {
-        if (fs.existsSync(candidate)) {
-          try {
-            const dir = path.dirname(tmpMatch);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.copyFileSync(candidate, tmpMatch);
-            console.log(`[Faida DB] Successfully copied seed database to ${tmpMatch}`);
-            break;
-          } catch (e) {
-            console.error(`[Faida DB] Error copying database:`, e);
-          }
-        }
+      try {
+        const dir = path.dirname(tmpMatch);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        
+        // Write the bundled base64 SQLite seed database directly into /tmp
+        fs.writeFileSync(tmpMatch, Buffer.from(SEED_DB_BASE64, "base64"));
+        console.log(`[Faida DB] Successfully wrote bundled database to ${tmpMatch}`);
+      } catch (e) {
+        console.error(`[Faida DB] Error writing database to ${tmpMatch}:`, e);
       }
     }
   }
@@ -43,6 +37,13 @@ const globalForPrisma = globalThis as unknown as {
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
+    datasources: process.env.DATABASE_URL
+      ? {
+          db: {
+            url: process.env.DATABASE_URL,
+          },
+        }
+      : undefined,
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
 

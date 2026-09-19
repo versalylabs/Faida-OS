@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const session = await createSession(user.id);
+    const session = await createSession(user.id, user.email, user.name);
 
     const response = NextResponse.json({
       success: true,
