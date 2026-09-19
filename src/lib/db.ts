@@ -4,6 +4,11 @@ import path from "path";
 
 // Auto-seed /tmp SQLite database on Vercel or serverless cloud environments
 function ensureDatabaseFile() {
+  // If running on Vercel without a custom database, default safely to writable /tmp
+  if (process.env.VERCEL === "1" && (!process.env.DATABASE_URL || process.env.DATABASE_URL === "file:./faida.db")) {
+    process.env.DATABASE_URL = "file:/tmp/faida.db";
+  }
+
   const dbUrl = process.env.DATABASE_URL || "";
   if (dbUrl.includes("/tmp/") || dbUrl.startsWith("file:/tmp/")) {
     const tmpMatch = dbUrl.replace(/^file:/, "");
