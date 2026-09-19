@@ -1,0 +1,403 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// 0. Authentication & Multi-User Layer
+// -------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions            Session[]
+  entities            Entity[]
+  tasks               Task[]
+  reminders           Reminder[]
+  calendarEvents      CalendarEvent[]
+  projects            Project[]
+  notes               Note[]
+  learningSubjects    LearningSubject[]
+  financeTransactions FinanceTransaction[]
+  budgets             Budget[]
+  shoppingItems       ShoppingItem[]
+  maintenanceItems    MaintenanceItem[]
+  automationRules     AutomationRule[]
+  journalEntries      JournalEntry[]
+  credentials         DevCredential[]
+  files               FileAsset[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 1. Core Connected Graph Layer
+// -------------------------------------------------------------
+
+model Entity {
+  id          String   @id @default(uuid())
+  userId      String?
+  type        String   // TASK, PROJECT, NOTE, REMINDER, EVENT, LEARNING, FINANCE, SHOPPING, MAINTENANCE
+  title       String
+  content     String?  // Rich text or JSON payload
+  status      String?  // DRAFT, ACTIVE, COMPLETED, ARCHIVED
+  priority    String?  // LOW, MEDIUM, HIGH, URGENT
+  metadata    String?  // JSON string for arbitrary extensible metadata
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  archivedAt  DateTime?
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Graph Relations
+  outgoingRelations EntityRelation[] @relation("SourceEntity")
+  incomingRelations EntityRelation[] @relation("TargetEntity")
+
+  // Domain associations
+  task        Task?
+  project     Project?
+  note        Note?
+  reminder    Reminder?
+  activity    ActivityLog[]
+}
+
+model EntityRelation {
+  id           String   @id @default(uuid())
+  sourceId     String
+  targetId     String
+  relationType String   // LINKS_TO, PARENT_OF, DEPENDS_ON, LEARNED_IN, USED_BY
+  createdAt    DateTime @default(now())
+
+  sourceEntity Entity   @relation("SourceEntity", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetEntity Entity   @relation("TargetEntity", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceId, targetId, relationType])
+}
+
+// -------------------------------------------------------------
+// 2. Execution & Planning
+// -------------------------------------------------------------
+
+model Task {
+  id               String    @id @default(uuid())
+  userId           String?
+  entityId         String?   @unique
+  title            String
+  description      String?
+  priority         String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status           String    @default("TODO")   // BACKLOG, TODO, IN_PROGRESS, DONE, ARCHIVED
+  dueDate          DateTime?
+  scheduledDate    DateTime? // Allocated by Daily Planner
+  estimatedMinutes Int       @default(30)
+  actualMinutes    Int       @default(0)
+  category         String?
+  recurrence       String?   // DAILY, WEEKLY, MONTHLY
+  projectId        String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity           Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  subtasks         Subtask[]
+}
+
+model Subtask {
+  id        String   @id @default(uuid())
+  taskId    String
+  title     String
+  isDone    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Reminder {
+  id              String    @id @default(uuid())
+  userId          String?
+  entityId        String?   @unique
+  title           String
+  description     String?
+  dueAt           DateTime
+  isCompleted     Boolean   @default(false)
+  escalationState String    @default("UPCOMING") // UPCOMING, DUE_TODAY, OVERDUE
+  recurrence      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity          Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+}
+
+model CalendarEvent {
+  id          String    @id @default(uuid())
+  userId      String?
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  isAllDay    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// -------------------------------------------------------------
+// 3. Second Brain & Projects
+// -------------------------------------------------------------
+
+model Project {
+  id              String      @id @default(uuid())
+  userId          String?
+  entityId        String?     @unique
+  name            String
+  description     String?
+  status          String      @default("ACTIVE") // PLANNING, ACTIVE, PAUSED, COMPLETED
+  progressPercent Int         @default(0)
+  targetDate      DateTime?
+  color           String?     @default("#3b82f6")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user            User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity          Entity?     @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  tasks           Task[]
+  milestones      Milestone[]
+  credentials     DevCredential[]
+  files           FileAsset[]
+}
+
+model Milestone {
+  id        String    @id @default(uuid())
+  projectId String
+  title     String
+  isDone    Boolean   @default(false)
+  dueDate   DateTime?
+  order     Int       @default(0)
+  createdAt DateTime  @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Note {
+  id        String   @id @default(uuid())
+  userId    String?
+  entityId  String?  @unique
+  title     String
+  content   String   // Markdown body
+  category  String?
+  tags      String?  // Comma-separated or JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity    Entity?  @relation(fields: [entityId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 4. Learning Management
+// -------------------------------------------------------------
+
+model LearningSubject {
+  id          String          @id @default(uuid())
+  userId      String?
+  name        String
+  description String?
+  icon        String?
+  progress    Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  topics      LearningTopic[]
+}
+
+model LearningTopic {
+  id          String         @id @default(uuid())
+  subjectId   String
+  title       String
+  description String?
+  status      String         @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  subject     LearningSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  sessions    StudySession[]
+}
+
+model StudySession {
+  id              String        @id @default(uuid())
+  topicId         String
+  durationMinutes Int
+  notes           String?
+  studiedAt       DateTime      @default(now())
+
+  topic           LearningTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 5. Life Operations (Finance, Shopping, Maintenance)
+// -------------------------------------------------------------
+
+model FinanceTransaction {
+  id          String   @id @default(uuid())
+  userId      String?
+  type        String   // INCOME, EXPENSE
+  amount      Float
+  category    String   // Food, Tech, Utilities, Rent, Salary, Freelance
+  description String
+  date        DateTime @default(now())
+  isRecurring Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Budget {
+  id           String   @id @default(uuid())
+  userId       String?
+  category     String
+  monthlyLimit Float
+  monthYear    String   // e.g. "2026-09"
+  createdAt    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([category, monthYear])
+}
+
+model ShoppingItem {
+  id             String   @id @default(uuid())
+  userId         String?
+  name           String
+  quantity       String?  @default("1")
+  category       String?  // Groceries, Tech, Home, Health
+  preferredStore String?
+  estimatedPrice Float?
+  isChecked      Boolean  @default(false)
+  isRecurring    Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model MaintenanceItem {
+  id              String    @id @default(uuid())
+  userId          String?
+  title           String
+  area            String    // COMPUTER, HOME, PERSONAL_ADMIN, DEV
+  frequencyDays   Int       @default(30)
+  lastCompletedAt DateTime?
+  nextDueAt       DateTime
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// -------------------------------------------------------------
+// 6. Automation, Journal & Analytics
+// -------------------------------------------------------------
+
+model AutomationRule {
+  id            String   @id @default(uuid())
+  userId        String?
+  name          String
+  triggerType   String   // TASK_COMPLETED, ITEM_OVERDUE, PROJECT_CREATED, SCHEDULE_DRIFT
+  conditions    String?  // JSON string
+  actionType    String   // CREATE_NOTIFICATION, UPDATE_ENTITY, RESCHEDULE, LOG_ACTIVITY
+  actionPayload String?  // JSON string
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model JournalEntry {
+  id                  String   @id @default(uuid())
+  userId              String?
+  date                String   @unique // "YYYY-MM-DD"
+  summary             String?
+  completedTasksCount Int      @default(0)
+  focusMinutes        Int      @default(0)
+  learningMinutes     Int      @default(0)
+  rawMetrics          String?  // JSON string
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user                User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  entityId   String?
+  action     String   // CREATED, COMPLETED, UPDATED, DELETED, PLANNED, STUDIED
+  details    String?
+  timestamp  DateTime @default(now())
+
+  entity     Entity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+}
+
+// -------------------------------------------------------------
+// 7. Developer Hub & Smart File Organizer
+// -------------------------------------------------------------
+
+model DevCredential {
+  id          String   @id @default(uuid())
+  userId      String?
+  projectId   String?
+  serviceName String   // e.g. "Supabase", "Vercel", "Local PostgreSQL", "Stripe API"
+  environment String   @default("development") // development, staging, production, local
+  keyName     String   // e.g. "DATABASE_URL", "NEXT_PUBLIC_SUPABASE_KEY"
+  keyValue    String   // Secret or masked config value
+  isSecret    Boolean  @default(true)
+  port        Int?     // Local port mapping e.g. 3000, 5432, 8080
+  url         String?  // Service dashboard or endpoint URL
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+model FileAsset {
+  id          String   @id @default(uuid())
+  userId      String?
+  name        String
+  filePath    String   // e.g. "docs/faida_architecture_v1.pdf"
+  fileType    String   // PDF, IMAGE, CODE, ARCHIVE, SPREADSHEET, DOCUMENT
+  fileSize    Int?     // Size in bytes
+  category    String   // PROJECT_ASSET, RECEIPT_INVOICE, LEARNING_RESOURCE, CODE_SNIPPET, PERSONAL_DOC
+  projectId   String?
+  tags        String?  // Comma-separated or keywords
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
