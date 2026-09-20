@@ -13,8 +13,11 @@ export async function GET(req: NextRequest) {
       where: { userId: user.id },
       include: {
         topics: {
+          orderBy: { createdAt: "asc" },
           include: {
-            sessions: true,
+            sessions: {
+              orderBy: { studiedAt: "desc" },
+            },
           },
         },
       },
@@ -77,7 +80,7 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         name: name.trim(),
-        description,
+        description: description?.trim() || null,
         icon: icon || "GraduationCap",
       },
     });
@@ -100,6 +103,90 @@ export async function POST(req: NextRequest) {
     console.error("Error creating learning subject:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to create subject" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { id, name, description, icon } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Subject ID is required" }, { status: 400 });
+    }
+
+    const existing = await prisma.learningSubject.findFirst({
+      where: { id, userId: user.id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Subject not found" }, { status: 404 });
+    }
+
+    const updated = await prisma.learningSubject.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name: name.trim() }),
+        ...(description !== undefined && { description: description?.trim() || null }),
+        ...(icon !== undefined && { icon }),
+      },
+    });
+
+    return NextResponse.json({ success: true, subject: updated });
+  } catch (error: any) {
+    console.error("Error updating learning subject:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to update subject" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    let id = searchParams.get("id");
+
+    if (!id) {
+      try {
+        const body = await req.json();
+        id = body.id;
+      } catch {}
+    }
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Subject ID is required" }, { status: 400 });
+    }
+
+    const existing = await prisma.learningSubject.findFirst({
+      where: { id, userId: user.id },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Subject not found" }, { status: 404 });
+    }
+
+    await prisma.learningSubject.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true, message: "Subject deleted successfully" });
+  } catch (error: any) {
+    console.error("Error deleting learning subject:", error);
+    return NextResponse.json(
+      { success: false, error: error.message || "Failed to delete subject" },
       { status: 500 }
     );
   }
