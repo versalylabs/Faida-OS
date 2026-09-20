@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
@@ -11,7 +20,7 @@ export async function GET(req: NextRequest) {
         urgentCount: 0,
         dueTodayCount: 0,
         informationalCount: 0,
-      }, { status: 401 });
+      }, { status: 401, headers: noCacheHeaders });
     }
 
     const now = new Date();
@@ -90,17 +99,20 @@ export async function GET(req: NextRequest) {
 
     const informationalCount = activeProjects + shoppingItems;
 
-    return NextResponse.json({
-      success: true,
-      urgentCount,
-      dueTodayCount,
-      informationalCount,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        urgentCount,
+        dueTodayCount,
+        informationalCount,
+      },
+      { headers: noCacheHeaders }
+    );
   } catch (error: any) {
     console.error("Error calculating attention counts:", error);
     return NextResponse.json(
       { success: false, urgentCount: 0, dueTodayCount: 0, informationalCount: 0 },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }

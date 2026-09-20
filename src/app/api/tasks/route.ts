@@ -2,11 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     const { searchParams } = new URL(req.url);
@@ -34,12 +43,12 @@ export async function GET(req: NextRequest) {
       ],
     });
 
-    return NextResponse.json({ success: true, tasks });
+    return NextResponse.json({ success: true, tasks }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error fetching tasks:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch tasks" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
@@ -195,6 +204,11 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404 });
     }
 
+    // Delete related subtasks, reminders, calendarEvents first to prevent FK constraint errors
+    await prisma.subtask.deleteMany({ where: { taskId: id } }).catch(() => {});
+    await prisma.reminder.deleteMany({ where: { taskId: id } }).catch(() => {});
+    await prisma.calendarEvent.deleteMany({ where: { taskId: id } }).catch(() => {});
+
     const task = await prisma.task.delete({
       where: { id },
     });
@@ -203,12 +217,12 @@ export async function DELETE(req: NextRequest) {
       await prisma.entity.delete({ where: { id: task.entityId } }).catch(() => {});
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, message: "Task deleted successfully" }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error deleting task:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to delete task" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }

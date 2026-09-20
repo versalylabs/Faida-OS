@@ -108,7 +108,7 @@ export default function FinancePage() {
 
   const fetchFinance = async () => {
     try {
-      const res = await fetch("/api/finance");
+      const res = await fetch("/api/finance", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setTransactions(data.transactions);
@@ -180,15 +180,24 @@ export default function FinancePage() {
     e.preventDefault();
     if (!budgetInput || isNaN(parseFloat(budgetInput)) || isSavingBudget) return;
 
+    const newLimit = parseFloat(budgetInput);
     setIsSavingBudget(true);
     try {
       const res = await fetch("/api/finance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monthlyBudget: parseFloat(budgetInput) }),
+        body: JSON.stringify({ monthlyBudget: newLimit }),
       });
       const data = await res.json();
       if (data.success) {
+        if (metrics) {
+          setMetrics({
+            ...metrics,
+            monthlyBudget: newLimit,
+            remainingBudget: newLimit - metrics.totalExpense,
+            budgetPercentUsed: newLimit > 0 ? Math.min(100, Math.round((metrics.totalExpense / newLimit) * 100)) : 0,
+          });
+        }
         setShowBudgetModal(false);
         fetchFinance();
       }
@@ -246,6 +255,7 @@ export default function FinancePage() {
     e.preventDefault();
     if (!quickBalanceAccount || isSavingQuickBalance) return;
 
+    const newBal = parseFloat(quickBalanceVal) || 0;
     setIsSavingQuickBalance(true);
     try {
       const res = await fetch("/api/finance/accounts", {
@@ -253,16 +263,18 @@ export default function FinancePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: quickBalanceAccount.id,
-          balance: parseFloat(quickBalanceVal) || 0,
+          balance: newBal,
         }),
       });
       const data = await res.json();
       if (data.success) {
+        setAccounts(accounts.map((a) => (a.id === quickBalanceAccount.id ? { ...a, balance: newBal } : a)));
         setQuickBalanceAccount(null);
+        setQuickBalanceVal("");
         fetchFinance();
       }
     } catch (e) {
-      console.error("Failed to update balance:", e);
+      console.error("Failed to update account balance:", e);
     } finally {
       setIsSavingQuickBalance(false);
     }

@@ -29,6 +29,15 @@ interface TaskItem {
 export default function DashboardPage() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [attention, setAttention] = useState({ urgentCount: 0, dueTodayCount: 0 });
+  const [financeMetrics, setFinanceMetrics] = useState<{
+    monthlyBudget: number;
+    remainingBudget: number;
+    budgetPercentUsed: number;
+  }>({
+    monthlyBudget: 310000,
+    remainingBudget: 223200,
+    budgetPercentUsed: 28,
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   const currentDate = new Date().toLocaleDateString("en-US", {
@@ -39,15 +48,24 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     try {
-      const [tasksRes, attentionRes] = await Promise.all([
-        fetch("/api/tasks?status=TODO"),
-        fetch("/api/attention"),
+      const [tasksRes, attentionRes, financeRes] = await Promise.all([
+        fetch("/api/tasks?status=TODO", { cache: "no-store" }),
+        fetch("/api/attention", { cache: "no-store" }),
+        fetch("/api/finance", { cache: "no-store" }),
       ]);
       const tasksData = await tasksRes.json();
       const attentionData = await attentionRes.json();
+      const financeData = await financeRes.json();
 
       if (tasksData.success) setTasks(tasksData.tasks);
       if (attentionData.success) setAttention(attentionData);
+      if (financeData.success && financeData.metrics) {
+        setFinanceMetrics({
+          monthlyBudget: financeData.metrics.monthlyBudget,
+          remainingBudget: financeData.metrics.remainingBudget,
+          budgetPercentUsed: financeData.metrics.budgetPercentUsed,
+        });
+      }
     } catch (e) {
       console.error("Dashboard data load error:", e);
     } finally {
@@ -238,8 +256,14 @@ export default function DashboardPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-800">
               <div className="text-[10px] text-slate-400 uppercase font-medium">Monthly Budget</div>
-              <div className="text-sm font-semibold text-slate-100 mt-1">{formatKES(310000)}</div>
-              <div className="text-[10px] text-emerald-400 mt-0.5">72% remaining</div>
+              <div className="text-sm font-semibold text-slate-100 mt-1">
+                {formatKES(financeMetrics.monthlyBudget)}
+              </div>
+              <div className={`text-[10px] mt-0.5 ${financeMetrics.budgetPercentUsed > 90 ? "text-rose-400" : "text-emerald-400"}`}>
+                {financeMetrics.monthlyBudget > 0
+                  ? `${Math.max(0, 100 - financeMetrics.budgetPercentUsed)}% remaining`
+                  : "No budget set"}
+              </div>
             </div>
             <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-800">
               <div className="text-[10px] text-slate-400 uppercase font-medium">Active Alerts</div>

@@ -166,14 +166,21 @@ export async function executeLogFinance(params: {
     },
   });
 
-  const allTxs = await prisma.financeTransaction.findMany({
-    where: { userId: params.userId },
-  });
+  const [allTxs, userBudget] = await Promise.all([
+    prisma.financeTransaction.findMany({
+      where: { userId: params.userId },
+    }),
+    prisma.budget.findFirst({
+      where: { userId: params.userId },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
   let totalExpenses = 0;
   allTxs.forEach((t) => {
     if (t.amount < 0) totalExpenses += Math.abs(t.amount);
   });
-  const remainingBudget = 310000 - totalExpenses;
+  const budgetLimit = userBudget?.monthlyLimit ?? 310000;
+  const remainingBudget = budgetLimit - totalExpenses;
 
   await prisma.activityLog.create({
     data: {
@@ -283,7 +290,7 @@ export async function executeMorningBriefing(userId: string): Promise<{ message:
   const now = new Date();
   const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
 
-  const [tasks, allTxs, todayClasses, upcomingAssignments, upcomingAssessments] = await Promise.all([
+  const [tasks, allTxs, todayClasses, upcomingAssignments, upcomingAssessments, userBudget] = await Promise.all([
     prisma.task.findMany({
       where: { userId, status: { not: "DONE" } },
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
@@ -310,13 +317,18 @@ export async function executeMorningBriefing(userId: string): Promise<{ message:
       orderBy: { date: "asc" },
       take: 1,
     }),
+    prisma.budget.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
+  const userLimit = userBudget?.monthlyLimit ?? 310000;
   let totalSpent = 0;
   allTxs.forEach((t) => {
     if (t.amount < 0) totalSpent += Math.abs(t.amount);
   });
-  const remainingBudget = 310000 - totalSpent;
+  const remainingBudget = userLimit - totalSpent;
 
   const topTask = tasks[0];
   const topTaskText = topTask

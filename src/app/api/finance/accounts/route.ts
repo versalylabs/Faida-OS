@@ -2,12 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 // GET /api/finance/accounts - Fetch user accounts
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     let accounts = await prisma.financeAccount.findMany({
@@ -36,12 +45,12 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ success: true, accounts });
+    return NextResponse.json({ success: true, accounts }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error fetching accounts:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch accounts" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
@@ -51,7 +60,7 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     const body = await req.json();
@@ -71,12 +80,12 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, account });
+    return NextResponse.json({ success: true, account }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error creating account:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to create account" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
@@ -86,21 +95,21 @@ export async function PATCH(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     const body = await req.json();
     const { id, name, type, balance, color } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "Account ID is required" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Account ID is required" }, { status: 400, headers: noCacheHeaders });
     }
 
     const existing = await prisma.financeAccount.findFirst({
       where: { id, userId: user.id },
     });
     if (!existing) {
-      return NextResponse.json({ success: false, error: "Account not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Account not found" }, { status: 404, headers: noCacheHeaders });
     }
 
     const updated = await prisma.financeAccount.update({
@@ -113,12 +122,12 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, account: updated });
+    return NextResponse.json({ success: true, account: updated }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error updating account:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to update account" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
@@ -128,7 +137,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     const { searchParams } = new URL(req.url);
@@ -141,26 +150,26 @@ export async function DELETE(req: NextRequest) {
     }
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "Account ID is required" }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Account ID is required" }, { status: 400, headers: noCacheHeaders });
     }
 
     const existing = await prisma.financeAccount.findFirst({
       where: { id, userId: user.id },
     });
     if (!existing) {
-      return NextResponse.json({ success: false, error: "Account not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Account not found" }, { status: 404, headers: noCacheHeaders });
     }
 
     await prisma.financeAccount.delete({
       where: { id },
     });
 
-    return NextResponse.json({ success: true, message: "Account deleted" });
+    return NextResponse.json({ success: true, message: "Account deleted" }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error deleting account:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to delete account" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }

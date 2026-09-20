@@ -203,9 +203,9 @@ export default function UniversityPage() {
     try {
       setIsLoading(true);
       const [dashRes, assignRes, classRes] = await Promise.all([
-        fetch("/api/university/dashboard"),
-        fetch("/api/university/assignments"),
-        fetch("/api/university/classes"),
+        fetch("/api/university/dashboard", { cache: "no-store" }),
+        fetch("/api/university/assignments", { cache: "no-store" }),
+        fetch("/api/university/classes", { cache: "no-store" }),
       ]);
 
       const dashData = await dashRes.json();

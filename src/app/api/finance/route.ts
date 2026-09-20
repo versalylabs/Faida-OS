@@ -2,11 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     const transactions = await prisma.financeTransaction.findMany({
@@ -32,10 +41,11 @@ export async function GET(req: NextRequest) {
     // Check user's budgets or fallback
     const userBudgets = await prisma.budget.findMany({
       where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
     });
     const monthlyBudget =
       userBudgets.length > 0
-        ? userBudgets.reduce((acc, b) => acc + b.monthlyLimit, 0)
+        ? userBudgets[0].monthlyLimit
         : user.email === "khalwaleted@gmail.com"
         ? 310000
         : 0;
@@ -103,25 +113,28 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      transactions,
-      accounts,
-      categories,
-      metrics: {
-        monthlyBudget,
-        remainingBudget,
-        budgetPercentUsed,
-        totalIncome,
-        totalExpense,
-        categoryBreakdown,
+    return NextResponse.json(
+      {
+        success: true,
+        transactions,
+        accounts,
+        categories,
+        metrics: {
+          monthlyBudget,
+          remainingBudget,
+          budgetPercentUsed,
+          totalIncome,
+          totalExpense,
+          categoryBreakdown,
+        },
       },
-    });
+      { headers: noCacheHeaders }
+    );
   } catch (error: any) {
     console.error("Error fetching finance data:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch finance" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
@@ -195,16 +208,24 @@ export async function PATCH(req: NextRequest) {
 
     const limit = Math.max(0, parseFloat(monthlyBudget));
 
-    // Look for existing primary budget entry for this user
-    const existingBudget = await prisma.budget.findFirst({
+    const userBudgets = await prisma.budget.findMany({
       where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
     });
 
-    if (existingBudget) {
+    if (userBudgets.length > 0) {
       await prisma.budget.update({
-        where: { id: existingBudget.id },
+        where: { id: userBudgets[0].id },
         data: { monthlyLimit: limit },
       });
+      if (userBudgets.length > 1) {
+        await prisma.budget.deleteMany({
+          where: {
+            userId: user.id,
+            id: { not: userBudgets[0].id },
+          },
+        }).catch(() => {});
+      }
     } else {
       await prisma.budget.create({
         data: {
@@ -216,12 +237,12 @@ export async function PATCH(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ success: true, monthlyBudget: limit });
+    return NextResponse.json({ success: true, monthlyBudget: limit }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error updating monthly budget:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to update budget" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }

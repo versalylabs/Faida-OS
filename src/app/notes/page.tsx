@@ -74,7 +74,7 @@ export default function NotesPage() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch("/api/projects");
+      const res = await fetch("/api/projects", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setProjects(data.projects || []);
@@ -90,7 +90,7 @@ export default function NotesPage() {
       if (searchQuery.trim()) url.searchParams.set("q", searchQuery.trim());
       if (selectedProjectId !== "ALL") url.searchParams.set("projectId", selectedProjectId);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setNotes(data.notes || []);

@@ -3,11 +3,20 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { buildDailySchedule, replanRemainingSchedule, SchedulableTask, ScheduleSlot } from "@/lib/planner/scheduler";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+const noCacheHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
     const { searchParams } = new URL(req.url);
@@ -45,12 +54,12 @@ export async function GET(req: NextRequest) {
       bufferMinutes: 15,
     });
 
-    return NextResponse.json({ success: true, plan });
+    return NextResponse.json({ success: true, plan }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error building daily plan:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to generate plan" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
@@ -143,12 +152,12 @@ export async function PUT(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, slots: replannedSlots });
+    return NextResponse.json({ success: true, slots: replannedSlots }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error replanning schedule:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to replan schedule" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }

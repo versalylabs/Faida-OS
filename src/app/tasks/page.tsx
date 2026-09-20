@@ -43,7 +43,7 @@ export default function TasksPage() {
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch("/api/tasks");
+      const res = await fetch("/api/tasks", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setTasks(data.tasks);
@@ -67,11 +67,15 @@ export default function TasksPage() {
     );
 
     try {
-      await fetch("/api/tasks", {
+      const res = await fetch("/api/tasks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id, status: nextStatus }),
       });
+      const data = await res.json();
+      if (!data.success) {
+        fetchTasks();
+      }
     } catch (e) {
       console.error("Failed to update status:", e);
       fetchTasks();
@@ -81,8 +85,13 @@ export default function TasksPage() {
   const handleDelete = async (id: string) => {
     setTasks(tasks.filter((t) => t.id !== id));
     try {
-      await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/tasks?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.success) {
+        fetchTasks();
+      }
     } catch (e) {
+      console.error("Failed to delete task:", e);
       fetchTasks();
     }
   };

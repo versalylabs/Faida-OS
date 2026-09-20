@@ -251,6 +251,7 @@ export async function askFaidaAssistant(
     recentTransactions,
     userSubjects,
     shoppingItems,
+    userBudgets,
   ] = await Promise.all([
     prisma.task.findMany({
       where: { userId, status: { not: "DONE" } },
@@ -279,13 +280,18 @@ export async function askFaidaAssistant(
     prisma.shoppingItem.findMany({
       where: { userId, isChecked: false },
     }),
+    prisma.budget.findFirst({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
+  const userMonthlyLimit = userBudgets?.monthlyLimit ?? 310000;
   let totalSpent = 0;
   recentTransactions.forEach((t) => {
     if (t.amount < 0) totalSpent += Math.abs(t.amount);
   });
-  const remainingBudget = 310000 - totalSpent;
+  const remainingBudget = userMonthlyLimit - totalSpent;
 
   if (
     lower.includes("what should i work on") ||
@@ -311,7 +317,7 @@ export async function askFaidaAssistant(
     lower.includes("money")
   ) {
     return {
-      reply: `You have spent approximately **${formatKES(totalSpent)}** this month. Your remaining monthly budget is **${formatKES(remainingBudget)}** out of your **${formatKES(310000)}** monthly allocation.`,
+      reply: `You have spent approximately **${formatKES(totalSpent)}** this month. Your remaining monthly budget is **${formatKES(remainingBudget)}** out of your **${formatKES(userMonthlyLimit)}** monthly allocation.`,
     };
   }
 

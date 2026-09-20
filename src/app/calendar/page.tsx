@@ -108,7 +108,7 @@ export default function CalendarPage() {
   const fetchCalendarData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/calendar?month=${monthYearString}`);
+      const res = await fetch(`/api/calendar?month=${monthYearString}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setEvents(data.events || []);
