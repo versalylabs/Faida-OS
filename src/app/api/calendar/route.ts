@@ -95,12 +95,12 @@ export async function GET(req: NextRequest) {
       reminders,
       availableTasks: tasks,
       availableNotes: notes,
-    });
+    }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error fetching calendar data:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to fetch calendar data" },
-      { status: 500 }
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }
