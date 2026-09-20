@@ -24,6 +24,7 @@ import {
   Compass,
   Cpu,
   Brain,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,7 @@ const navCategories: NavCategory[] = [
     icon: Calendar,
     items: [
       { name: "Daily Planner", href: "/planner", icon: Calendar },
+      { name: "Scheduler & Calendar", href: "/calendar", icon: Calendar },
       { name: "Tasks & Todos", href: "/tasks", icon: CheckSquare },
     ],
   },
@@ -66,6 +68,7 @@ const navCategories: NavCategory[] = [
     icon: Brain,
     items: [
       { name: "Projects", href: "/projects", icon: FolderGit2 },
+      { name: "Notes", href: "/notes", icon: FileText },
       { name: "Knowledge Base", href: "/knowledge", icon: BookOpen },
       { name: "Learning Hub", href: "/learning", icon: GraduationCap },
       { name: "Files & Assets", href: "/files", icon: FolderArchive },
