@@ -34,7 +34,9 @@ export async function GET(req: NextRequest) {
       where,
       include: {
         project: true,
-        subtasks: true,
+        subtasks: {
+          orderBy: { createdAt: "asc" },
+        },
       },
       orderBy: [
         { status: "asc" },
@@ -61,7 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { title, description, priority, estimatedMinutes, dueDate, projectId, category } = body;
+    const { title, description, priority, estimatedMinutes, dueDate, projectId, category, subtasks } = body;
 
     if (!title || typeof title !== "string" || !title.trim()) {
       return NextResponse.json({ success: false, error: "Task title is required" }, { status: 400 });
@@ -92,9 +94,22 @@ export async function POST(req: NextRequest) {
         dueDate: dueDate ? new Date(dueDate) : null,
         projectId: projectId || null,
         category: category || "Execution",
+        subtasks: Array.isArray(subtasks) && subtasks.length > 0
+          ? {
+              create: subtasks
+                .filter((s: any) => (typeof s === "string" ? s.trim() : s?.title?.trim()))
+                .map((s: any) => ({
+                  title: typeof s === "string" ? s.trim() : s.title.trim(),
+                  isDone: typeof s === "object" ? Boolean(s.isDone) : false,
+                })),
+            }
+          : undefined,
       },
       include: {
         project: true,
+        subtasks: {
+          orderBy: { createdAt: "asc" },
+        },
       },
     });
 
@@ -107,7 +122,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, task });
+    return NextResponse.json({ success: true, task }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error creating task:", error);
     return NextResponse.json(
