@@ -11,7 +11,9 @@ export interface ToolActionPayload {
     | "GOAL_DECOMPOSED"
     | "SCHEDULE_REPLANNED"
     | "BRIEFING_DELIVERED"
-    | "ENERGY_DISPATCH";
+    | "ENERGY_DISPATCH"
+    | "CLASS_BRIEFING"
+    | "ASSIGNMENT_DECOMPOSED";
   title: string;
   badge?: string;
   details?: string;
@@ -276,17 +278,37 @@ export async function executeDecomposeGoal(userId: string, goal: string, project
   };
 }
 
-// 6. Morning Briefing Tool
+// 6. Morning Briefing Tool (Enhanced with Academic Context)
 export async function executeMorningBriefing(userId: string): Promise<{ message: string; action: ToolActionPayload }> {
-  const [tasks, allTxs] = await Promise.all([
+  const now = new Date();
+  const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+
+  const [tasks, allTxs, todayClasses, upcomingAssignments, upcomingAssessments] = await Promise.all([
     prisma.task.findMany({
       where: { userId, status: { not: "DONE" } },
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-      include: { project: true },
+      include: { project: true, course: true },
       take: 4,
     }),
     prisma.financeTransaction.findMany({
       where: { userId },
+    }),
+    prisma.academicClass.findMany({
+      where: { userId, dayOfWeek: currentDayOfWeek },
+      include: { course: true },
+      orderBy: { startTime: "asc" },
+    }),
+    prisma.task.findMany({
+      where: { userId, isAcademic: true, status: { not: "DONE" } },
+      include: { course: true },
+      orderBy: { dueDate: "asc" },
+      take: 2,
+    }),
+    prisma.academicAssessment.findMany({
+      where: { userId, isCompleted: false },
+      include: { course: true },
+      orderBy: { date: "asc" },
+      take: 1,
     }),
   ]);
 
@@ -298,14 +320,29 @@ export async function executeMorningBriefing(userId: string): Promise<{ message:
 
   const topTask = tasks[0];
   const topTaskText = topTask
-    ? `• **Top Focus:** "${topTask.title}" (${topTask.priority} • ${topTask.estimatedMinutes}m${topTask.project ? ` in ${topTask.project.name}` : ""})`
+    ? `• **Top Focus:** "${topTask.title}" (${topTask.priority} • ${topTask.estimatedMinutes}m${topTask.course ? ` in ${topTask.course.code}` : topTask.project ? ` in ${topTask.project.name}` : ""})`
     : "• **Top Focus:** Queue is clear!";
+
+  // Academic Section in Briefing
+  let academicSnippet = "";
+  if (todayClasses.length > 0 || upcomingAssignments.length > 0 || upcomingAssessments.length > 0) {
+    const classList = todayClasses.length > 0
+      ? `\n  - Classes today (${todayClasses.length}): ${todayClasses.map((c) => `${c.course.code} at ${c.startTime} (${c.location || "Online"})`).join(", ")}`
+      : "";
+    const assignList = upcomingAssignments.length > 0
+      ? `\n  - Urgent assignment: "${upcomingAssignments[0].title}" (${upcomingAssignments[0].course?.code || "Academic"})`
+      : "";
+    const catList = upcomingAssessments.length > 0
+      ? `\n  - Approaching CAT: "${upcomingAssessments[0].title}" on ${upcomingAssessments[0].date.toLocaleDateString()}`
+      : "";
+    academicSnippet = `\n• **🎓 University Orbit:**${classList}${assignList}${catList}`;
+  }
 
   const briefing = `🌅 **Good morning! Here is your daily mission briefing:**
 
 ${topTaskText}
-• **Queue:** ${tasks.length} active tasks queued up today (~${tasks.reduce((sum, t) => sum + (t.estimatedMinutes || 30), 0)}m focus time required).
-• **Finance:** ${formatKES(remainingBudget)} remaining in your monthly budget (${formatKES(totalSpent)} spent).
+• **Queue:** ${tasks.length} active tasks queued up today (~${tasks.reduce((sum, t) => sum + (t.estimatedMinutes || 30), 0)}m focus time required).${academicSnippet}
+• **Finance:** ${formatKES(remainingBudget)} remaining in your monthly budget.
 • **Energy:** You're in your morning peak window (🔋 85%). I recommend tackling the top priority task first before switching to lighter administrative work.`;
 
   return {
@@ -314,8 +351,8 @@ ${topTaskText}
       type: "BRIEFING_DELIVERED",
       title: "Daily Mission Briefing",
       badge: "🔋 85% Morning Peak",
-      details: topTask ? `Top: ${topTask.title}` : undefined,
-      link: "/planner",
+      details: todayClasses.length > 0 ? `${todayClasses.length} classes scheduled today` : undefined,
+      link: "/university",
     },
   };
 }
@@ -328,6 +365,7 @@ export async function executeEnergyDispatch(userId: string, minutes: number = 20
       status: { not: "DONE" },
       estimatedMinutes: { lte: 20 },
     },
+    include: { course: true },
     take: 3,
   });
 
@@ -344,7 +382,7 @@ export async function executeEnergyDispatch(userId: string, minutes: number = 20
   }
 
   const totalMins = quickTasks.reduce((s, t) => s + (t.estimatedMinutes || 10), 0);
-  const taskList = quickTasks.map((t) => `• **${t.title}** (${t.estimatedMinutes}m)`).join("\n");
+  const taskList = quickTasks.map((t) => `• **${t.title}** (${t.course ? `${t.course.code} • ` : ""}${t.estimatedMinutes}m)`).join("\n");
 
   return {
     message: `Don't strain yourself. I've pulled a **Low-Energy Batch** of ${quickTasks.length} micro-tasks that you can finish in ~${totalMins} minutes without heavy thinking:\n\n${taskList}\n\nYou can knock them out or click below to view the batch in Lazy Mode.`,
@@ -354,6 +392,120 @@ export async function executeEnergyDispatch(userId: string, minutes: number = 20
       badge: "⚡ Low Friction",
       details: `${quickTasks.length} tasks ready`,
       link: "/lazy",
+    },
+  };
+}
+
+// 8. Class Briefing Tool ("Prepare Me")
+export async function executeClassBriefing(userId: string, courseCodeOrName?: string): Promise<{ message: string; action: ToolActionPayload }> {
+  const whereCourse: any = { userId, status: "ACTIVE" };
+  if (courseCodeOrName) {
+    whereCourse.OR = [
+      { code: { contains: courseCodeOrName } },
+      { name: { contains: courseCodeOrName } },
+    ];
+  }
+
+  const course = await prisma.universityCourse.findFirst({
+    where: whereCourse,
+    include: {
+      materials: { orderBy: { weekNumber: "desc" }, take: 1 },
+      assignments: { where: { status: { not: "DONE" } }, take: 1 },
+      assessments: { where: { isCompleted: false }, orderBy: { date: "asc" }, take: 1 },
+      notes: { orderBy: { updatedAt: "desc" }, take: 2 },
+    },
+  });
+
+  if (!course) {
+    return {
+      message: `I couldn't find any active course matching "${courseCodeOrName || "upcoming class"}". Check your courses in the Academic Command Center.`,
+      action: {
+        type: "CLASS_BRIEFING",
+        title: "Course Not Found",
+        link: "/university",
+      },
+    };
+  }
+
+  const lastTopic = course.materials[0]?.title || course.notes[0]?.title || "Fundamental Concepts";
+  const openAssign = course.assignments[0];
+  const upcomingCAT = course.assessments[0];
+
+  const briefing = `🎓 **${course.code} (${course.name}) — CLASS BRIEFING**
+
+• **Lecturer:** ${course.lecturer || "Instructor"}
+• **Last Topic Covered:** ${lastTopic}
+• **Current Coursework:** ${openAssign ? `"${openAssign.title}" (${openAssign.estimatedMinutes || 120}m estimated)` : "No pending assignments."}
+• **Upcoming Assessment:** ${upcomingCAT ? `${upcomingCAT.title} on ${upcomingCAT.date.toLocaleDateString()}` : "No approaching CATs."}
+• **Recommended 15-min Prep:** Review ${lastTopic} summary and prepare 1 question on edge cases before class starts.`;
+
+  return {
+    message: briefing,
+    action: {
+      type: "CLASS_BRIEFING",
+      title: `Briefing: ${course.code}`,
+      badge: "⚡ 15m Prep Ready",
+      details: course.name,
+      link: `/university?courseId=${course.id}`,
+    },
+  };
+}
+
+// 9. Assignment Decomposer Tool
+export async function executeDecomposeAssignment(userId: string, assignmentTitle: string): Promise<{ message: string; action: ToolActionPayload }> {
+  const task = await prisma.task.findFirst({
+    where: {
+      userId,
+      isAcademic: true,
+      title: { contains: assignmentTitle },
+    },
+    include: { course: true, subtasks: true },
+  });
+
+  if (!task) {
+    return {
+      message: `I couldn't find an academic assignment matching "${assignmentTitle}". Please specify the exact title.`,
+      action: {
+        type: "GOAL_DECOMPOSED",
+        title: "Assignment Not Found",
+        link: "/university",
+      },
+    };
+  }
+
+  // Generate 5 conservative subtasks
+  const subtaskTitles = [
+    `1. Read assignment requirements & rubrics (${task.course?.code || "Course"}) — 20m`,
+    `2. Research key concepts & architectural approaches — 45m`,
+    `3. Draft solution & write core algorithms / implementation — 60m`,
+    `4. Test edge cases & verify against assignment specs — 30m`,
+    `5. Format documentation & prepare Moodle submission archive — 25m`,
+  ];
+
+  for (const st of subtaskTitles) {
+    await prisma.subtask.create({
+      data: {
+        taskId: task.id,
+        title: st,
+      },
+    });
+  }
+
+  const updatedTask = await prisma.task.update({
+    where: { id: task.id },
+    data: {
+      estimatedMinutes: 180,
+    },
+  });
+
+  return {
+    message: `I've broken down **"${task.title}"** into 5 conservative, manageable steps totaling 3 hours:\n\n${subtaskTitles.map((t) => `• ${t}`).join("\n")}\n\nEach step is logged under the assignment so you can tackle them in low-friction sprints.`,
+    action: {
+      type: "ASSIGNMENT_DECOMPOSED",
+      title: task.title,
+      badge: "5 Steps Generated",
+      details: `${task.course?.code || "Academic"} • 3h total`,
+      link: "/university",
     },
   };
 }

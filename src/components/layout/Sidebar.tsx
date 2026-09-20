@@ -49,6 +49,7 @@ const navCategories: NavCategory[] = [
     icon: Compass,
     items: [
       { name: "Command Center", href: "/", icon: LayoutDashboard },
+      { name: "University", href: "/university", icon: GraduationCap, badge: "BSc" },
       { name: "Universal Capture", href: "/capture", icon: Sparkles, badge: "⚡" },
     ],
   },

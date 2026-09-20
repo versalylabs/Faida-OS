@@ -9,6 +9,8 @@ import {
   executeDecomposeGoal,
   executeMorningBriefing,
   executeEnergyDispatch,
+  executeClassBriefing,
+  executeDecomposeAssignment,
 } from "@/lib/ai/tools";
 
 export interface AssistantResponse {
@@ -72,6 +74,37 @@ export async function askFaidaAssistant(
     lower.includes("feeling lazy")
   ) {
     const res = await executeEnergyDispatch(userId, 20);
+    return { reply: res.message, actionExecuted: res.action };
+  }
+
+  // -------------------------------------------------------------
+  // 3b. Tool Trigger: Class Briefing ("Prepare Me")
+  // -------------------------------------------------------------
+  if (
+    lower.startsWith("prepare me") ||
+    lower.includes("prepare for class") ||
+    lower.includes("class briefing") ||
+    lower.includes("prepare for my next class")
+  ) {
+    let courseHint = trimmed
+      .replace(/^(prepare me for|prepare for class|class briefing|prepare for my next class|prepare me)\s*/i, "")
+      .trim();
+    const res = await executeClassBriefing(userId, courseHint || undefined);
+    return { reply: res.message, actionExecuted: res.action };
+  }
+
+  // -------------------------------------------------------------
+  // 3c. Tool Trigger: Assignment Decomposer ("Break down assignment [name]")
+  // -------------------------------------------------------------
+  if (
+    lower.startsWith("break down assignment") ||
+    lower.startsWith("decompose assignment") ||
+    lower.includes("break down my assignment")
+  ) {
+    const rawAssignment = trimmed
+      .replace(/^(break down assignment|decompose assignment|break down my assignment)\s*:?/i, "")
+      .trim();
+    const res = await executeDecomposeAssignment(userId, rawAssignment || "");
     return { reply: res.message, actionExecuted: res.action };
   }
 
@@ -315,6 +348,57 @@ export async function askFaidaAssistant(
     const list = recentNotes.map((n) => `• **${n.title}** (${n.category || "General"})`).join("\n");
     return {
       reply: `Here are recent entries in your Knowledge Base:\n${list}`,
+    };
+  }
+
+  if (
+    lower.includes("class") ||
+    lower.includes("classes") ||
+    lower.includes("university") ||
+    lower.includes("academic") ||
+    lower.includes("exam") ||
+    lower.includes("cats") ||
+    lower.includes("assignment")
+  ) {
+    const [courses, pendingAssigns, todayClasses] = await Promise.all([
+      prisma.universityCourse.findMany({ where: { userId, status: "ACTIVE" } }),
+      prisma.task.findMany({
+        where: { userId, isAcademic: true, status: { not: "DONE" } },
+        include: { course: true },
+        orderBy: { dueDate: "asc" },
+        take: 3,
+      }),
+      prisma.academicClass.findMany({
+        where: {
+          course: { userId },
+          dayOfWeek: new Date().getDay(),
+        },
+        include: { course: true },
+        orderBy: { startTime: "asc" },
+      }),
+    ]);
+
+    const lines: string[] = [
+      `🎓 **University Academic Status:**`,
+      `• Active Courses: **${courses.length}** enrolled`,
+    ];
+
+    if (todayClasses.length > 0) {
+      lines.push(`• Today's Classes: ${todayClasses.map((c) => `**${c.course.code}** (${c.startTime}-${c.endTime})`).join(", ")}`);
+    } else {
+      lines.push(`• Today's Classes: None scheduled today`);
+    }
+
+    if (pendingAssigns.length > 0) {
+      lines.push(`• Upcoming Coursework: ${pendingAssigns.map((a) => `**${a.title}** (${a.course?.code || "Course"})`).join(", ")}`);
+    } else {
+      lines.push(`• Upcoming Coursework: All caught up!`);
+    }
+
+    lines.push(`\nSay *"prepare me for my next class"* or visit the **Academic Command Center** for detailed briefing.`);
+
+    return {
+      reply: lines.join("\n"),
     };
   }
 

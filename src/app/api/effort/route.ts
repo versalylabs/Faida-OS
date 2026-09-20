@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
         userId: user.id,
         status: { not: "DONE" },
       },
-      include: { project: true },
+      include: { project: true, course: true },
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
     });
 
@@ -103,7 +103,10 @@ export async function GET(req: NextRequest) {
       let actionReason = "Requires direct focus and personal context.";
 
       // Evaluation Rules
-      if (
+      if (t.isAcademic && (isLazyMode || currentEnergy <= 30) && duration >= 40) {
+        action = "OPTIMIZE";
+        actionReason = "Mandatory academic coursework. Break down into a 20m sprint rather than skipping.";
+      } else if (
         (isLazyMode || currentEnergy <= 30) &&
         t.priority === "LOW" &&
         duration >= 40
@@ -121,7 +124,7 @@ export async function GET(req: NextRequest) {
         actionReason = "Repetitive operational task. Faida rule or script can run this automatically.";
       } else if (energyCost <= 3 || duration <= 20) {
         action = "OPTIMIZE";
-        actionReason = "Can be batched with 3 other low-energy tasks or finished in one 15m sprint.";
+        actionReason = "Can be batched with other low-energy tasks or finished in one 15m sprint.";
       } else {
         action = "JUST_DO_IT";
         actionReason = "High-leverage core work. Tackle during peak energy or split into subtasks.";
@@ -130,7 +133,7 @@ export async function GET(req: NextRequest) {
       return {
         id: t.id,
         title: t.title,
-        projectName: t.project?.name,
+        projectName: t.course ? `${t.course.code}` : t.project?.name,
         estimatedMinutes: duration,
         priority: t.priority,
         energyCost,

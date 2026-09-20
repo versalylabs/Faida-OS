@@ -19,24 +19,29 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  sessions            Session[]
-  entities            Entity[]
-  tasks               Task[]
-  reminders           Reminder[]
-  calendarEvents      CalendarEvent[]
-  projects            Project[]
-  notes               Note[]
-  learningSubjects    LearningSubject[]
-  financeTransactions FinanceTransaction[]
-  budgets             Budget[]
-  financeAccounts     FinanceAccount[]
-  financeCategories   FinanceCategory[]
-  shoppingItems       ShoppingItem[]
-  maintenanceItems    MaintenanceItem[]
-  automationRules     AutomationRule[]
-  journalEntries      JournalEntry[]
-  credentials         DevCredential[]
-  files               FileAsset[]
+  sessions              Session[]
+  entities              Entity[]
+  tasks                 Task[]
+  reminders             Reminder[]
+  calendarEvents        CalendarEvent[]
+  projects              Project[]
+  notes                 Note[]
+  learningSubjects      LearningSubject[]
+  financeTransactions   FinanceTransaction[]
+  budgets               Budget[]
+  financeAccounts       FinanceAccount[]
+  financeCategories     FinanceCategory[]
+  shoppingItems         ShoppingItem[]
+  maintenanceItems      MaintenanceItem[]
+  automationRules       AutomationRule[]
+  journalEntries        JournalEntry[]
+  credentials           DevCredential[]
+  files                 FileAsset[]
+  universityCourses     UniversityCourse[]
+  academicAssessments   AcademicAssessment[]
+  academicClasses       AcademicClass[]
+  academicMaterials     AcademicMaterial[]
+  academicAnnouncements AcademicAnnouncement[]
 }
 
 model Session {
@@ -56,7 +61,7 @@ model Session {
 model Entity {
   id          String   @id @default(uuid())
   userId      String?
-  type        String   // TASK, PROJECT, NOTE, REMINDER, EVENT, LEARNING, FINANCE, SHOPPING, MAINTENANCE
+  type        String   // TASK, PROJECT, NOTE, REMINDER, EVENT, LEARNING, FINANCE, SHOPPING, MAINTENANCE, ACADEMIC
   title       String
   content     String?  // Rich text or JSON payload
   status      String?  // DRAFT, ACTIVE, COMPLETED, ARCHIVED
@@ -112,12 +117,17 @@ model Task {
   category         String?
   recurrence       String?   // DAILY, WEEKLY, MONTHLY
   projectId        String?
+  courseId         String?
+  isAcademic       Boolean   @default(false)
+  academicType     String?   // ASSIGNMENT, CAT_PREP, LAB, STUDY, EXAM_PREP
+  submissionUrl    String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  user             User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  entity           Entity?         @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  project          Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity           Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  course           UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
   subtasks         Subtask[]
   reminders        Reminder[]
   calendarEvents   CalendarEvent[]
@@ -155,22 +165,24 @@ model Reminder {
 }
 
 model CalendarEvent {
-  id          String    @id @default(uuid())
-  userId      String?
-  taskId      String?
-  noteId      String?
-  title       String
-  description String?
-  startTime   DateTime
-  endTime     DateTime
-  location    String?
-  isAllDay    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  userId         String?
+  taskId         String?
+  noteId         String?
+  classSessionId String?
+  assessmentId   String?
+  title          String
+  description    String?
+  startTime      DateTime
+  endTime        DateTime
+  location       String?
+  isAllDay       Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  task        Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  note        Note?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  task           Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  note           Note?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
 }
 
 // -------------------------------------------------------------
@@ -212,22 +224,126 @@ model Milestone {
 }
 
 model Note {
-  id              String          @id @default(uuid())
+  id              String            @id @default(uuid())
   userId          String?
-  entityId        String?         @unique
+  entityId        String?           @unique
   projectId       String?
+  courseId        String?
   title           String
-  content         String          // Markdown body
+  content         String            // Markdown body
   category        String?
-  tags            String?         // Comma-separated or JSON
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  tags            String?           // Comma-separated or JSON
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
 
-  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  entity          Entity?         @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  project         Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user            User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity          Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  project         Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  course          UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
   reminders       Reminder[]
   calendarEvents  CalendarEvent[]
+}
+
+// -------------------------------------------------------------
+// 3.5. University / Academic Command Center
+// -------------------------------------------------------------
+
+model UniversityCourse {
+  id            String    @id @default(uuid())
+  userId        String?
+  code          String    // e.g. "BAC 2101", "COMP 201"
+  name          String    // e.g. "Database Systems"
+  lecturer      String?
+  lecturerEmail String?
+  semester      String?   // e.g. "Year 2 Sem 1"
+  color         String?   @default("#3b82f6")
+  credits       Int       @default(3)
+  status        String    @default("ACTIVE") // ACTIVE, COMPLETED, ARCHIVED
+  sourceId      String?   // Moodle course ID
+  sourceSystem  String?   @default("MANUAL") // MOODLE, MANUAL, ICAL
+  sourceUrl     String?
+  lastSyncedAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignments   Task[]
+  notes         Note[]
+  assessments   AcademicAssessment[]
+  classes       AcademicClass[]
+  materials     AcademicMaterial[]
+  announcements AcademicAnnouncement[]
+}
+
+model AcademicAssessment {
+  id                   String    @id @default(uuid())
+  userId               String?
+  courseId             String
+  title                String    // e.g. "Database Systems CAT 1"
+  type                 String    @default("CAT") // CAT, EXAM, QUIZ, PRACTICAL, PRESENTATION
+  date                 DateTime
+  durationMinutes      Int       @default(60)
+  weightPercent        Float?
+  topicsCovered        String?
+  estimatedEffortHours Float     @default(4.0)
+  studyPlan            String?   // JSON string of suggested schedule
+  isCompleted          Boolean   @default(false)
+  grade                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user                 User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course               UniversityCourse  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model AcademicClass {
+  id        String   @id @default(uuid())
+  userId    String?
+  courseId  String
+  title     String   // e.g. "Lecture", "Lab Session"
+  dayOfWeek Int      // 1 (Mon) to 7 (Sun)
+  startTime String   // "10:00"
+  endTime   String   // "12:00"
+  location  String?  // e.g. "Computing Lab 3", "Zoom link"
+  lecturer  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model AcademicMaterial {
+  id         String   @id @default(uuid())
+  userId     String?
+  courseId   String
+  title      String
+  type       String   @default("NOTES") // NOTES, SLIDES, SYLLABUS, ASSIGNMENT_BRIEF, PAST_PAPER
+  content    String?  // Extracted summary or text
+  fileUrl    String?
+  weekNumber Int?
+  summary    String?
+  sourceId   String?
+  sourceUrl  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course     UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model AcademicAnnouncement {
+  id          String   @id @default(uuid())
+  userId      String?
+  courseId    String?
+  title       String
+  content     String
+  publishedAt DateTime @default(now())
+  sourceId    String?
+  createdAt   DateTime @default(now())
+
+  user        User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course      UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
 // -------------------------------------------------------------
@@ -408,9 +524,9 @@ model DevCredential {
   id          String   @id @default(uuid())
   userId      String?
   projectId   String?
-  serviceName String   // e.g. "Supabase", "Vercel", "Local PostgreSQL", "Stripe API"
+  serviceName String   // e.g. "Supabase", "Vercel", "Local PostgreSQL", "Stripe API", "Moodle LMS"
   environment String   @default("development") // development, staging, production, local
-  keyName     String   // e.g. "DATABASE_URL", "NEXT_PUBLIC_SUPABASE_KEY"
+  keyName     String   // e.g. "DATABASE_URL", "NEXT_PUBLIC_SUPABASE_KEY", "MOODLE_TOKEN"
   keyValue    String   // Secret or masked config value
   isSecret    Boolean  @default(true)
   port        Int?     // Local port mapping e.g. 3000, 5432, 8080

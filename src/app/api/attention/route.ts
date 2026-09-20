@@ -45,8 +45,8 @@ export async function GET(req: NextRequest) {
 
     const urgentCount = overdueReminders + urgentTasks + overdueTasks;
 
-    // 2. Due Today Count: Reminders due today + tasks due today
-    const [dueTodayReminders, dueTodayTasks] = await Promise.all([
+    // 2. Due Today Count: Reminders due today + tasks due today + CATs today
+    const [dueTodayReminders, dueTodayTasks, dueTodayAssessments] = await Promise.all([
       prisma.reminder.count({
         where: {
           userId: user.id,
@@ -61,9 +61,16 @@ export async function GET(req: NextRequest) {
           dueDate: { gte: todayStart, lt: todayEnd },
         },
       }),
+      prisma.academicAssessment.count({
+        where: {
+          userId: user.id,
+          isCompleted: false,
+          date: { gte: todayStart, lt: todayEnd },
+        },
+      }),
     ]);
 
-    const dueTodayCount = dueTodayReminders + dueTodayTasks;
+    const dueTodayCount = dueTodayReminders + dueTodayTasks + dueTodayAssessments;
 
     // 3. Informational count: Active projects + unchecked shopping items
     const [activeProjects, shoppingItems] = await Promise.all([
