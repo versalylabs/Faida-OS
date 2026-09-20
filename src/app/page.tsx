@@ -26,8 +26,22 @@ interface TaskItem {
   project?: { name: string } | null;
 }
 
+interface ProjectItem {
+  id: string;
+  name: string;
+  description?: string | null;
+  status: string;
+  progressPercent: number;
+  color?: string | null;
+  totalTasks?: number;
+  completedTasks?: number;
+  totalMilestones?: number;
+  completedMilestones?: number;
+}
+
 export default function DashboardPage() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [attention, setAttention] = useState({ urgentCount: 0, dueTodayCount: 0 });
   const [financeMetrics, setFinanceMetrics] = useState<{
     monthlyBudget: number;
@@ -48,14 +62,16 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     try {
-      const [tasksRes, attentionRes, financeRes] = await Promise.all([
+      const [tasksRes, attentionRes, financeRes, projectsRes] = await Promise.all([
         fetch("/api/tasks?status=TODO", { cache: "no-store" }),
         fetch("/api/attention", { cache: "no-store" }),
         fetch("/api/finance", { cache: "no-store" }),
+        fetch("/api/projects", { cache: "no-store" }),
       ]);
       const tasksData = await tasksRes.json();
       const attentionData = await attentionRes.json();
       const financeData = await financeRes.json();
+      const projectsData = await projectsRes.json();
 
       if (tasksData.success) setTasks(tasksData.tasks);
       if (attentionData.success) setAttention(attentionData);
@@ -65,6 +81,9 @@ export default function DashboardPage() {
           remainingBudget: financeData.metrics.remainingBudget,
           budgetPercentUsed: financeData.metrics.budgetPercentUsed,
         });
+      }
+      if (projectsData.success && projectsData.projects) {
+        setProjects(projectsData.projects);
       }
     } catch (e) {
       console.error("Dashboard data load error:", e);
@@ -79,6 +98,8 @@ export default function DashboardPage() {
 
   const topPriorityTask = tasks[0];
   const upcomingQueue = tasks.slice(1, 4);
+  const activeProjects = projects.filter((p) => p.status === "ACTIVE");
+  const displayProjects = activeProjects.length > 0 ? activeProjects.slice(0, 4) : projects.slice(0, 4);
 
   return (
     <div className="space-y-5 sm:space-y-8 max-w-7xl mx-auto">
@@ -211,32 +232,70 @@ export default function DashboardPage() {
             <div className="flex items-center gap-2">
               <FolderGit2 className="h-4 w-4 text-blue-400" />
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Active Projects
+                Active Projects {projects.length > 0 && `(${activeProjects.length || projects.length})`}
               </h2>
             </div>
             <Link href="/projects" className="text-[11px] text-blue-400 hover:underline flex items-center gap-1">
               View all <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
+
           <div className="space-y-3">
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-800 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-200">Faida OS</span>
-                <span className="text-[10px] font-mono text-blue-400">Phase 2 Active</span>
+            {isLoading ? (
+              <div className="py-8 text-center text-xs text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1 text-blue-400" />
+                Loading projects...
               </div>
-              <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-blue-500 h-full rounded-full w-[65%]" />
+            ) : displayProjects.length === 0 ? (
+              <div className="p-4 rounded-lg bg-slate-950 border border-slate-800/80 text-xs text-slate-500 text-center space-y-2">
+                <div>No projects created yet.</div>
+                <Link
+                  href="/projects"
+                  className="inline-flex items-center gap-1 text-blue-400 hover:underline font-medium"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Create Project</span>
+                </Link>
               </div>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-800/50 border border-slate-800 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-slate-200">Melio</span>
-                <span className="text-[10px] font-mono text-indigo-400">84%</span>
-              </div>
-              <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-indigo-500 h-full rounded-full w-[84%]" />
-              </div>
-            </div>
+            ) : (
+              displayProjects.map((proj) => {
+                const color = proj.color || "#3b82f6";
+                return (
+                  <Link
+                    key={proj.id}
+                    href={`/projects/${proj.id}`}
+                    className="p-3 rounded-lg bg-slate-800/50 hover:bg-slate-800/80 border border-slate-800 hover:border-slate-700 space-y-2 block transition-all group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: color }}
+                        />
+                        <span className="text-xs font-medium text-slate-200 group-hover:text-white truncate">
+                          {proj.name}
+                        </span>
+                      </div>
+                      <span
+                        className="text-[10px] font-mono shrink-0 ml-2 font-semibold"
+                        style={{ color: color }}
+                      >
+                        {proj.progressPercent}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${Math.max(4, proj.progressPercent)}%`,
+                          backgroundColor: color,
+                        }}
+                      />
+                    </div>
+                  </Link>
+                );
+              })
+            )}
           </div>
         </div>
 
