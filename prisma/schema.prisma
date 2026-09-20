@@ -32,6 +32,7 @@ model User {
   financeAccounts       FinanceAccount[]
   financeCategories     FinanceCategory[]
   shoppingItems         ShoppingItem[]
+  shoppingCategories    ShoppingCategory[]
   maintenanceItems      MaintenanceItem[]
   automationRules       AutomationRule[]
   journalEntries        JournalEntry[]
@@ -455,6 +456,20 @@ model ShoppingItem {
   updatedAt      DateTime @updatedAt
 
   user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model ShoppingCategory {
+  id        String   @id @default(uuid())
+  userId    String?
+  name      String
+  color     String?  @default("#10b981")
+  icon      String?  @default("Tag")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
 }
 
 model MaintenanceItem {
