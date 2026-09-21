@@ -35,21 +35,23 @@ export async function GET(
     });
 
     if (!project) {
-      return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
+      return NextResponse.json({ success: false, error: "Project not found" }, { status: 404, headers: noCacheHeaders });
     }
 
     // Find notes related to this project (scoped to user)
+    // Checks direct projectId foreign key relation as well as matching names
     const relatedNotes = await prisma.note.findMany({
       where: {
         userId: user.id,
         OR: [
-          { category: { contains: project.name } },
-          { title: { contains: project.name } },
-          { tags: { contains: project.name } },
-          { content: { contains: project.name } },
+          { projectId: id },
+          { category: { contains: project.name, mode: "insensitive" } },
+          { title: { contains: project.name, mode: "insensitive" } },
+          { tags: { contains: project.name, mode: "insensitive" } },
+          { content: { contains: project.name, mode: "insensitive" } },
         ],
       },
-      take: 10,
+      orderBy: { updatedAt: "desc" },
     });
 
     let progress = project.progressPercent;
@@ -58,19 +60,22 @@ export async function GET(
       progress = Math.round((doneCount / project.milestones.length) * 100);
     }
 
-    return NextResponse.json({
-      success: true,
-      project: {
-        ...project,
-        progressPercent: progress,
+    return NextResponse.json(
+      {
+        success: true,
+        project: {
+          ...project,
+          progressPercent: progress,
+        },
+        notes: relatedNotes,
       },
-      notes: relatedNotes,
-    });
+      { headers: noCacheHeaders }
+    );
   } catch (error: any) {
     console.error("Error fetching project workspace:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch project" },
-      { status: 500 }
+      { success: false, error: error.message || "Failed to fetch project workspace" },
+      { status: 500, headers: noCacheHeaders }
     );
   }
 }

@@ -107,6 +107,17 @@ export default function NotesPage() {
   };
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const pid = urlParams.get("projectId");
+      if (pid) {
+        setSelectedProjectId(pid);
+        setCreateProjectId(pid);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     fetchProjects();
     fetchNotes();
   }, [selectedProjectId]);

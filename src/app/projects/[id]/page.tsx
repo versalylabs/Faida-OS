@@ -13,6 +13,10 @@ import {
   Loader2,
   Calendar,
   Sparkles,
+  ExternalLink,
+  FileText,
+  X,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
@@ -38,6 +42,9 @@ interface NoteItem {
   content: string;
   category?: string | null;
   tags?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  projectId?: string | null;
 }
 
 interface ProjectDetail {
@@ -69,9 +76,17 @@ export default function ProjectWorkspacePage({
   const [newTaskPriority, setNewTaskPriority] = useState("HIGH");
   const [isAddingTask, setIsAddingTask] = useState(false);
 
+  // Quick Note inputs
+  const [showAddNote, setShowAddNote] = useState(false);
+  const [newNoteTitle, setNewNoteTitle] = useState("");
+  const [newNoteCategory, setNewNoteCategory] = useState("Project Note");
+  const [newNoteContent, setNewNoteContent] = useState("");
+  const [isAddingNote, setIsAddingNote] = useState(false);
+  const [activeModalNote, setActiveModalNote] = useState<NoteItem | null>(null);
+
   const fetchWorkspace = async () => {
     try {
-      const res = await fetch(`/api/projects/${id}`);
+      const res = await fetch(`/api/projects/${id}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setProject(data.project);
@@ -81,6 +96,36 @@ export default function ProjectWorkspacePage({
       console.error("Failed to load workspace:", e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAddNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteTitle.trim() || isAddingNote) return;
+
+    setIsAddingNote(true);
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newNoteTitle.trim(),
+          content: newNoteContent.trim(),
+          category: newNoteCategory.trim() || "Project Note",
+          projectId: id,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewNoteTitle("");
+        setNewNoteContent("");
+        setShowAddNote(false);
+        fetchWorkspace();
+      }
+    } catch (e) {
+      console.error("Failed to add note:", e);
+    } finally {
+      setIsAddingNote(false);
     }
   };
 
@@ -386,32 +431,131 @@ export default function ProjectWorkspacePage({
         {/* Right Column: Connected Knowledge & Documentation */}
         <div className="space-y-6">
           <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-            <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-blue-400" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Connected Knowledge Notes
-              </h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-blue-400" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Connected Notes ({notes.length})
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowAddNote(!showAddNote)}
+                  className="flex items-center gap-1 text-[11px] font-medium text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 px-2.5 py-1 rounded-lg border border-blue-500/20 transition-all cursor-pointer"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Note</span>
+                </button>
+                <Link
+                  href={`/notes?projectId=${id}`}
+                  className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-800/60 hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700/60 transition-all"
+                  title="Open Notes Hub filtered by this project"
+                >
+                  <span>All</span>
+                  <ExternalLink className="h-2.5 w-2.5" />
+                </Link>
+              </div>
             </div>
+
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Notes and architectural decisions linked to <strong>{project.name}</strong>.
+              Notes and knowledge records linked to <strong>{project.name}</strong>.
             </p>
 
+            {/* Quick Add Note Form */}
+            {showAddNote && (
+              <form
+                onSubmit={handleAddNote}
+                className="p-3.5 rounded-xl bg-slate-950 border border-blue-500/30 space-y-3 animate-in fade-in duration-200"
+              >
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                  <span>Add Note to {project.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddNote(false)}
+                    className="text-slate-500 hover:text-slate-300"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Note Title..."
+                  value={newNoteTitle}
+                  onChange={(e) => setNewNoteTitle(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder="Category (e.g. Architecture, Specs, Meeting)..."
+                  value={newNoteCategory}
+                  onChange={(e) => setNewNoteCategory(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                />
+                <textarea
+                  placeholder="Note content, ideas, code snippets, or decisions..."
+                  value={newNoteContent}
+                  onChange={(e) => setNewNoteContent(e.target.value)}
+                  rows={3}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                />
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddNote(false)}
+                    className="px-3 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-900"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!newNoteTitle.trim() || isAddingNote}
+                    className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isAddingNote && <Loader2 className="h-3 w-3 animate-spin" />}
+                    <span>Save Note</span>
+                  </button>
+                </div>
+              </form>
+            )}
+
             {notes.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-500 text-center">
-                No notes linked to this project yet. Capture a note in Universal Capture or Second Brain.
+              <div className="p-5 rounded-xl bg-slate-950 border border-slate-800/80 text-center space-y-2">
+                <FileText className="h-6 w-6 text-slate-600 mx-auto" />
+                <p className="text-xs text-slate-400">No notes linked to this project yet.</p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddNote(true)}
+                  className="inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 font-medium cursor-pointer"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create first note</span>
+                </button>
               </div>
             ) : (
               <div className="space-y-3">
                 {notes.map((note) => (
                   <div
                     key={note.id}
-                    className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2"
+                    onClick={() => setActiveModalNote(note)}
+                    className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 hover:bg-slate-950 transition-all cursor-pointer group space-y-2"
                   >
                     <div className="flex items-center justify-between text-[10px] font-mono text-blue-400">
-                      <span>{note.category || "General"}</span>
+                      <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                        {note.category || "General"}
+                      </span>
+                      {note.updatedAt && (
+                        <span className="text-slate-500 flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(note.updatedAt)}
+                        </span>
+                      )}
                     </div>
-                    <div className="text-xs font-bold text-slate-100">{note.title}</div>
-                    <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed">
+                    <div className="text-xs font-bold text-slate-100 group-hover:text-blue-300 transition-colors flex items-center justify-between">
+                      <span>{note.title}</span>
+                      <ChevronRight className="h-3.5 w-3.5 text-slate-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                    <p className="text-[11px] text-slate-400 line-clamp-3 leading-relaxed whitespace-pre-wrap">
                       {note.content}
                     </p>
                   </div>
@@ -421,6 +565,59 @@ export default function ProjectWorkspacePage({
           </div>
         </div>
       </div>
+
+      {/* Note Detail Modal */}
+      {activeModalNote && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2 text-[10px] font-mono text-blue-400 mb-1">
+                  <span className="px-2 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                    {activeModalNote.category || "General"}
+                  </span>
+                  {activeModalNote.updatedAt && (
+                    <span className="text-slate-500">
+                      Updated {formatDate(activeModalNote.updatedAt)}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-base font-bold text-white leading-tight">
+                  {activeModalNote.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setActiveModalNote(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1">
+              <p className="text-xs text-slate-300 whitespace-pre-wrap leading-relaxed">
+                {activeModalNote.content || "No content."}
+              </p>
+            </div>
+
+            <div className="border-t border-slate-800 pt-3 flex items-center justify-between gap-3">
+              <Link
+                href={`/notes?projectId=${id}`}
+                className="text-xs text-blue-400 hover:underline flex items-center gap-1 font-medium"
+              >
+                <span>Edit in Notes Hub</span>
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+              <button
+                onClick={() => setActiveModalNote(null)}
+                className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
