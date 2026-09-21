@@ -15,6 +15,8 @@ import {
   Calendar,
   AlertCircle,
   ExternalLink,
+  BookOpen,
+  Sparkles,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
@@ -40,11 +42,24 @@ interface NoteItem {
   updatedAt: string;
 }
 
+const PRESET_CATEGORIES = [
+  "Databases",
+  "Frontend",
+  "Backend",
+  "Architecture",
+  "Academic",
+  "Research",
+  "Ideas",
+  "General",
+];
+
 export default function NotesPage() {
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("ALL");
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   // View Note Modal
@@ -89,6 +104,7 @@ export default function NotesPage() {
       const url = new URL("/api/notes", window.location.origin);
       if (searchQuery.trim()) url.searchParams.set("q", searchQuery.trim());
       if (selectedProjectId !== "ALL") url.searchParams.set("projectId", selectedProjectId);
+      if (selectedCategory !== "ALL") url.searchParams.set("category", selectedCategory);
 
       const res = await fetch(url.toString(), { cache: "no-store" });
       const data = await res.json();
@@ -114,13 +130,21 @@ export default function NotesPage() {
         setSelectedProjectId(pid);
         setCreateProjectId(pid);
       }
+      const cat = urlParams.get("category");
+      if (cat) {
+        setSelectedCategory(cat);
+      }
+      const tag = urlParams.get("tag");
+      if (tag) {
+        setSelectedTag(tag);
+      }
     }
   }, []);
 
   useEffect(() => {
     fetchProjects();
     fetchNotes();
-  }, [selectedProjectId]);
+  }, [selectedProjectId, selectedCategory]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -224,20 +248,43 @@ export default function NotesPage() {
     }
   };
 
+  // Dynamically extract categories from all notes plus defaults
+  const dynamicCategories = Array.from(
+    new Set(
+      notes
+        .map((n) => n.category)
+        .filter((c): c is string => Boolean(c && c.trim()))
+    )
+  );
+  const allCategoryTabs = [
+    "ALL",
+    ...Array.from(new Set([...PRESET_CATEGORIES, ...dynamicCategories])),
+  ];
+
+  // Client-side tag filtering
+  const displayedNotes = notes.filter((n) => {
+    if (selectedTag) {
+      if (!n.tags) return false;
+      const tags = n.tags.split(",").map((t) => t.trim().toLowerCase());
+      if (!tags.includes(selectedTag.toLowerCase())) return false;
+    }
+    return true;
+  });
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-xs text-blue-400 font-mono tracking-wider uppercase mb-1">
-            <FileText className="h-3.5 w-3.5" />
-            Second Brain & Documentation
+            <BookOpen className="h-3.5 w-3.5" />
+            Connected Second Brain & Knowledge
           </div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">
-            Notes & Second Brain
+            Notes & Knowledge Base
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Capture, link to projects, and organize notes, architecture logs, and ideas.
+            Structured long-term memory linking notes, research, projects, and architecture logs.
           </p>
         </div>
 
@@ -251,48 +298,81 @@ export default function NotesPage() {
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <form onSubmit={handleSearchSubmit} className="relative flex-1">
-          <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search notes by title, content, or tags..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
-          />
-        </form>
+      <div className="space-y-3">
+        <div className="flex flex-col sm:flex-row gap-3">
+          <form onSubmit={handleSearchSubmit} className="relative flex-1">
+            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search notes and knowledge by title, content, or tags..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900/80 border border-slate-800 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+            />
+          </form>
 
-        <div className="flex items-center gap-2">
-          <FolderGit2 className="h-4 w-4 text-slate-500" />
-          <select
-            value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-          >
-            <option value="ALL">All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <FolderGit2 className="h-4 w-4 text-slate-500 shrink-0" />
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className="bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+            >
+              <option value="ALL">All Projects</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* Category Pills (from Knowledge Base) */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+          {allCategoryTabs.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                selectedCategory === cat
+                  ? "bg-blue-600 text-white shadow-md shadow-blue-500/20 font-semibold"
+                  : "bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800"
+              }`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* Active Tag Filter indicator */}
+        {selectedTag && (
+          <div className="flex items-center gap-2 text-xs bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-xl text-blue-300 w-fit">
+            <span>Filtering by tag: <strong className="text-white font-mono">#{selectedTag}</strong></span>
+            <button
+              onClick={() => setSelectedTag(null)}
+              className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+              title="Clear tag filter"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Notes Grid */}
       {isLoading ? (
         <div className="py-20 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-          <span>Loading second brain...</span>
+          <span>Scanning second brain...</span>
         </div>
-      ) : notes.length === 0 ? (
+      ) : displayedNotes.length === 0 ? (
         <div className="py-16 text-center text-xs text-slate-500 p-8 rounded-2xl bg-slate-900/40 border border-slate-800">
-          No notes found. Click &quot;New Note&quot; to capture your first document.
+          No notes found matching your filters. Click &quot;New Note&quot; to capture your first document.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {notes.map((note) => (
+          {displayedNotes.map((note) => (
             <div
               key={note.id}
               onClick={() => setViewingNote(note)}
@@ -308,7 +388,7 @@ export default function NotesPage() {
                     <button
                       onClick={(e) => openEditNote(note, e)}
                       title="Edit Note"
-                      className="p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors"
+                      className="p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                       <Edit3 className="h-3 w-3" />
                     </button>
@@ -318,7 +398,7 @@ export default function NotesPage() {
                         setDeleteConfirmNote(note);
                       }}
                       title="Delete Note"
-                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -344,16 +424,40 @@ export default function NotesPage() {
                 <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed font-sans">
                   {note.content || "Empty note content."}
                 </p>
+
+                {/* Tags preview */}
+                {note.tags && (
+                  <div className="flex items-center gap-1 flex-wrap pt-1">
+                    {note.tags
+                      .split(",")
+                      .map((t) => t.trim())
+                      .filter(Boolean)
+                      .map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTag(tag);
+                          }}
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-slate-950 hover:bg-blue-950 border border-slate-800 hover:border-blue-500/40 text-slate-400 hover:text-blue-300 transition-colors font-mono cursor-pointer"
+                          title={`Filter by #${tag}`}
+                        >
+                          #{tag}
+                        </button>
+                      ))}
+                  </div>
+                )}
               </div>
 
-              {/* Footer with Tags and Date */}
+              {/* Footer with Category and Date */}
               <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3 w-3 text-slate-500" />
                   {formatDate(note.updatedAt || note.createdAt)}
                 </span>
                 {note.category && (
-                  <span className="px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-300 font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono text-[10px]">
                     {note.category}
                   </span>
                 )}
@@ -369,7 +473,7 @@ export default function NotesPage() {
           <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   {viewingNote.project && (
                     <span
                       className="text-[10px] font-mono px-2 py-0.5 rounded-full border font-semibold flex items-center gap-1.5"
@@ -384,7 +488,7 @@ export default function NotesPage() {
                     </span>
                   )}
                   {viewingNote.category && (
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                       {viewingNote.category}
                     </span>
                   )}
@@ -393,7 +497,7 @@ export default function NotesPage() {
               </div>
               <button
                 onClick={() => setViewingNote(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -406,9 +510,25 @@ export default function NotesPage() {
 
             {/* Tags if any */}
             {viewingNote.tags && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-400">
                 <Tag className="h-3.5 w-3.5 text-slate-500" />
-                <span>Tags: {viewingNote.tags}</span>
+                <span>Tags:</span>
+                {viewingNote.tags
+                  .split(",")
+                  .map((t) => t.trim())
+                  .filter(Boolean)
+                  .map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => {
+                        setSelectedTag(t);
+                        setViewingNote(null);
+                      }}
+                      className="px-2 py-0.5 rounded bg-slate-800 text-blue-400 hover:underline font-mono text-[10px]"
+                    >
+                      #{t}
+                    </button>
+                  ))}
               </div>
             )}
 
@@ -445,9 +565,9 @@ export default function NotesPage() {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
                 <Plus className="h-4 w-4 text-blue-400" />
-                Create New Note
+                Create Knowledge Note
               </h2>
-              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-200 cursor-pointer">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -487,11 +607,28 @@ export default function NotesPage() {
                   <label className="text-slate-300 block mb-1 font-medium">Category</label>
                   <input
                     type="text"
-                    placeholder="e.g. Architecture, Brainstorm, Work"
+                    placeholder="e.g. Databases, Architecture..."
                     value={createCategory}
                     onChange={(e) => setCreateCategory(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                   />
+                  {/* Preset quick buttons */}
+                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                    {PRESET_CATEGORIES.slice(0, 5).map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setCreateCategory(preset)}
+                        className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                          createCategory === preset
+                            ? "bg-blue-600 text-white border-blue-500"
+                            : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -507,7 +644,7 @@ export default function NotesPage() {
               </div>
 
               <div>
-                <label className="text-slate-300 block mb-1 font-medium">Tags (Optional)</label>
+                <label className="text-slate-300 block mb-1 font-medium">Tags (Optional, comma-separated)</label>
                 <input
                   type="text"
                   placeholder="database, design, api"
@@ -521,7 +658,7 @@ export default function NotesPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200"
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -530,7 +667,7 @@ export default function NotesPage() {
                   disabled={!createTitle.trim() || isCreating}
                   className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 cursor-pointer"
                 >
-                  {isCreating ? "Saving..." : "Save Note"}
+                  {isCreating ? "Saving..." : "Save to Knowledge Base"}
                 </button>
               </div>
             </form>
@@ -547,7 +684,7 @@ export default function NotesPage() {
                 <Edit3 className="h-4 w-4 text-blue-400" />
                 Edit Note
               </h2>
-              <button onClick={() => setEditingNote(null)} className="text-slate-400 hover:text-slate-200">
+              <button onClick={() => setEditingNote(null)} className="text-slate-400 hover:text-slate-200 cursor-pointer">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -590,6 +727,23 @@ export default function NotesPage() {
                     onChange={(e) => setEditCategory(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
                   />
+                  {/* Preset quick buttons */}
+                  <div className="flex items-center gap-1 flex-wrap mt-1.5">
+                    {PRESET_CATEGORIES.slice(0, 5).map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setEditCategory(preset)}
+                        className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors cursor-pointer ${
+                          editCategory === preset
+                            ? "bg-blue-600 text-white border-blue-500"
+                            : "bg-slate-950 text-slate-400 border-slate-800 hover:border-slate-700"
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -617,7 +771,7 @@ export default function NotesPage() {
                 <button
                   type="button"
                   onClick={() => setEditingNote(null)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200"
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -648,7 +802,7 @@ export default function NotesPage() {
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setDeleteConfirmNote(null)}
-                className="px-3 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 text-xs"
+                className="px-3 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 text-xs cursor-pointer"
               >
                 Cancel
               </button>

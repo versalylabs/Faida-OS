@@ -69,8 +69,7 @@ const navCategories: NavCategory[] = [
     icon: Brain,
     items: [
       { name: "Projects", href: "/projects", icon: FolderGit2 },
-      { name: "Notes", href: "/notes", icon: FileText },
-      { name: "Knowledge Base", href: "/knowledge", icon: BookOpen },
+      { name: "Notes & Knowledge", href: "/notes", icon: BookOpen },
       { name: "Learning Hub", href: "/learning", icon: GraduationCap },
       { name: "Files & Assets", href: "/files", icon: FolderArchive },
     ],

@@ -27,8 +27,8 @@ const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: ["G", "F"], description: "Go to Personal Finance (KES)" },
       { keys: ["G", "L"], description: "Go to Lazy Mode (Effort Engine)" },
       { keys: ["G", "D"], description: "Go to Developer Hub" },
-      { keys: ["G", "X"], description: "Go to Smart File Organizer" },
-      { keys: ["G", "K"], description: "Go to Knowledge Base" },
+      { keys: ["G", "N"], description: "Go to Notes & Knowledge Base" },
+      { keys: ["G", "K"], description: "Go to Notes & Knowledge Base" },
       { keys: ["G", "S"], description: "Go to Smart Shopping" },
       { keys: ["G", "A"], description: "Go to Analytics & Journal" },
     ],
@@ -194,8 +194,9 @@ export function GlobalShortcutsHandler() {
           case "x":
             router.push("/files");
             break;
+          case "n":
           case "k":
-            router.push("/knowledge");
+            router.push("/notes");
             break;
           case "s":
             router.push("/shopping");
