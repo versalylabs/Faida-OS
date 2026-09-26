@@ -17,9 +17,30 @@ import {
   FileText,
   X,
   ChevronRight,
+  Edit3,
+  Trash2,
+  AlertCircle,
+  Check,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
+
+const COLOR_PRESETS = [
+  { label: "Blue", value: "#3b82f6" },
+  { label: "Emerald", value: "#10b981" },
+  { label: "Purple", value: "#8b5cf6" },
+  { label: "Amber", value: "#f59e0b" },
+  { label: "Pink", value: "#ec4899" },
+  { label: "Cyan", value: "#06b6d4" },
+];
+
+const STATUS_OPTIONS = [
+  { value: "ACTIVE", label: "Active" },
+  { value: "PLANNING", label: "Planning" },
+  { value: "PAUSED", label: "Paused" },
+  { value: "COMPLETED", label: "Completed" },
+];
 
 interface MilestoneItem {
   id: string;
@@ -65,9 +86,23 @@ export default function ProjectWorkspacePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Edit Project State
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editStatus, setEditStatus] = useState("ACTIVE");
+  const [editColor, setEditColor] = useState("#3b82f6");
+  const [editTargetDate, setEditTargetDate] = useState("");
+  const [isUpdatingProject, setIsUpdatingProject] = useState(false);
+
+  // Delete Project State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
 
   // Quick inputs
   const [newMilestone, setNewMilestone] = useState("");
@@ -126,6 +161,80 @@ export default function ProjectWorkspacePage({
       console.error("Failed to add note:", e);
     } finally {
       setIsAddingNote(false);
+    }
+  };
+
+  const openEditProject = () => {
+    if (!project) return;
+    setEditName(project.name);
+    setEditDescription(project.description || "");
+    setEditStatus(project.status || "ACTIVE");
+    setEditColor(project.color || "#3b82f6");
+    setEditTargetDate(
+      project.targetDate ? new Date(project.targetDate).toISOString().split("T")[0] : ""
+    );
+    setShowEditProjectModal(true);
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editName.trim() || isUpdatingProject) return;
+
+    setIsUpdatingProject(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName.trim(),
+          description: editDescription.trim() || null,
+          status: editStatus,
+          color: editColor,
+          targetDate: editTargetDate || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowEditProjectModal(false);
+        fetchWorkspace();
+      }
+    } catch (e) {
+      console.error("Failed to update project:", e);
+    } finally {
+      setIsUpdatingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (isDeletingProject) return;
+
+    setIsDeletingProject(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        router.push("/projects");
+      }
+    } catch (e) {
+      console.error("Failed to delete project:", e);
+      setIsDeletingProject(false);
+    }
+  };
+
+  const getStatusBadge = (s: string) => {
+    switch (s) {
+      case "ACTIVE":
+        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+      case "PLANNING":
+        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+      case "PAUSED":
+        return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+      case "COMPLETED":
+        return "bg-purple-500/10 text-purple-400 border-purple-500/20";
+      default:
+        return "bg-slate-800 text-slate-300 border-slate-700";
     }
   };
 
@@ -272,10 +381,33 @@ export default function ProjectWorkspacePage({
             )}
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+            <span
+              className={`text-[10px] font-mono uppercase px-2.5 py-1 rounded-full border ${getStatusBadge(
+                project.status
+              )}`}
+            >
+              {project.status}
+            </span>
             <span className="text-xs font-mono px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">
               {project.progressPercent}% Velocity
             </span>
+            <button
+              onClick={openEditProject}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl border border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors cursor-pointer"
+              title="Edit Project Details"
+            >
+              <Edit3 className="h-3.5 w-3.5 text-blue-400" />
+              <span>Edit</span>
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-xl border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 text-xs font-medium transition-colors cursor-pointer"
+              title="Delete Project Workspace"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete</span>
+            </button>
           </div>
         </div>
 
@@ -613,6 +745,150 @@ export default function ProjectWorkspacePage({
                 className="px-4 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 cursor-pointer"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Project Modal */}
+      {showEditProjectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                <Edit3 className="h-4 w-4 text-blue-400" />
+                Edit Project: {project.name}
+              </h2>
+              <button
+                onClick={() => setShowEditProjectModal(false)}
+                className="text-slate-400 hover:text-slate-200 cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProject} className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-300 block mb-1 font-medium">Project Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                  autoFocus
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 block mb-1 font-medium">Description</label>
+                <input
+                  type="text"
+                  placeholder="Brief summary of project objectives"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-300 block mb-1 font-medium">Status</label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 block mb-1 font-medium">Target Date</label>
+                  <input
+                    type="date"
+                    value={editTargetDate}
+                    onChange={(e) => setEditTargetDate(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 block mb-1.5 font-medium">Workspace Color</label>
+                <div className="flex items-center gap-2">
+                  {COLOR_PRESETS.map((c) => (
+                    <button
+                      key={c.value}
+                      type="button"
+                      onClick={() => setEditColor(c.value)}
+                      className={`h-7 w-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                        editColor === c.value
+                          ? "ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-110"
+                          : "opacity-70 hover:opacity-100"
+                      }`}
+                      style={{ backgroundColor: c.value }}
+                      title={c.label}
+                    >
+                      {editColor === c.value && <Check className="h-3.5 w-3.5 text-white" />}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowEditProjectModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!editName.trim() || isUpdatingProject}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold disabled:opacity-50 cursor-pointer"
+                >
+                  {isUpdatingProject ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Project Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-3 text-rose-400">
+              <AlertCircle className="h-5 w-5 shrink-0" />
+              <h3 className="text-sm font-bold text-white">Delete Project Workspace?</h3>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to delete <strong className="text-white">&quot;{project.name}&quot;</strong>?
+            </p>
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              Tasks and knowledge notes attached to this project will be preserved as standalone items. Milestones will be deleted.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-3.5 py-1.5 rounded-xl text-slate-400 hover:text-slate-200 text-xs cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProject}
+                disabled={isDeletingProject}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingProject ? "Deleting..." : "Delete Project"}
               </button>
             </div>
           </div>
