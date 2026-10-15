@@ -27,6 +27,7 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FaidaLogo } from "@/components/brand/FaidaLogo";
 
 interface NavItem {
   name: string;
@@ -148,17 +149,7 @@ export function Sidebar() {
       >
         {/* Brand Header */}
         <div className="h-16 px-6 flex items-center justify-between border-b border-slate-800/80 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center font-bold text-white shadow-lg shadow-blue-500/20">
-              ⚡
-            </div>
-            <div>
-              <div className="font-bold tracking-wider text-slate-100 text-sm flex items-center gap-1.5">
-                FAIDA <span className="text-blue-500 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">OS</span>
-              </div>
-              <p className="text-[11px] text-slate-400">Personal Brain &amp; Assistant</p>
-            </div>
-          </div>
+          <FaidaLogo size="md" showText={true} showSubtitle={true} href="/" />
 
           {/* Close button on mobile */}
           <button

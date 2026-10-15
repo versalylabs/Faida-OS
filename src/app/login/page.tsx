@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Lock, Mail, User as UserIcon, ArrowRight, ShieldCheck, KeyRound, AlertCircle, Loader2 } from "lucide-react";
+import { FaidaLogoIcon } from "@/components/brand/FaidaLogo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -63,14 +64,14 @@ export default function LoginPage() {
       <div className="w-full max-w-md relative z-10">
         {/* Faida OS Brand Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center p-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-blue-600/20 border border-emerald-500/30 shadow-lg shadow-emerald-500/10 mb-4">
-            <Sparkles className="h-8 w-8 text-emerald-400" />
+          <div className="inline-flex items-center justify-center mb-3">
+            <FaidaLogoIcon size={56} className="shadow-2xl shadow-blue-500/30" />
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
-            Faida <span className="text-emerald-400 font-mono">OS</span>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center justify-center gap-2">
+            FAIDA <span className="text-blue-500 font-mono text-2xl px-2 py-0.5 rounded-lg bg-blue-500/10 border border-blue-500/20">OS</span>
           </h1>
           <p className="text-sm text-slate-400 mt-1.5">
-            Personal Operating System & Second Brain
+            Personal Operating System &amp; Second Brain
           </p>
         </div>
 

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sparkles, Bell, Search, Command, Keyboard, Menu, LogOut, User as UserIcon } from "lucide-react";
 import { QuickCaptureModal } from "@/components/capture/QuickCaptureModal";
+import { FaidaLogo, FaidaLogoIcon } from "@/components/brand/FaidaLogo";
 
 export function Header() {
   const router = useRouter();
@@ -86,6 +87,15 @@ export function Header() {
           >
             <Menu className="h-4 w-4" />
           </button>
+
+          {/* Header Logo Icon & Brand */}
+          <div className="flex items-center shrink-0">
+            <FaidaLogo size="xs" showText={false} className="sm:hidden" />
+            <FaidaLogo size="sm" showText={true} className="hidden sm:flex md:hidden" />
+            <div className="hidden md:flex items-center pr-1">
+              <FaidaLogoIcon size={28} className="hover:scale-105 transition-transform" />
+            </div>
+          </div>
 
           <button
             onClick={() => setIsCaptureModalOpen(true)}
