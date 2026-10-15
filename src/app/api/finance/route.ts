@@ -27,14 +27,19 @@ export async function GET(req: NextRequest) {
     let totalIncome = 0;
     let totalExpense = 0;
     const categoryBreakdown: Record<string, number> = {};
+    const expenseCategoryBreakdown: Record<string, number> = {};
+    const incomeCategoryBreakdown: Record<string, number> = {};
 
     transactions.forEach((tx) => {
+      const cat = tx.category || "General";
       if (tx.amount > 0) {
         totalIncome += tx.amount;
+        incomeCategoryBreakdown[cat] = (incomeCategoryBreakdown[cat] || 0) + tx.amount;
       } else {
-        totalExpense += Math.abs(tx.amount);
-        const cat = tx.category || "General";
-        categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + Math.abs(tx.amount);
+        const absAmt = Math.abs(tx.amount);
+        totalExpense += absAmt;
+        categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + absAmt;
+        expenseCategoryBreakdown[cat] = (expenseCategoryBreakdown[cat] || 0) + absAmt;
       }
     });
 
@@ -126,6 +131,8 @@ export async function GET(req: NextRequest) {
           totalIncome,
           totalExpense,
           categoryBreakdown,
+          expenseCategoryBreakdown,
+          incomeCategoryBreakdown,
         },
       },
       { headers: noCacheHeaders }

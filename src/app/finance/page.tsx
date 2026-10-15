@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Wallet,
   TrendingUp,
@@ -20,6 +20,8 @@ import {
   Tag,
   AlertCircle,
   Layers,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 
@@ -56,6 +58,8 @@ interface FinanceMetrics {
   totalIncome: number;
   totalExpense: number;
   categoryBreakdown: Record<string, number>;
+  expenseCategoryBreakdown?: Record<string, number>;
+  incomeCategoryBreakdown?: Record<string, number>;
 }
 
 export default function FinancePage() {
@@ -64,6 +68,10 @@ export default function FinancePage() {
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [metrics, setMetrics] = useState<FinanceMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Pie / Donut Chart state
+  const [chartMode, setChartMode] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
   // Add Transaction Modal
   const [showModal, setShowModal] = useState(false);
@@ -134,6 +142,82 @@ export default function FinancePage() {
       setCategory(validCats[0].name);
     }
   }, [type, categories]);
+
+  // Compute category breakdown data for the pie / donut chart
+  const breakdownData = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    // Filter transactions based on current mode
+    const matchingTx = transactions.filter((tx) => {
+      if (chartMode === "EXPENSE") {
+        return tx.type === "EXPENSE" || tx.amount < 0;
+      } else {
+        return tx.type === "INCOME" || tx.amount > 0;
+      }
+    });
+
+    if (matchingTx.length > 0) {
+      for (const tx of matchingTx) {
+        const cat = tx.category || "Uncategorized";
+        const val = Math.abs(tx.amount);
+        totals[cat] = (totals[cat] || 0) + val;
+      }
+    } else if (metrics) {
+      // Fallback to metrics breakdown if transactions array is empty or paginated
+      const fallback =
+        chartMode === "EXPENSE"
+          ? metrics.expenseCategoryBreakdown || metrics.categoryBreakdown
+          : metrics.incomeCategoryBreakdown;
+      if (fallback) {
+        for (const [k, v] of Object.entries(fallback)) {
+          if (v > 0) totals[k] = v;
+        }
+      }
+    }
+
+    const totalSum = Object.values(totals).reduce((acc, curr) => acc + curr, 0);
+
+    const defaultColors = [
+      "#f43f5e",
+      "#10b981",
+      "#3b82f6",
+      "#f59e0b",
+      "#8b5cf6",
+      "#06b6d4",
+      "#ec4899",
+      "#14b8a6",
+      "#6366f1",
+      "#eab308",
+      "#a855f7",
+      "#64748b",
+    ];
+
+    const categoryColorMap = new Map<string, string>();
+    categories.forEach((c) => {
+      if (c.color) categoryColorMap.set(c.name.toLowerCase(), c.color);
+    });
+
+    const items = Object.entries(totals)
+      .filter(([_, amt]) => amt > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat, amt], idx) => {
+        const percentage = totalSum > 0 ? (amt / totalSum) * 100 : 0;
+        const color =
+          categoryColorMap.get(cat.toLowerCase()) ||
+          defaultColors[idx % defaultColors.length];
+        return {
+          name: cat,
+          amount: amt,
+          percentage,
+          color,
+        };
+      });
+
+    return {
+      items,
+      totalSum,
+    };
+  }, [transactions, metrics, chartMode, categories]);
 
   const handleCreateTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -567,26 +651,273 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* Category Spending Breakdown */}
-      {metrics && Object.keys(metrics.categoryBreakdown).length > 0 && (
-        <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800 space-y-3">
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
-            <PieChart className="h-3.5 w-3.5 text-blue-400" />
-            <span>Category Spending Distribution (KES)</span>
+      {/* Interactive Category & Cash Flow Pie Chart Overview */}
+      <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-6">
+        {/* Header & Toggle Controls */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <PieChart className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                Category Financial Overview
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                    chartMode === "EXPENSE"
+                      ? "bg-rose-500/10 text-rose-300 border-rose-500/30"
+                      : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                  }`}
+                >
+                  {chartMode === "EXPENSE" ? "Expenses" : "Income"}
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Interactive distribution of your cash flow and active categories
+              </p>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(metrics.categoryBreakdown).map(([cat, total]) => (
-              <div
-                key={cat}
-                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-center gap-2"
-              >
-                <span className="text-slate-400">{cat}:</span>
-                <span className="font-mono text-slate-200 font-semibold">{formatKES(total)}</span>
-              </div>
-            ))}
+
+          {/* Segmented Controls for Expense vs Income */}
+          <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setChartMode("EXPENSE");
+                setHoveredCategory(null);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                chartMode === "EXPENSE"
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 border border-transparent"
+              }`}
+            >
+              <TrendingDown className="h-3.5 w-3.5 text-rose-400" />
+              <span>Expense Overview</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setChartMode("INCOME");
+                setHoveredCategory(null);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer ${
+                chartMode === "INCOME"
+                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm"
+                  : "text-slate-400 hover:text-slate-200 border border-transparent"
+              }`}
+            >
+              <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Income Overview</span>
+            </button>
           </div>
         </div>
-      )}
+
+        {/* Chart + Category Details Content */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+          {/* Left Column: Donut Chart */}
+          <div className="md:col-span-5 flex flex-col items-center justify-center">
+            <div className="relative w-60 h-60 flex items-center justify-center">
+              {breakdownData.items.length === 0 ? (
+                /* Empty ring placeholder */
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 240 240">
+                  <circle
+                    cx="120"
+                    cy="120"
+                    r="75"
+                    fill="none"
+                    stroke="#1e293b"
+                    strokeWidth="20"
+                    strokeDasharray="4 4"
+                  />
+                </svg>
+              ) : (
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 240 240">
+                  {/* Background base circle */}
+                  <circle
+                    cx="120"
+                    cy="120"
+                    r="75"
+                    fill="none"
+                    stroke="#1e293b"
+                    strokeWidth="20"
+                  />
+                  {/* Slices */}
+                  {(() => {
+                    const radius = 75;
+                    const circumference = 2 * Math.PI * radius;
+                    let accumulatedPercent = 0;
+                    const isSingle = breakdownData.items.length === 1;
+
+                    return breakdownData.items.map((item) => {
+                      const isHovered = hoveredCategory === item.name;
+                      const strokeDash = (item.percentage / 100) * circumference;
+                      const arcLength = isSingle ? circumference : Math.max(0.5, strokeDash - 2);
+                      const strokeDasharray = `${arcLength} ${circumference - arcLength}`;
+                      const strokeDashoffset = -((accumulatedPercent / 100) * circumference);
+                      accumulatedPercent += item.percentage;
+
+                      return (
+                        <circle
+                          key={item.name}
+                          cx="120"
+                          cy="120"
+                          r={radius}
+                          fill="none"
+                          stroke={item.color}
+                          strokeWidth={isHovered ? 26 : 20}
+                          strokeDasharray={strokeDasharray}
+                          strokeDashoffset={strokeDashoffset}
+                          className="transition-all duration-300 cursor-pointer"
+                          style={{
+                            opacity: hoveredCategory && !isHovered ? 0.35 : 1,
+                          }}
+                          onMouseEnter={() => setHoveredCategory(item.name)}
+                          onMouseLeave={() => setHoveredCategory(null)}
+                        />
+                      );
+                    });
+                  })()}
+                </svg>
+              )}
+
+              {/* Center Text (HTML overlay for flawless text wrapping & styling) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 pointer-events-none">
+                {(() => {
+                  const hoveredItem = hoveredCategory
+                    ? breakdownData.items.find((i) => i.name === hoveredCategory)
+                    : null;
+
+                  if (hoveredItem) {
+                    return (
+                      <div className="space-y-1">
+                        <div
+                          className="text-[11px] font-bold uppercase tracking-wider truncate max-w-[140px]"
+                          style={{ color: hoveredItem.color }}
+                        >
+                          {hoveredItem.name}
+                        </div>
+                        <div className="text-base sm:text-lg font-bold font-mono text-white">
+                          {formatKES(hoveredItem.amount)}
+                        </div>
+                        <div
+                          className="inline-block text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full"
+                          style={{
+                            backgroundColor: `${hoveredItem.color}20`,
+                            color: hoveredItem.color,
+                          }}
+                        >
+                          {hoveredItem.percentage.toFixed(1)}% of total
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (breakdownData.items.length === 0) {
+                    return (
+                      <div className="space-y-1">
+                        <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                          No Data
+                        </span>
+                        <div className="text-xs text-slate-400 font-mono">
+                          KES 0
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        {chartMode === "EXPENSE" ? "Total Spending" : "Total Earnings"}
+                      </span>
+                      <div className="text-base sm:text-lg font-bold font-mono text-white tracking-tight">
+                        {formatKES(breakdownData.totalSum)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        {breakdownData.items.length}{" "}
+                        {breakdownData.items.length === 1 ? "category" : "categories"}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2 text-center">
+              Hover over any slice or category row for details
+            </p>
+          </div>
+
+          {/* Right Column: Category Breakdown List */}
+          <div className="md:col-span-7 space-y-2">
+            {breakdownData.items.length === 0 ? (
+              <div className="py-10 text-center rounded-xl bg-slate-950/40 border border-slate-800/80 p-6 space-y-2">
+                <div className="text-xs font-medium text-slate-400">
+                  No {chartMode === "EXPENSE" ? "expenses" : "income"} logged yet
+                </div>
+                <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
+                  Log your first {chartMode.toLowerCase()} transaction using the &quot;Log Transaction&quot; button above to see your breakdown visualized.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+                {breakdownData.items.map((item) => {
+                  const isHovered = hoveredCategory === item.name;
+                  return (
+                    <div
+                      key={item.name}
+                      onMouseEnter={() => setHoveredCategory(item.name)}
+                      onMouseLeave={() => setHoveredCategory(null)}
+                      className={`p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer ${
+                        isHovered
+                          ? "bg-slate-800/90 border-slate-600 shadow-md ring-1 ring-slate-600 scale-[1.01]"
+                          : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/60"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span
+                            className="w-3 h-3 rounded-md shrink-0 shadow-sm"
+                            style={{ backgroundColor: item.color }}
+                          />
+                          <span className="font-semibold text-slate-200 truncate">
+                            {item.name}
+                          </span>
+                          <span
+                            className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded border"
+                            style={{
+                              backgroundColor: `${item.color}15`,
+                              borderColor: `${item.color}30`,
+                              color: item.color,
+                            }}
+                          >
+                            {item.percentage.toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="font-mono font-bold text-slate-100 text-right shrink-0">
+                          {formatKES(item.amount)}
+                        </div>
+                      </div>
+
+                      {/* Relative progress bar */}
+                      <div className="mt-2 h-1.5 w-full bg-slate-900 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{
+                            width: `${item.percentage}%`,
+                            backgroundColor: item.color,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Transactions Feed */}
       <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-4 sm:p-6 space-y-4">
