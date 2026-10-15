@@ -177,34 +177,80 @@ export default function FinancePage() {
 
     const totalSum = Object.values(totals).reduce((acc, curr) => acc + curr, 0);
 
-    const defaultColors = [
-      "#f43f5e",
-      "#10b981",
-      "#3b82f6",
-      "#f59e0b",
-      "#8b5cf6",
-      "#06b6d4",
-      "#ec4899",
-      "#14b8a6",
-      "#6366f1",
-      "#eab308",
-      "#a855f7",
-      "#64748b",
+    // Distinct, vibrant color palette for expense categories
+    const expenseColorPalette = [
+      "#6366f1", // Indigo (e.g. Loans / Debt)
+      "#ec4899", // Vibrant Pink (e.g. Shopping)
+      "#f59e0b", // Amber Warm Orange (e.g. Groceries)
+      "#3b82f6", // Electric Blue (e.g. Tech & Subscriptions)
+      "#06b6d4", // Cyan / Aquamarine (e.g. Food & Dining)
+      "#8b5cf6", // Purple / Violet (e.g. Rent & Utilities)
+      "#14b8a6", // Teal (e.g. Transport)
+      "#f97316", // Bright Orange (e.g. Personal)
+      "#10b981", // Emerald Green (e.g. Health & Wellness)
+      "#f43f5e", // Rose Red (e.g. Entertainment)
+      "#d946ef", // Fuchsia
+      "#0ea5e9", // Sky Blue
+      "#84cc16", // Lime
+      "#eab308", // Golden Yellow
+      "#a855f7", // Violet-Purple
+      "#64748b", // Slate
     ];
 
     const categoryColorMap = new Map<string, string>();
     categories.forEach((c) => {
-      if (c.color) categoryColorMap.set(c.name.toLowerCase(), c.color);
+      if (c.color) categoryColorMap.set(c.name.toLowerCase().trim(), c.color);
     });
+
+    // Well-known expense category color presets so they are intuitive and distinct
+    const expenseCategoryPresetColors: Record<string, string> = {
+      "loans": "#6366f1",
+      "loan": "#6366f1",
+      "shopping": "#ec4899",
+      "groceries": "#f59e0b",
+      "groceries and fruit": "#f59e0b",
+      "groceries & fruit": "#f59e0b",
+      "tech & subscriptions": "#3b82f6",
+      "tech": "#3b82f6",
+      "food & dining": "#06b6d4",
+      "food": "#06b6d4",
+      "dining": "#06b6d4",
+      "rent & utilities": "#8b5cf6",
+      "rent": "#8b5cf6",
+      "transport": "#14b8a6",
+      "health": "#10b981",
+      "entertainment": "#f43f5e",
+    };
+
+    const usedExpenseColors = new Set<string>();
 
     const items = Object.entries(totals)
       .filter(([_, amt]) => amt > 0)
       .sort((a, b) => b[1] - a[1])
       .map(([cat, amt], idx) => {
         const percentage = totalSum > 0 ? (amt / totalSum) * 100 : 0;
-        const color =
-          categoryColorMap.get(cat.toLowerCase()) ||
-          defaultColors[idx % defaultColors.length];
+        let color = "";
+
+        if (chartMode === "EXPENSE") {
+          const catKey = cat.toLowerCase().trim();
+          const customColor = categoryColorMap.get(catKey);
+
+          // If the category has a user-defined custom color that is not the legacy uniform red (#f43f5e)
+          if (customColor && customColor.toLowerCase() !== "#f43f5e" && !usedExpenseColors.has(customColor)) {
+            color = customColor;
+          } else if (expenseCategoryPresetColors[catKey] && !usedExpenseColors.has(expenseCategoryPresetColors[catKey])) {
+            color = expenseCategoryPresetColors[catKey];
+          } else {
+            // Find the next available distinct color from the palette
+            const available = expenseColorPalette.find((c) => !usedExpenseColors.has(c));
+            color = available || expenseColorPalette[idx % expenseColorPalette.length];
+          }
+          usedExpenseColors.add(color);
+        } else {
+          // Income overview: keep existing category colors (defaults to green #10b981)
+          color = categoryColorMap.get(cat.toLowerCase().trim()) || "#10b981";
+        }
+
         return {
           name: cat,
           amount: amt,

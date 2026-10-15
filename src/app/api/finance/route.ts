@@ -90,20 +90,20 @@ export async function GET(req: NextRequest) {
 
     if (categories.length === 0) {
       const defaultExpenses = [
-        "Groceries",
-        "Food & Dining",
-        "Rent & Utilities",
-        "Transport",
-        "Tech & Subscriptions",
-        "Health",
-        "Shopping",
-        "Entertainment",
+        { name: "Groceries", color: "#f59e0b" },
+        { name: "Food & Dining", color: "#06b6d4" },
+        { name: "Rent & Utilities", color: "#8b5cf6" },
+        { name: "Transport", color: "#14b8a6" },
+        { name: "Tech & Subscriptions", color: "#3b82f6" },
+        { name: "Health", color: "#10b981" },
+        { name: "Shopping", color: "#ec4899" },
+        { name: "Entertainment", color: "#f43f5e" },
       ];
       const defaultIncome = ["Salary", "Freelance", "Investments", "Business", "Gifts"];
 
-      for (const name of defaultExpenses) {
+      for (const d of defaultExpenses) {
         await prisma.financeCategory.create({
-          data: { userId: user.id, name, type: "EXPENSE", color: "#f43f5e" },
+          data: { userId: user.id, name: d.name, type: "EXPENSE", color: d.color },
         });
       }
       for (const name of defaultIncome) {
