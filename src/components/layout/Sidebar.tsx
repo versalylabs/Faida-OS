@@ -25,6 +25,8 @@ import {
   Cpu,
   Brain,
   FileText,
+  Briefcase,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaidaLogo } from "@/components/brand/FaidaLogo";
@@ -52,6 +54,14 @@ const navCategories: NavCategory[] = [
       { name: "Command Center", href: "/", icon: LayoutDashboard },
       { name: "University", href: "/university", icon: GraduationCap, badge: "BSc" },
       { name: "Universal Capture", href: "/capture", icon: Sparkles, badge: "⚡" },
+    ],
+  },
+  {
+    id: "business",
+    title: "Business & Ventures",
+    icon: Building2,
+    items: [
+      { name: "Business Hub", href: "/business", icon: Briefcase, badge: "Versaly & Straten" },
     ],
   },
   {

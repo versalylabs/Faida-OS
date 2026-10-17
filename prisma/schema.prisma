@@ -43,6 +43,10 @@ model User {
   academicClasses       AcademicClass[]
   academicMaterials     AcademicMaterial[]
   academicAnnouncements AcademicAnnouncement[]
+  businesses            Business[]
+  businessClients       BusinessClient[]
+  businessWeeklyMetrics BusinessWeeklyMetric[]
+  businessDeliverables  BusinessDeliverable[]
 }
 
 model Session {
@@ -570,4 +574,100 @@ model FileAsset {
 
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+}
+
+// -------------------------------------------------------------
+// 8. Business & Ventures Hub (Versaly, Straten, Clients, Metrics)
+// -------------------------------------------------------------
+
+model Business {
+  id          String   @id @default(uuid())
+  userId      String?
+  name        String   // "Versaly", "Straten"
+  slug        String   // "versaly", "straten"
+  type        String   // "Software Development Company", "Digital Marketing Agency"
+  description String?
+  color       String   @default("#3b82f6")
+  mrr         Float    @default(0)
+  targetMrr   Float    @default(0)
+  currency    String   @default("KES")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user          User?                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clients       BusinessClient[]
+  weeklyMetrics BusinessWeeklyMetric[]
+  deliverables  BusinessDeliverable[]
+}
+
+model BusinessClient {
+  id            String    @id @default(uuid())
+  businessId    String
+  userId        String?
+  name          String    // "Highland Gardens Limited", "Linux Learning Centre"
+  industry      String?   // "Food Production (Hibiscus & Chamomile)", "ICT Training Institution"
+  scope         String?   // "Branding & Package Designing", "Graphic Design & Social Media Management"
+  status        String    @default("ACTIVE") // ACTIVE, ONBOARDING, LEAD, PROPOSAL, COMPLETED, PAUSED
+  contractType  String    @default("RETAINER") // RETAINER, ONE_TIME, MILESTONE
+  contractValue Float     @default(0)
+  billingCycle  String    @default("MONTHLY") // MONTHLY, ONE_TIME, QUARTERLY, PROJECT
+  contactPerson String?
+  contactEmail  String?
+  contactPhone  String?
+  health        String    @default("HEALTHY") // HEALTHY, ATTENTION, AT_RISK
+  notes         String?
+  startDate     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business     Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user         User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deliverables BusinessDeliverable[]
+}
+
+model BusinessWeeklyMetric {
+  id                String   @id @default(uuid())
+  businessId        String
+  userId            String?
+  weekStartDate     String   // e.g. "2026-W42" or "2026-10-12"
+  weekNumber        Int?
+  year              Int?
+  outreachSent      Int      @default(0) // Effort - target 500/week
+  replyRateWarm     Float    @default(0) // Target: 10%+ warm
+  replyRateCold     Float    @default(0) // Target: 3-5% cold
+  auditsBooked      Int      @default(0) // Target: 5-10/week
+  showRate          Float    @default(0) // Target: 70%+
+  closeRate         Float    @default(0) // Target: 25-40%
+  avgTimeToLiveDays Float    @default(0) // Target: <= 30 days
+  mrr               Float    @default(0) // Business health (MRR)
+  clientChurnCount  Int      @default(0) // Target: 0 in first 6 months
+  referralsCount    Int      @default(0) // Target: 1+ per client
+  cac               Float    @default(0) // Customer Acquisition Cost
+  ltv               Float    @default(0) // Lifetime Value (Target: LTV >= 3x CAC)
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model BusinessDeliverable {
+  id          String    @id @default(uuid())
+  businessId  String
+  clientId    String?
+  userId      String?
+  title       String    // e.g. "Chamomile Tea Packaging Mockups", "Social Media Content Plan"
+  description String?
+  status      String    @default("PENDING") // PENDING, IN_PROGRESS, REVIEW, COMPLETED
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  client   BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
