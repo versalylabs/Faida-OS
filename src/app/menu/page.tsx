@@ -22,8 +22,19 @@ import {
   Info,
   Check,
   ArrowRight,
+  Settings2,
 } from "lucide-react";
 import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
+
+interface MealIdeaItem {
+  id: string;
+  mealType: string;
+  title: string;
+  description?: string | null;
+  calories?: number | null;
+  prepTime?: number | null;
+  tags?: string | null;
+}
 
 interface MealItem {
   id: string;
@@ -162,11 +173,41 @@ export default function MenuPage() {
   const [modalTags, setModalTags] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Quick Ideas Manager State
+  const [mealIdeas, setMealIdeas] = useState<MealIdeaItem[]>([]);
+  const [showIdeasManager, setShowIdeasManager] = useState(false);
+  const [editingIdea, setEditingIdea] = useState<MealIdeaItem | null>(null);
+  const [ideaTitle, setIdeaTitle] = useState("");
+  const [ideaMealType, setIdeaMealType] = useState("ANY");
+  const [ideaDescription, setIdeaDescription] = useState("");
+  const [ideaCalories, setIdeaCalories] = useState("");
+  const [ideaPrepTime, setIdeaPrepTime] = useState("");
+  const [ideaTags, setIdeaTags] = useState("");
+  const [isSavingIdea, setIsSavingIdea] = useState(false);
+  const [deleteConfirmIdea, setDeleteConfirmIdea] = useState<MealIdeaItem | null>(null);
+
   // Delete & Reset Confirmations
   const [deleteConfirmMeal, setDeleteConfirmMeal] = useState<MealItem | null>(
     null
   );
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const fetchIdeas = async () => {
+    try {
+      const res = await offlineFetch("/api/menu/ideas", { cacheKey: "meal_ideas" });
+      const data = await res.json();
+      if (data.success && data.ideas) {
+        setMealIdeas(data.ideas);
+        cacheOfflineData("meal_ideas", data);
+      }
+    } catch (e) {
+      console.error("Failed to load meal ideas:", e);
+      const cached = getCachedOfflineData<any>("meal_ideas");
+      if (cached?.ideas) {
+        setMealIdeas(cached.ideas);
+      }
+    }
+  };
 
   const fetchMenu = async () => {
     try {
@@ -195,9 +236,11 @@ export default function MenuPage() {
 
   useEffect(() => {
     fetchMenu();
+    fetchIdeas();
 
     const handleSyncRefresh = () => {
       fetchMenu();
+      fetchIdeas();
     };
     window.addEventListener("faida-sync-completed", handleSyncRefresh);
     return () => window.removeEventListener("faida-sync-completed", handleSyncRefresh);
@@ -332,13 +375,117 @@ export default function MenuPage() {
     }
   };
 
-  const applyPreset = (preset: (typeof PRESET_IDEAS)[0]) => {
+  const applyPreset = (preset: MealIdeaItem | (typeof PRESET_IDEAS)[0]) => {
     setModalTitle(preset.title);
-    setModalDescription(preset.desc);
-    setModalPrepTime(preset.prep.toString());
-    setModalCalories(preset.cal.toString());
-    setModalTags(preset.tags);
-    setModalMealType(preset.type);
+    setModalDescription((preset as any).description || (preset as any).desc || "");
+    setModalPrepTime(String((preset as any).prepTime || (preset as any).prep || ""));
+    setModalCalories(String((preset as any).calories || (preset as any).cal || ""));
+    setModalTags(preset.tags || "");
+    if ((preset as any).mealType && (preset as any).mealType !== "ANY") {
+      setModalMealType((preset as any).mealType);
+    } else if ((preset as any).type) {
+      setModalMealType((preset as any).type);
+    }
+  };
+
+  const handleOpenCreateIdea = () => {
+    setEditingIdea(null);
+    setIdeaTitle("");
+    setIdeaMealType(modalMealType || "ANY");
+    setIdeaDescription("");
+    setIdeaCalories("");
+    setIdeaPrepTime("");
+    setIdeaTags("");
+    setShowIdeasManager(true);
+  };
+
+  const handleEditIdea = (idea: MealIdeaItem) => {
+    setEditingIdea(idea);
+    setIdeaTitle(idea.title);
+    setIdeaMealType(idea.mealType);
+    setIdeaDescription(idea.description || "");
+    setIdeaCalories(idea.calories?.toString() || "");
+    setIdeaPrepTime(idea.prepTime?.toString() || "");
+    setIdeaTags(idea.tags || "");
+    setShowIdeasManager(true);
+  };
+
+  const handleSaveIdea = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ideaTitle.trim() || isSavingIdea) return;
+
+    setIsSavingIdea(true);
+    const payload = {
+      id: editingIdea?.id,
+      title: ideaTitle.trim(),
+      mealType: ideaMealType,
+      description: ideaDescription.trim() || null,
+      calories: ideaCalories ? parseInt(ideaCalories, 10) : null,
+      prepTime: ideaPrepTime ? parseInt(ideaPrepTime, 10) : null,
+      tags: ideaTags.trim() || null,
+    };
+
+    try {
+      const method = editingIdea ? "PATCH" : "POST";
+      const res = await offlineFetch("/api/menu/ideas", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        description: `${editingIdea ? "Update" : "Create"} meal idea "${payload.title}"`,
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (editingIdea) {
+          setMealIdeas((prev) =>
+            prev.map((item) => (item.id === editingIdea.id ? data.idea || { ...item, ...payload } : item))
+          );
+        } else {
+          const newItem = data.idea || { ...payload, id: `temp_idea_${Date.now()}` };
+          setMealIdeas((prev) => [...prev, newItem]);
+        }
+        setEditingIdea(null);
+        setIdeaTitle("");
+        setIdeaDescription("");
+        setIdeaCalories("");
+        setIdeaPrepTime("");
+        setIdeaTags("");
+        fetchIdeas();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSavingIdea(false);
+    }
+  };
+
+  const handleDeleteIdea = async (id: string) => {
+    setMealIdeas((prev) => prev.filter((i) => i.id !== id));
+    setDeleteConfirmIdea(null);
+    try {
+      await offlineFetch(`/api/menu/ideas?id=${id}`, {
+        method: "DELETE",
+        description: `Delete meal idea ${id}`,
+      });
+      fetchIdeas();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleResetIdeas = async () => {
+    if (!confirm("Reset meal ideas to default suggestions?")) return;
+    try {
+      const res = await offlineFetch("/api/menu/ideas?action=reset", {
+        method: "POST",
+        description: "Reset meal ideas to defaults",
+      });
+      const data = await res.json();
+      if (data.success && data.ideas) {
+        setMealIdeas(data.ideas);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   // Filter days based on tab selection
@@ -385,6 +532,15 @@ export default function MenuPage() {
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Plan a Meal</span>
+          </button>
+
+          <button
+            onClick={() => setShowIdeasManager(true)}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-amber-500/40 text-xs text-amber-300 font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            title="Add, edit, or remove quick meal ideas"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+            <span>Quick Ideas ({mealIdeas.length})</span>
           </button>
 
           <button
@@ -760,21 +916,45 @@ export default function MenuPage() {
             </div>
 
             {/* Quick Inspiration Pills */}
-            <div className="space-y-1.5">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">
-                Quick Idea Suggestions (Click to Fill):
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {PRESET_IDEAS.map((p, idx) => (
+            <div className="space-y-1.5 p-3 rounded-xl bg-slate-950/70 border border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3 text-amber-400" />
+                  Quick Idea Suggestions (Click to Fill):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowIdeasManager(true)}
+                  className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer font-medium"
+                  title="Add, edit, or delete meal ideas"
+                >
+                  <Settings2 className="h-3 w-3" />
+                  <span>Manage ({mealIdeas.length})</span>
+                </button>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                {(mealIdeas.length > 0 ? mealIdeas : PRESET_IDEAS).map((p, idx) => (
                   <button
-                    key={idx}
+                    key={(p as any).id || idx}
                     type="button"
                     onClick={() => applyPreset(p)}
-                    className="px-2 py-1 rounded-lg bg-slate-950 border border-slate-800 hover:border-amber-500/40 text-[10px] text-slate-300 font-medium transition-colors cursor-pointer"
+                    className="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-amber-500/50 hover:bg-slate-850 text-[10px] text-slate-300 font-medium transition-colors cursor-pointer"
+                    title={(p as any).description || (p as any).desc || p.title}
                   >
                     {p.title.split("&")[0]}
                   </button>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={handleOpenCreateIdea}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 text-[10px] text-amber-300 font-medium transition-colors cursor-pointer flex items-center gap-1"
+                  title="Add a new quick idea"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>New Idea</span>
+                </button>
               </div>
             </div>
 
@@ -957,6 +1137,345 @@ export default function MenuPage() {
                 className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold"
               >
                 {isSubmitting ? "Resetting..." : "Confirm Reset"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK MEAL IDEAS MANAGER MODAL */}
+      {showIdeasManager && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-5 shadow-2xl my-8 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-white text-base">
+                    Quick Meal Ideas Bank
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Add, edit, and organize quick meal suggestions for 1-click slot planning.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowIdeasManager(false);
+                  setEditingIdea(null);
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Form: Add or Edit Idea */}
+            <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800/90 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  {editingIdea ? (
+                    <>
+                      <Edit3 className="h-3.5 w-3.5 text-amber-400" />
+                      Edit Idea: <span className="text-amber-400">{editingIdea.title}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="h-3.5 w-3.5 text-amber-400" />
+                      Add New Quick Meal Idea
+                    </>
+                  )}
+                </span>
+                {editingIdea && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingIdea(null);
+                      setIdeaTitle("");
+                      setIdeaDescription("");
+                      setIdeaCalories("");
+                      setIdeaPrepTime("");
+                      setIdeaTags("");
+                    }}
+                    className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+              </div>
+
+              <form onSubmit={handleSaveIdea} className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                      Meal Idea Title *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Avocado Toast with Poached Eggs"
+                      value={ideaTitle}
+                      onChange={(e) => setIdeaTitle(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                      Category / Best For
+                    </label>
+                    <select
+                      value={ideaMealType}
+                      onChange={(e) => setIdeaMealType(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="ANY">Any Meal (Breakfast, Lunch or Supper)</option>
+                      <option value="BREAKFAST">Breakfast</option>
+                      <option value="LUNCH">Lunch</option>
+                      <option value="SUPPER">Supper</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                      Prep Time (mins)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 15"
+                      value={ideaPrepTime}
+                      onChange={(e) => setIdeaPrepTime(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                      Calories (kcal)
+                    </label>
+                    <input
+                      type="number"
+                      placeholder="e.g. 420"
+                      value={ideaCalories}
+                      onChange={(e) => setIdeaCalories(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                      Tags (comma-separated)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Quick, Protein"
+                      value={ideaTags}
+                      onChange={(e) => setIdeaTags(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-400 block mb-1">
+                    Ingredients / Recipe Notes
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Short description or ingredients note..."
+                    value={ideaDescription}
+                    onChange={(e) => setIdeaDescription(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 resize-none"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={isSavingIdea || !ideaTitle.trim()}
+                    className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isSavingIdea ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-3.5 w-3.5" />
+                        <span>{editingIdea ? "Save Changes" : "Add to Quick Ideas"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Ideas List */}
+            <div className="flex-1 flex flex-col min-h-0 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-300">
+                  Current Quick Ideas ({mealIdeas.length})
+                </span>
+                <button
+                  type="button"
+                  onClick={handleResetIdeas}
+                  className="text-[11px] text-slate-400 hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Reset to default Kenyan & balanced meal ideas"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  <span>Reset to Defaults</span>
+                </button>
+              </div>
+
+              <div className="overflow-y-auto space-y-2 pr-1 max-h-64 border border-slate-800/80 rounded-xl p-2 bg-slate-950/40">
+                {mealIdeas.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-slate-500">
+                    No meal ideas saved yet. Add one above or click &quot;Reset to Defaults&quot;.
+                  </div>
+                ) : (
+                  mealIdeas.map((idea) => {
+                    const badgeColor =
+                      idea.mealType === "BREAKFAST"
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                        : idea.mealType === "LUNCH"
+                        ? "bg-sky-500/10 text-sky-400 border-sky-500/20"
+                        : idea.mealType === "SUPPER"
+                        ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                        : "bg-slate-800 text-slate-300 border-slate-700";
+
+                    return (
+                      <div
+                        key={idea.id}
+                        className="p-3 rounded-lg bg-slate-900 border border-slate-800/90 hover:border-slate-700 transition-all flex items-center justify-between gap-3"
+                      >
+                        <div className="space-y-1 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-xs text-white truncate">
+                              {idea.title}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border ${badgeColor}`}
+                            >
+                              {idea.mealType}
+                            </span>
+                            {idea.prepTime && (
+                              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                                <Clock className="h-2.5 w-2.5" />
+                                {idea.prepTime}m
+                              </span>
+                            )}
+                            {idea.calories && (
+                              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                                <Flame className="h-2.5 w-2.5 text-amber-400" />
+                                {idea.calories} kcal
+                              </span>
+                            )}
+                          </div>
+                          {idea.description && (
+                            <p className="text-[11px] text-slate-400 line-clamp-1">
+                              {idea.description}
+                            </p>
+                          )}
+                          {idea.tags && (
+                            <div className="flex gap-1 pt-0.5">
+                              {idea.tags.split(",").map((t, i) => (
+                                <span
+                                  key={i}
+                                  className="text-[9px] px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800 text-slate-400"
+                                >
+                                  {t.trim()}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {showModal && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                applyPreset(idea);
+                                setShowIdeasManager(false);
+                              }}
+                              className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-[10px] font-medium text-amber-300 transition-colors cursor-pointer"
+                              title="Fill into current meal form"
+                            >
+                              Use Now
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleEditIdea(idea)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Edit Idea"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmIdea(idea)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                            title="Delete Idea"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowIdeasManager(false);
+                  setEditingIdea(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 hover:bg-slate-800 text-xs font-semibold text-slate-300 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Meal Idea Confirmation Modal */}
+      {deleteConfirmIdea && (
+        <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center gap-2 text-rose-400">
+              <Trash2 className="h-5 w-5" />
+              <h3 className="font-bold text-white text-base">
+                Delete Meal Idea?
+              </h3>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Are you sure you want to delete &quot;<span className="text-white font-medium">{deleteConfirmIdea.title}</span>&quot; from your Quick Ideas bank? Meals already planned on your weekly calendar will remain untouched.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeleteConfirmIdea(null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteIdea(deleteConfirmIdea.id)}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white"
+              >
+                Delete Idea
               </button>
             </div>
           </div>

@@ -48,6 +48,7 @@ model User {
   businessWeeklyMetrics BusinessWeeklyMetric[]
   businessDeliverables  BusinessDeliverable[]
   mealPlanItems         MealPlanItem[]
+  mealIdeas             MealIdea[]
 }
 
 model Session {
@@ -694,4 +695,19 @@ model MealPlanItem {
   user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dayOfWeek, mealType])
+}
+
+model MealIdea {
+  id          String   @id @default(uuid())
+  userId      String?
+  mealType    String   @default("ANY") // BREAKFAST, LUNCH, SUPPER, ANY
+  title       String
+  description String?
+  calories    Int?
+  prepTime    Int?
+  tags        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
