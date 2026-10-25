@@ -19,6 +19,10 @@ import {
   Bell,
   CheckSquare,
   AlertTriangle,
+  UtensilsCrossed,
+  Sunrise,
+  Sun,
+  Moon,
 } from "lucide-react";
 import Link from "next/link";
 import { formatKES } from "@/lib/utils";
@@ -90,6 +94,14 @@ interface NoteItem {
   project?: { id: string; name: string; color?: string | null } | null;
 }
 
+interface TodayMealsSummary {
+  currentDay: string;
+  breakfast: { id: string; title: string; prepTime?: number | null; isCompleted: boolean } | null;
+  lunch: { id: string; title: string; prepTime?: number | null; isCompleted: boolean } | null;
+  supper: { id: string; title: string; prepTime?: number | null; isCompleted: boolean } | null;
+  hasMeals: boolean;
+}
+
 function formatScheduleTime(dateStr: string, isAllDay = false): string {
   if (!dateStr) return "";
   const d = new Date(dateStr);
@@ -135,6 +147,7 @@ export default function DashboardPage() {
     upcomingDeadline: null,
   });
   const [recentNotes, setRecentNotes] = useState<NoteItem[]>([]);
+  const [todayMeals, setTodayMeals] = useState<TodayMealsSummary | null>(null);
 
   const [attention, setAttention] = useState({ urgentCount: 0, dueTodayCount: 0 });
   const [financeMetrics, setFinanceMetrics] = useState<{
@@ -165,6 +178,7 @@ export default function DashboardPage() {
         shoppingData,
         universityData,
         notesData,
+        menuData,
       ] = await Promise.all([
         fetch("/api/tasks?status=TODO", { cache: "no-store" })
           .then((r) => r.json())
@@ -188,6 +202,9 @@ export default function DashboardPage() {
           .then((r) => r.json())
           .catch(() => ({ success: false })),
         fetch("/api/notes", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => ({ success: false })),
+        fetch("/api/menu?day=TODAY", { cache: "no-store" })
           .then((r) => r.json())
           .catch(() => ({ success: false })),
       ]);
@@ -318,6 +335,20 @@ export default function DashboardPage() {
       // 8. Notes
       if (notesData.success && notesData.notes) {
         setRecentNotes(notesData.notes.slice(0, 3));
+      }
+
+      // 9. Today's Menu
+      if (menuData.success && menuData.todayMeals) {
+        const b = menuData.todayMeals.find((m: any) => m.mealType === "BREAKFAST");
+        const l = menuData.todayMeals.find((m: any) => m.mealType === "LUNCH");
+        const s = menuData.todayMeals.find((m: any) => m.mealType === "SUPPER");
+        setTodayMeals({
+          currentDay: menuData.currentDay || "TODAY",
+          breakfast: b ? { id: b.id, title: b.title, prepTime: b.prepTime, isCompleted: b.isCompleted } : null,
+          lunch: l ? { id: l.id, title: l.title, prepTime: l.prepTime, isCompleted: l.isCompleted } : null,
+          supper: s ? { id: s.id, title: s.title, prepTime: s.prepTime, isCompleted: s.isCompleted } : null,
+          hasMeals: Boolean(b || l || s),
+        });
       }
     } catch (e) {
       console.error("Dashboard data load error:", e);
@@ -607,8 +638,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* SECONDARY ROW: Scheduler Card, Smart Shopping Card, Academic Command Hub */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      {/* SECONDARY ROW: Scheduler Card, Smart Shopping Card, Academic Command Hub, Today's Menu */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         {/* 4. SCHEDULER & UPCOMING EVENTS CARD */}
         <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-4 sm:p-5 space-y-4 flex flex-col justify-between">
           <div className="space-y-3">
@@ -884,6 +915,134 @@ export default function DashboardPage() {
             <span>Moodle / LMS Synced</span>
             <Link href="/university" className="text-indigo-400 hover:underline">
               Enter hub →
+            </Link>
+          </div>
+        </div>
+
+        {/* 7. TODAY'S MENU & MEALS CARD */}
+        <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-4 sm:p-5 space-y-4 flex flex-col justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <UtensilsCrossed className="h-4 w-4 text-amber-400" />
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                  Today&apos;s Menu
+                </h2>
+              </div>
+              <Link
+                href="/menu"
+                className="text-[11px] text-amber-400 hover:underline flex items-center gap-1 font-medium"
+              >
+                Weekly Menu <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+
+            {/* Today's Day Badge */}
+            <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-between text-xs">
+              <span className="text-amber-300 font-semibold flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+                {todayMeals?.currentDay || "TODAY"}
+              </span>
+              <span className="text-[10px] font-mono text-amber-400/90">
+                Breakfast • Lunch • Supper
+              </span>
+            </div>
+
+            {/* Meals for Today */}
+            {isLoading ? (
+              <div className="py-6 text-center text-xs text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1 text-amber-400" />
+                Loading today&apos;s menu...
+              </div>
+            ) : !todayMeals?.hasMeals ? (
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-500 text-center space-y-2">
+                <div>No meals planned for today yet.</div>
+                <Link
+                  href="/menu"
+                  className="inline-flex items-center gap-1 text-amber-400 hover:underline font-medium"
+                >
+                  <Plus className="h-3 w-3" />
+                  <span>Plan Today&apos;s Meals</span>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2 text-xs">
+                {/* Breakfast */}
+                <div className="p-2 rounded-lg bg-slate-800/30 border border-slate-800/60 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-mono shrink-0 font-bold">
+                      AM
+                    </span>
+                    <span
+                      className={`truncate font-medium ${
+                        todayMeals.breakfast?.isCompleted
+                          ? "line-through text-slate-500"
+                          : "text-slate-200"
+                      }`}
+                    >
+                      {todayMeals.breakfast?.title || "No breakfast planned"}
+                    </span>
+                  </div>
+                  {todayMeals.breakfast?.prepTime && (
+                    <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                      {todayMeals.breakfast.prepTime}m
+                    </span>
+                  )}
+                </div>
+
+                {/* Lunch */}
+                <div className="p-2 rounded-lg bg-slate-800/30 border border-slate-800/60 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-mono shrink-0 font-bold">
+                      NOON
+                    </span>
+                    <span
+                      className={`truncate font-medium ${
+                        todayMeals.lunch?.isCompleted
+                          ? "line-through text-slate-500"
+                          : "text-slate-200"
+                      }`}
+                    >
+                      {todayMeals.lunch?.title || "No lunch planned"}
+                    </span>
+                  </div>
+                  {todayMeals.lunch?.prepTime && (
+                    <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                      {todayMeals.lunch.prepTime}m
+                    </span>
+                  )}
+                </div>
+
+                {/* Supper */}
+                <div className="p-2 rounded-lg bg-slate-800/30 border border-slate-800/60 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[9px] font-mono shrink-0 font-bold">
+                      PM
+                    </span>
+                    <span
+                      className={`truncate font-medium ${
+                        todayMeals.supper?.isCompleted
+                          ? "line-through text-slate-500"
+                          : "text-slate-200"
+                      }`}
+                    >
+                      {todayMeals.supper?.title || "No supper planned"}
+                    </span>
+                  </div>
+                  {todayMeals.supper?.prepTime && (
+                    <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                      {todayMeals.supper.prepTime}m
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+            <span>Weekly plan active</span>
+            <Link href="/menu" className="text-amber-400 hover:underline">
+              Open menu →
             </Link>
           </div>
         </div>

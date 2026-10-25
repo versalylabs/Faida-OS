@@ -27,6 +27,7 @@ import {
   FileText,
   Briefcase,
   Building2,
+  UtensilsCrossed,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaidaLogo } from "@/components/brand/FaidaLogo";
@@ -92,6 +93,7 @@ const navCategories: NavCategory[] = [
     items: [
       { name: "Finance (KES)", href: "/finance", icon: Wallet },
       { name: "Smart Shopping", href: "/shopping", icon: ShoppingCart },
+      { name: "Weekly Menu", href: "/menu", icon: UtensilsCrossed, badge: "Meals" },
       { name: "Maintenance", href: "/maintenance", icon: Wrench },
     ],
   },

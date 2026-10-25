@@ -47,6 +47,7 @@ model User {
   businessClients       BusinessClient[]
   businessWeeklyMetrics BusinessWeeklyMetric[]
   businessDeliverables  BusinessDeliverable[]
+  mealPlanItems         MealPlanItem[]
 }
 
 model Session {
@@ -670,4 +671,27 @@ model BusinessDeliverable {
   business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   client   BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 9. Menu & Weekly Meal Planner (Breakfast, Lunch, Supper)
+// -------------------------------------------------------------
+
+model MealPlanItem {
+  id          String   @id @default(uuid())
+  userId      String?
+  dayOfWeek   String   // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+  mealType    String   // BREAKFAST, LUNCH, SUPPER
+  title       String   // Meal dish name
+  description String?  // Ingredients, recipe notes, or sides
+  calories    Int?     // Calories (kcal)
+  prepTime    Int?     // Prep time in minutes
+  tags        String?  // e.g. "High Protein, Healthy, Fast"
+  isCompleted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dayOfWeek, mealType])
 }
