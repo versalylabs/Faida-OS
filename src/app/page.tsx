@@ -23,6 +23,10 @@ import {
   Sunrise,
   Sun,
   Moon,
+  User,
+  Briefcase,
+  PiggyBank,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { formatKES } from "@/lib/utils";
@@ -154,10 +158,36 @@ export default function DashboardPage() {
     monthlyBudget: number;
     remainingBudget: number;
     budgetPercentUsed: number;
+    personalBudget: number;
+    personalExpense: number;
+    personalRemaining: number;
+    personalPercentUsed: number;
+    businessBudget: number;
+    businessExpense: number;
+    businessRemaining: number;
+    businessPercentUsed: number;
+    savingsTarget: number;
+    savingsBalance: number;
+    savingsPercent: number;
+    totalLiquidBalance: number;
+    netCashFlow: number;
   }>({
-    monthlyBudget: 310000,
-    remainingBudget: 223200,
+    monthlyBudget: 200000,
+    remainingBudget: 145000,
     budgetPercentUsed: 28,
+    personalBudget: 120000,
+    personalExpense: 35000,
+    personalRemaining: 85000,
+    personalPercentUsed: 29,
+    businessBudget: 80000,
+    businessExpense: 20000,
+    businessRemaining: 60000,
+    businessPercentUsed: 25,
+    savingsTarget: 100000,
+    savingsBalance: 220000,
+    savingsPercent: 100,
+    totalLiquidBalance: 310000,
+    netCashFlow: 45000,
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -222,9 +252,22 @@ export default function DashboardPage() {
       // 3. Finance
       if (financeData.success && financeData.metrics) {
         setFinanceMetrics({
-          monthlyBudget: financeData.metrics.monthlyBudget,
-          remainingBudget: financeData.metrics.remainingBudget,
-          budgetPercentUsed: financeData.metrics.budgetPercentUsed,
+          monthlyBudget: financeData.metrics.monthlyBudget ?? 0,
+          remainingBudget: financeData.metrics.remainingBudget ?? 0,
+          budgetPercentUsed: financeData.metrics.budgetPercentUsed ?? 0,
+          personalBudget: financeData.metrics.personalBudget ?? 0,
+          personalExpense: financeData.metrics.personalExpense ?? 0,
+          personalRemaining: financeData.metrics.personalRemaining ?? 0,
+          personalPercentUsed: financeData.metrics.personalPercentUsed ?? 0,
+          businessBudget: financeData.metrics.businessBudget ?? 0,
+          businessExpense: financeData.metrics.businessExpense ?? 0,
+          businessRemaining: financeData.metrics.businessRemaining ?? 0,
+          businessPercentUsed: financeData.metrics.businessPercentUsed ?? 0,
+          savingsTarget: financeData.metrics.savingsTarget ?? 0,
+          savingsBalance: financeData.metrics.savingsBalance ?? 0,
+          savingsPercent: financeData.metrics.savingsPercent ?? 0,
+          totalLiquidBalance: financeData.metrics.totalLiquidBalance ?? 0,
+          netCashFlow: financeData.metrics.netCashFlow ?? 0,
         });
       }
 
@@ -583,55 +626,137 @@ export default function DashboardPage() {
 
         {/* 3. Life Operations: Finance & Attention */}
         <div className="rounded-xl bg-slate-900/60 border border-slate-800 p-4 sm:p-5 space-y-4 flex flex-col justify-between">
-          <div className="space-y-4">
+          <div className="space-y-3.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Wallet className="h-4 w-4 text-emerald-400" />
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Finance (KES)
+                  Finance & Budgets (KES)
                 </h2>
               </div>
               <Link href="/finance" className="text-[11px] text-blue-400 hover:underline">
-                Manage
+                Manage →
               </Link>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-800">
-                <div className="text-[10px] text-slate-400 uppercase font-medium">
-                  Monthly Budget
+
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* 1. Personal Budget */}
+              <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800/90 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                    <User className="h-3 w-3 text-emerald-400" />
+                    Personal
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {financeMetrics.personalBudget > 0 ? `${100 - financeMetrics.personalPercentUsed}% left` : "N/A"}
+                  </span>
                 </div>
-                <div className="text-sm font-semibold text-slate-100 mt-1">
-                  {formatKES(financeMetrics.monthlyBudget)}
+                <div className="text-sm font-bold text-slate-100 font-mono tracking-tight">
+                  {formatKES(financeMetrics.personalBudget)}
                 </div>
-                <div
-                  className={`text-[10px] mt-0.5 ${
-                    financeMetrics.budgetPercentUsed > 90
-                      ? "text-rose-400"
-                      : "text-emerald-400"
-                  }`}
-                >
-                  {financeMetrics.monthlyBudget > 0
-                    ? `${Math.max(0, 100 - financeMetrics.budgetPercentUsed)}% remaining`
-                    : "No budget set"}
+                <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      financeMetrics.personalPercentUsed > 90
+                        ? "bg-rose-500"
+                        : financeMetrics.personalPercentUsed > 75
+                        ? "bg-amber-500"
+                        : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(5, 100 - financeMetrics.personalPercentUsed))}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-emerald-400 font-mono truncate">
+                  {formatKES(financeMetrics.personalRemaining)} rem.
                 </div>
               </div>
-              <div className="p-3 rounded-lg bg-slate-800/40 border border-slate-800">
-                <div className="text-[10px] text-slate-400 uppercase font-medium">
-                  Active Alerts
+
+              {/* 2. Business Budget */}
+              <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800/90 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                    <Briefcase className="h-3 w-3 text-blue-400" />
+                    Business
+                  </span>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    {financeMetrics.businessBudget > 0 ? `${100 - financeMetrics.businessPercentUsed}% left` : "N/A"}
+                  </span>
                 </div>
-                <div className="text-sm font-semibold text-amber-400 mt-1">
-                  {attention.urgentCount} Urgent
+                <div className="text-sm font-bold text-slate-100 font-mono tracking-tight">
+                  {formatKES(financeMetrics.businessBudget)}
                 </div>
-                <div className="text-[10px] text-slate-400 mt-0.5">
-                  {attention.dueTodayCount} due today
+                <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      financeMetrics.businessPercentUsed > 90
+                        ? "bg-rose-500"
+                        : financeMetrics.businessPercentUsed > 75
+                        ? "bg-amber-500"
+                        : "bg-blue-500"
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(5, 100 - financeMetrics.businessPercentUsed))}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-blue-400 font-mono truncate">
+                  {formatKES(financeMetrics.businessRemaining)} rem.
+                </div>
+              </div>
+
+              {/* 3. Savings & Reserves */}
+              <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800/90 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                    <PiggyBank className="h-3 w-3 text-purple-400" />
+                    Savings
+                  </span>
+                  <span className="text-[10px] font-mono text-purple-300">
+                    {financeMetrics.savingsPercent}% goal
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-purple-300 font-mono tracking-tight">
+                  {formatKES(financeMetrics.savingsBalance)}
+                </div>
+                <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
+                  <div
+                    className="bg-purple-500 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, Math.max(5, financeMetrics.savingsPercent))}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono truncate">
+                  Target: {formatKES(financeMetrics.savingsTarget)}
+                </div>
+              </div>
+
+              {/* 4. Net Liquid & Cash Flow */}
+              <div className="p-2.5 rounded-lg bg-slate-800/40 border border-slate-800/90 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3 text-cyan-400" />
+                    Net Liquid
+                  </span>
+                  <span
+                    className={`text-[10px] font-mono font-medium ${
+                      financeMetrics.netCashFlow >= 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
+                    {financeMetrics.netCashFlow >= 0 ? "+" : ""}
+                    {formatKES(financeMetrics.netCashFlow)}
+                  </span>
+                </div>
+                <div className="text-sm font-bold text-cyan-300 font-mono tracking-tight">
+                  {formatKES(financeMetrics.totalLiquidBalance)}
+                </div>
+                <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1">
+                  <span>Urgent alerts:</span>
+                  <span className="font-semibold text-amber-400">{attention.urgentCount}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="p-3 rounded-lg bg-slate-800/30 border border-slate-800/60 flex items-center justify-between text-xs">
-            <span className="text-slate-400">Dynamic Daily Planner:</span>
-            <Link href="/planner" className="text-blue-400 hover:underline font-medium">
+          <div className="p-2.5 rounded-lg bg-slate-800/30 border border-slate-800/60 flex items-center justify-between text-xs">
+            <span className="text-slate-400 text-[11px]">Dynamic Daily Planner:</span>
+            <Link href="/planner" className="text-blue-400 hover:underline font-medium text-[11px]">
               Open Planner →
             </Link>
           </div>

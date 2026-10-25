@@ -26,9 +26,34 @@ export async function GET(req: NextRequest) {
 
     let totalIncome = 0;
     let totalExpense = 0;
+    let personalExpense = 0;
+    let businessExpense = 0;
     const categoryBreakdown: Record<string, number> = {};
     const expenseCategoryBreakdown: Record<string, number> = {};
     const incomeCategoryBreakdown: Record<string, number> = {};
+
+    const isBusinessCategory = (cat: string) => {
+      const lower = cat.toLowerCase();
+      const keywords = [
+        "business",
+        "marketing",
+        "ads",
+        "tech",
+        "software",
+        "cloud",
+        "contractor",
+        "office",
+        "hosting",
+        "tools",
+        "versaly",
+        "straten",
+        "client",
+        "agency",
+        "development",
+        "freelance expense",
+      ];
+      return keywords.some((k) => lower.includes(k));
+    };
 
     transactions.forEach((tx) => {
       const cat = tx.category || "General";
@@ -38,26 +63,15 @@ export async function GET(req: NextRequest) {
       } else {
         const absAmt = Math.abs(tx.amount);
         totalExpense += absAmt;
+        if (isBusinessCategory(cat)) {
+          businessExpense += absAmt;
+        } else {
+          personalExpense += absAmt;
+        }
         categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + absAmt;
         expenseCategoryBreakdown[cat] = (expenseCategoryBreakdown[cat] || 0) + absAmt;
       }
     });
-
-    // Check user's budgets or fallback
-    const userBudgets = await prisma.budget.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
-    const monthlyBudget =
-      userBudgets.length > 0
-        ? userBudgets[0].monthlyLimit
-        : user.email === "khalwaleted@gmail.com"
-        ? 310000
-        : 0;
-
-    const remainingBudget = monthlyBudget - totalExpense;
-    const budgetPercentUsed =
-      monthlyBudget > 0 ? Math.min(100, Math.round((totalExpense / monthlyBudget) * 100)) : 0;
 
     // Accounts (with default fallback auto-seed)
     let accounts = await prisma.financeAccount.findMany({
@@ -81,6 +95,72 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "asc" },
       });
     }
+
+    // Check user's budgets or fallback
+    const userBudgets = await prisma.budget.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const overallBudgetRec = userBudgets.find((b) => b.category === "Overall");
+    const personalBudgetRec = userBudgets.find((b) => b.category === "Personal");
+    const businessBudgetRec = userBudgets.find((b) => b.category === "Business");
+    const savingsBudgetRec = userBudgets.find((b) => b.category === "Savings");
+
+    // Limits
+    const personalBudget = personalBudgetRec
+      ? personalBudgetRec.monthlyLimit
+      : user.email === "khalwaleted@gmail.com"
+      ? 120000
+      : overallBudgetRec
+      ? Math.round(overallBudgetRec.monthlyLimit * 0.6)
+      : 0;
+
+    const businessBudget = businessBudgetRec
+      ? businessBudgetRec.monthlyLimit
+      : user.email === "khalwaleted@gmail.com"
+      ? 80000
+      : overallBudgetRec
+      ? Math.round(overallBudgetRec.monthlyLimit * 0.4)
+      : 0;
+
+    const savingsTarget = savingsBudgetRec
+      ? savingsBudgetRec.monthlyLimit
+      : user.email === "khalwaleted@gmail.com"
+      ? 100000
+      : 50000;
+
+    const monthlyBudget = overallBudgetRec
+      ? overallBudgetRec.monthlyLimit
+      : personalBudget + businessBudget > 0
+      ? personalBudget + businessBudget
+      : user.email === "khalwaleted@gmail.com"
+      ? 200000
+      : 0;
+
+    // Remaining & percentages
+    const remainingBudget = monthlyBudget - totalExpense;
+    const budgetPercentUsed =
+      monthlyBudget > 0 ? Math.min(100, Math.round((totalExpense / monthlyBudget) * 100)) : 0;
+
+    const personalRemaining = personalBudget - personalExpense;
+    const personalPercentUsed =
+      personalBudget > 0 ? Math.min(100, Math.round((personalExpense / personalBudget) * 100)) : 0;
+
+    const businessRemaining = businessBudget - businessExpense;
+    const businessPercentUsed =
+      businessBudget > 0 ? Math.min(100, Math.round((businessExpense / businessBudget) * 100)) : 0;
+
+    // Savings & Liquidity
+    const savingsBalance = accounts
+      .filter((a) => a.type === "SAVINGS" || a.name.toLowerCase().includes("saving"))
+      .reduce((sum, a) => sum + a.balance, 0);
+
+    const savingsPercent =
+      savingsTarget > 0 ? Math.min(100, Math.round((savingsBalance / savingsTarget) * 100)) : 0;
+
+    const totalLiquidBalance = accounts.reduce((sum, a) => sum + a.balance, 0);
+    const netCashFlow = totalIncome - totalExpense;
 
     // Categories (with default fallback auto-seed)
     let categories = await prisma.financeCategory.findMany({
@@ -128,6 +208,19 @@ export async function GET(req: NextRequest) {
           monthlyBudget,
           remainingBudget,
           budgetPercentUsed,
+          personalBudget,
+          personalExpense,
+          personalRemaining,
+          personalPercentUsed,
+          businessBudget,
+          businessExpense,
+          businessRemaining,
+          businessPercentUsed,
+          savingsTarget,
+          savingsBalance,
+          savingsPercent,
+          totalLiquidBalance,
+          netCashFlow,
           totalIncome,
           totalExpense,
           categoryBreakdown,
@@ -195,7 +288,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH /api/finance - Update user monthly budget
+// PATCH /api/finance - Update user budgets (Personal, Business, Savings, Overall)
 export async function PATCH(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
@@ -204,49 +297,67 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { monthlyBudget } = body;
+    const { monthlyBudget, personalBudget, businessBudget, savingsTarget, category, amount } = body;
 
-    if (monthlyBudget === undefined || isNaN(parseFloat(monthlyBudget))) {
+    const upsertBudget = async (cat: string, limitVal: number) => {
+      const cleanLimit = Math.max(0, limitVal);
+      const existing = await prisma.budget.findFirst({
+        where: { userId: user.id, category: cat },
+      });
+      if (existing) {
+        return prisma.budget.update({
+          where: { id: existing.id },
+          data: { monthlyLimit: cleanLimit },
+        });
+      } else {
+        return prisma.budget.create({
+          data: {
+            userId: user.id,
+            category: cat,
+            monthlyLimit: cleanLimit,
+            monthYear: new Date().toISOString().slice(0, 7),
+          },
+        });
+      }
+    };
+
+    let updated = false;
+
+    if (personalBudget !== undefined && !isNaN(parseFloat(personalBudget))) {
+      await upsertBudget("Personal", parseFloat(personalBudget));
+      updated = true;
+    }
+
+    if (businessBudget !== undefined && !isNaN(parseFloat(businessBudget))) {
+      await upsertBudget("Business", parseFloat(businessBudget));
+      updated = true;
+    }
+
+    if (savingsTarget !== undefined && !isNaN(parseFloat(savingsTarget))) {
+      await upsertBudget("Savings", parseFloat(savingsTarget));
+      updated = true;
+    }
+
+    if (monthlyBudget !== undefined && !isNaN(parseFloat(monthlyBudget))) {
+      await upsertBudget("Overall", parseFloat(monthlyBudget));
+      updated = true;
+    }
+
+    if (category && amount !== undefined && !isNaN(parseFloat(amount))) {
+      await upsertBudget(category, parseFloat(amount));
+      updated = true;
+    }
+
+    if (!updated) {
       return NextResponse.json(
-        { success: false, error: "Valid monthlyBudget number is required" },
+        { success: false, error: "No valid budget value provided" },
         { status: 400 }
       );
     }
 
-    const limit = Math.max(0, parseFloat(monthlyBudget));
-
-    const userBudgets = await prisma.budget.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (userBudgets.length > 0) {
-      await prisma.budget.update({
-        where: { id: userBudgets[0].id },
-        data: { monthlyLimit: limit },
-      });
-      if (userBudgets.length > 1) {
-        await prisma.budget.deleteMany({
-          where: {
-            userId: user.id,
-            id: { not: userBudgets[0].id },
-          },
-        }).catch(() => {});
-      }
-    } else {
-      await prisma.budget.create({
-        data: {
-          userId: user.id,
-          category: "Overall",
-          monthlyLimit: limit,
-          monthYear: new Date().toISOString().slice(0, 7),
-        },
-      });
-    }
-
-    return NextResponse.json({ success: true, monthlyBudget: limit }, { headers: noCacheHeaders });
+    return NextResponse.json({ success: true }, { headers: noCacheHeaders });
   } catch (error: any) {
-    console.error("Error updating monthly budget:", error);
+    console.error("Error updating budget:", error);
     return NextResponse.json(
       { success: false, error: error.message || "Failed to update budget" },
       { status: 500, headers: noCacheHeaders }

@@ -22,6 +22,9 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownRight,
+  User,
+  Briefcase,
+  Target,
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 
@@ -55,6 +58,19 @@ interface FinanceMetrics {
   monthlyBudget: number;
   remainingBudget: number;
   budgetPercentUsed: number;
+  personalBudget: number;
+  personalExpense: number;
+  personalRemaining: number;
+  personalPercentUsed: number;
+  businessBudget: number;
+  businessExpense: number;
+  businessRemaining: number;
+  businessPercentUsed: number;
+  savingsTarget: number;
+  savingsBalance: number;
+  savingsPercent: number;
+  totalLiquidBalance: number;
+  netCashFlow: number;
   totalIncome: number;
   totalExpense: number;
   categoryBreakdown: Record<string, number>;
@@ -82,9 +98,12 @@ export default function FinancePage() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Edit Monthly Budget Modal
+  // Edit Budgets Modal (Personal, Business, Savings Target)
   const [showBudgetModal, setShowBudgetModal] = useState(false);
-  const [budgetInput, setBudgetInput] = useState("");
+  const [budgetTab, setBudgetTab] = useState<"ALL" | "PERSONAL" | "BUSINESS" | "SAVINGS">("ALL");
+  const [personalBudgetInput, setPersonalBudgetInput] = useState("");
+  const [businessBudgetInput, setBusinessBudgetInput] = useState("");
+  const [savingsTargetInput, setSavingsTargetInput] = useState("");
   const [isSavingBudget, setIsSavingBudget] = useState(false);
 
   // Account Modals
@@ -306,28 +325,39 @@ export default function FinancePage() {
     }
   };
 
+  const handleOpenBudgetModal = (tab: "ALL" | "PERSONAL" | "BUSINESS" | "SAVINGS" = "ALL") => {
+    if (metrics) {
+      setPersonalBudgetInput((metrics.personalBudget ?? 0).toString());
+      setBusinessBudgetInput((metrics.businessBudget ?? 0).toString());
+      setSavingsTargetInput((metrics.savingsTarget ?? 0).toString());
+    }
+    setBudgetTab(tab);
+    setShowBudgetModal(true);
+  };
+
   const handleSaveBudget = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!budgetInput || isNaN(parseFloat(budgetInput)) || isSavingBudget) return;
+    if (isSavingBudget) return;
 
-    const newLimit = parseFloat(budgetInput);
+    const pLimit = parseFloat(personalBudgetInput) || 0;
+    const bLimit = parseFloat(businessBudgetInput) || 0;
+    const sTarget = parseFloat(savingsTargetInput) || 0;
+    const totalMonthly = pLimit + bLimit;
+
     setIsSavingBudget(true);
     try {
       const res = await fetch("/api/finance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ monthlyBudget: newLimit }),
+        body: JSON.stringify({
+          personalBudget: pLimit,
+          businessBudget: bLimit,
+          savingsTarget: sTarget,
+          monthlyBudget: totalMonthly,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        if (metrics) {
-          setMetrics({
-            ...metrics,
-            monthlyBudget: newLimit,
-            remainingBudget: newLimit - metrics.totalExpense,
-            budgetPercentUsed: newLimit > 0 ? Math.min(100, Math.round((metrics.totalExpense / newLimit) * 100)) : 0,
-          });
-        }
         setShowBudgetModal(false);
         fetchFinance();
       }
@@ -542,57 +572,149 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* Top 3 Metric Cards */}
+      {/* Top Financial Pillars & Budget Metrics */}
       {metrics && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Monthly Budget Card with Edit Button */}
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2 relative group">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-slate-400 uppercase font-medium">Monthly Budget</span>
-              <button
-                onClick={() => {
-                  setBudgetInput(metrics.monthlyBudget.toString());
-                  setShowBudgetModal(true);
-                }}
-                title="Edit Monthly Budget"
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <Edit3 className="h-3 w-3" />
-                <span>Edit</span>
-              </button>
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. Personal Budget Card */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5 relative group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-emerald-400" />
+                  Personal Budget
+                </span>
+                <button
+                  onClick={() => handleOpenBudgetModal("PERSONAL")}
+                  title="Edit Personal Budget"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  <span>Edit</span>
+                </button>
+              </div>
+              <div className="text-2xl font-bold text-white font-mono tracking-tight">
+                {formatKES(metrics.personalBudget)}
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    metrics.personalPercentUsed > 90
+                      ? "bg-rose-500"
+                      : metrics.personalPercentUsed > 75
+                      ? "bg-amber-500"
+                      : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(4, 100 - metrics.personalPercentUsed))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
+                <span className="text-slate-400">{formatKES(metrics.personalExpense)} spent</span>
+                <span className="text-emerald-400 font-semibold">
+                  {formatKES(metrics.personalRemaining)} rem. ({Math.max(0, 100 - metrics.personalPercentUsed)}%)
+                </span>
+              </div>
             </div>
-            <div className="text-2xl font-bold text-white">
-              {formatKES(metrics.monthlyBudget)}
-            </div>
-            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(0, 100 - metrics.budgetPercentUsed)}%` }}
-              />
-            </div>
-            <span className="text-[10px] text-emerald-400 block pt-1 font-mono">
-              {formatKES(metrics.remainingBudget)} ({Math.max(0, 100 - metrics.budgetPercentUsed)}% remaining)
-            </span>
-          </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
-            <span className="text-[11px] text-slate-400 uppercase font-medium">Total Income This Month</span>
-            <div className="text-2xl font-bold text-emerald-400">
-              +{formatKES(metrics.totalIncome)}
+            {/* 2. Business Budget Card */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5 relative group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                  <Briefcase className="h-3.5 w-3.5 text-blue-400" />
+                  Business Budget
+                </span>
+                <button
+                  onClick={() => handleOpenBudgetModal("BUSINESS")}
+                  title="Edit Business Budget"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  <span>Edit</span>
+                </button>
+              </div>
+              <div className="text-2xl font-bold text-white font-mono tracking-tight">
+                {formatKES(metrics.businessBudget)}
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    metrics.businessPercentUsed > 90
+                      ? "bg-rose-500"
+                      : metrics.businessPercentUsed > 75
+                      ? "bg-amber-500"
+                      : "bg-blue-500"
+                  }`}
+                  style={{ width: `${Math.min(100, Math.max(4, 100 - metrics.businessPercentUsed))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
+                <span className="text-slate-400">{formatKES(metrics.businessExpense)} spent</span>
+                <span className="text-blue-400 font-semibold">
+                  {formatKES(metrics.businessRemaining)} rem. ({Math.max(0, 100 - metrics.businessPercentUsed)}%)
+                </span>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-400 block pt-1 font-mono">
-              Direct deposits & milestone payouts
-            </span>
-          </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
-            <span className="text-[11px] text-slate-400 uppercase font-medium">Total Expenses This Month</span>
-            <div className="text-2xl font-bold text-rose-400">
-              -{formatKES(metrics.totalExpense)}
+            {/* 3. Savings & Reserves Card */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5 relative group">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                  <PiggyBank className="h-3.5 w-3.5 text-purple-400" />
+                  Savings Reserves
+                </span>
+                <button
+                  onClick={() => handleOpenBudgetModal("SAVINGS")}
+                  title="Edit Savings Target"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-purple-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <Edit3 className="h-3 w-3" />
+                  <span>Target</span>
+                </button>
+              </div>
+              <div className="text-2xl font-bold text-purple-300 font-mono tracking-tight">
+                {formatKES(metrics.savingsBalance)}
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-purple-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(4, metrics.savingsPercent))}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
+                <span className="text-slate-400">Target: {formatKES(metrics.savingsTarget)}</span>
+                <span className="text-purple-300 font-semibold">{metrics.savingsPercent}% funded</span>
+              </div>
             </div>
-            <span className="text-[10px] text-slate-400 block pt-1 font-mono">
-              {transactions.filter((t) => t.amount < 0).length} expense transactions recorded
-            </span>
+
+            {/* 4. Net Liquid Assets & Cash Flow Card */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5 text-cyan-400" />
+                  Net Liquid Assets
+                </span>
+                <span
+                  className={`text-[11px] font-mono font-semibold ${
+                    metrics.netCashFlow >= 0 ? "text-emerald-400" : "text-rose-400"
+                  }`}
+                >
+                  {metrics.netCashFlow >= 0 ? "+" : ""}
+                  {formatKES(metrics.netCashFlow)} flow
+                </span>
+              </div>
+              <div className="text-2xl font-bold text-cyan-300 font-mono tracking-tight">
+                {formatKES(metrics.totalLiquidBalance)}
+              </div>
+              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-cyan-500 h-full rounded-full"
+                  style={{ width: "100%" }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
+                <span className="text-emerald-400">+{formatKES(metrics.totalIncome)} in</span>
+                <span className="text-rose-400">-{formatKES(metrics.totalExpense)} out</span>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1038,37 +1160,106 @@ export default function FinancePage() {
         )}
       </div>
 
-      {/* EDIT MONTHLY BUDGET MODAL */}
+      {/* EDIT BUDGETS MODAL */}
       {showBudgetModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-          <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Edit3 className="h-4 w-4 text-emerald-400" />
-                Edit Monthly Budget
-              </h2>
+              <div>
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <Edit3 className="h-4 w-4 text-emerald-400" />
+                  Configure Budgets & Financial Goals
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Set separate limits for personal living, business ops, and savings.
+                </p>
+              </div>
               <button onClick={() => setShowBudgetModal(false)} className="text-slate-400 hover:text-slate-200">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <form onSubmit={handleSaveBudget} className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">Budget Limit (KES)</label>
+
+            <form onSubmit={handleSaveBudget} className="space-y-3.5 text-xs">
+              {/* 1. Personal Budget */}
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-200 font-semibold flex items-center gap-1.5">
+                    <User className="h-3.5 w-3.5 text-emerald-400" />
+                    Personal Monthly Budget (KES)
+                  </label>
+                  <span className="text-[10px] text-slate-400">Living & Lifestyle</span>
+                </div>
                 <input
                   type="number"
                   min="0"
                   step="1000"
-                  value={budgetInput}
-                  onChange={(e) => setBudgetInput(e.target.value)}
-                  placeholder="e.g. 310000"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 font-mono text-sm"
-                  autoFocus
-                  required
+                  value={personalBudgetInput}
+                  onChange={(e) => setPersonalBudgetInput(e.target.value)}
+                  placeholder="e.g. 120000"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 font-mono text-sm"
+                  autoFocus={budgetTab === "PERSONAL" || budgetTab === "ALL"}
                 />
+                <p className="text-[10px] text-slate-400">
+                  Groceries, food & dining, rent, shopping, utilities, transport, and health.
+                </p>
               </div>
-              <p className="text-[11px] text-slate-400">
-                This budget will be used to calculate remaining funds and monthly spending progress bars.
-              </p>
+
+              {/* 2. Business Budget */}
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-200 font-semibold flex items-center gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5 text-blue-400" />
+                    Business Operations Budget (KES)
+                  </label>
+                  <span className="text-[10px] text-slate-400">Versaly & Straten</span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={businessBudgetInput}
+                  onChange={(e) => setBusinessBudgetInput(e.target.value)}
+                  placeholder="e.g. 80000"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono text-sm"
+                  autoFocus={budgetTab === "BUSINESS"}
+                />
+                <p className="text-[10px] text-slate-400">
+                  Software tools, hosting/cloud, client marketing/ads, subscriptions, contractors.
+                </p>
+              </div>
+
+              {/* 3. Savings Target */}
+              <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-200 font-semibold flex items-center gap-1.5">
+                    <PiggyBank className="h-3.5 w-3.5 text-purple-400" />
+                    Monthly Savings Target (KES)
+                  </label>
+                  <span className="text-[10px] text-purple-300">Reserve Allocation</span>
+                </div>
+                <input
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={savingsTargetInput}
+                  onChange={(e) => setSavingsTargetInput(e.target.value)}
+                  placeholder="e.g. 100000"
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-purple-500 font-mono text-sm"
+                  autoFocus={budgetTab === "SAVINGS"}
+                />
+                <p className="text-[10px] text-slate-400">
+                  Monthly accumulation target tracked against your Savings accounts.
+                </p>
+              </div>
+
+              {/* Total Summary */}
+              <div className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 flex items-center justify-between text-xs">
+                <span className="text-slate-400">Combined Monthly Spending Limit:</span>
+                <span className="font-mono font-bold text-white">
+                  {formatKES((parseFloat(personalBudgetInput) || 0) + (parseFloat(businessBudgetInput) || 0))}
+                </span>
+              </div>
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1080,9 +1271,9 @@ export default function FinancePage() {
                 <button
                   type="submit"
                   disabled={isSavingBudget}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-600/20"
                 >
-                  {isSavingBudget ? "Saving..." : "Update Budget"}
+                  {isSavingBudget ? "Saving..." : "Save Budgets"}
                 </button>
               </div>
             </form>
