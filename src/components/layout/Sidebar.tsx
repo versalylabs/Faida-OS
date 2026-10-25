@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaidaLogo } from "@/components/brand/FaidaLogo";
+import { PWAInstallButton } from "@/components/pwa/PWAInstallButton";
 
 interface NavItem {
   name: string;
@@ -277,7 +278,8 @@ export function Sidebar() {
       </nav>
 
       {/* Footer System Status */}
-      <div className="p-3 border-t border-slate-800/80 bg-slate-950/40 shrink-0">
+      <div className="p-3 border-t border-slate-800/80 bg-slate-950/40 shrink-0 space-y-2">
+        <PWAInstallButton />
         <div className="flex items-center justify-between p-2 rounded-lg bg-slate-900/70 border border-slate-800/80">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
