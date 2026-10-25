@@ -23,6 +23,7 @@ import {
   Check,
   ArrowRight,
 } from "lucide-react";
+import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
 
 interface MealItem {
   id: string;
@@ -169,7 +170,7 @@ export default function MenuPage() {
 
   const fetchMenu = async () => {
     try {
-      const res = await fetch("/api/menu", { cache: "no-store" });
+      const res = await offlineFetch("/api/menu", { cache: "no-store", cacheKey: "weekly_menu" });
       const data = await res.json();
       if (data.success) {
         setMeals(data.meals || []);
@@ -177,9 +178,16 @@ export default function MenuPage() {
         if (data.currentDay) {
           setCurrentDay(data.currentDay);
         }
+        cacheOfflineData("weekly_menu", data);
       }
     } catch (e) {
       console.error("Failed to load menu data:", e);
+      const cached = getCachedOfflineData<any>("weekly_menu");
+      if (cached) {
+        setMeals(cached.meals || []);
+        setGroupedByDay(cached.groupedByDay || {});
+        if (cached.currentDay) setCurrentDay(cached.currentDay);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -187,6 +195,12 @@ export default function MenuPage() {
 
   useEffect(() => {
     fetchMenu();
+
+    const handleSyncRefresh = () => {
+      fetchMenu();
+    };
+    window.addEventListener("faida-sync-completed", handleSyncRefresh);
+    return () => window.removeEventListener("faida-sync-completed", handleSyncRefresh);
   }, []);
 
   const openAddModal = (day: string, type: string) => {
@@ -269,27 +283,32 @@ export default function MenuPage() {
   };
 
   const handleToggleCompleted = async (meal: MealItem) => {
+    const nextCompleted = !meal.isCompleted;
+
+    // Instant optimistic update
+    setMeals((prev) => {
+      const updated = prev.map((m) =>
+        m.id === meal.id ? { ...m, isCompleted: nextCompleted } : m
+      );
+      const cached = getCachedOfflineData<any>("weekly_menu");
+      if (cached) {
+        cacheOfflineData("weekly_menu", { ...cached, meals: updated });
+      }
+      return updated;
+    });
+
     try {
-      const res = await fetch("/api/menu", {
+      await offlineFetch("/api/menu", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           id: meal.id,
-          isCompleted: !meal.isCompleted,
+          isCompleted: nextCompleted,
         }),
+        description: `Mark meal "${meal.title}" as ${nextCompleted ? "completed" : "pending"}`,
       });
-      const data = await res.json();
-      if (data.success) {
-        // Optimistic update
-        setMeals((prev) =>
-          prev.map((m) =>
-            m.id === meal.id ? { ...m, isCompleted: !m.isCompleted } : m
-          )
-        );
-        fetchMenu();
-      }
     } catch (e) {
-      console.error("Failed to toggle completion:", e);
+      console.error("Failed to toggle meal completion:", e);
     }
   };
 

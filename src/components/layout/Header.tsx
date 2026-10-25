@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles, Bell, Search, Command, Keyboard, Menu, LogOut, User as UserIcon } from "lucide-react";
 import { QuickCaptureModal } from "@/components/capture/QuickCaptureModal";
 import { FaidaLogo, FaidaLogoIcon } from "@/components/brand/FaidaLogo";
+import { OfflineStatusIndicator } from "@/components/offline/OfflineStatusIndicator";
 
 export function Header() {
   const router = useRouter();
@@ -114,6 +115,9 @@ export function Header() {
 
         {/* Right status & notifications & user */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 ml-2 shrink-0">
+          {/* Offline Mode & Sync Indicator */}
+          <OfflineStatusIndicator />
+
           {/* Unified Attention Indicators from DB */}
           <div className="flex items-center gap-1 sm:gap-2 text-xs font-mono">
             {attention.urgentCount > 0 && (

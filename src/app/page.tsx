@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatKES } from "@/lib/utils";
+import { offlineFetch } from "@/lib/offlineSync";
 
 interface TaskItem {
   id: string;
@@ -210,32 +211,32 @@ export default function DashboardPage() {
         notesData,
         menuData,
       ] = await Promise.all([
-        fetch("/api/tasks?status=TODO", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/tasks?status=TODO", { cache: "no-store", cacheKey: "dashboard_tasks" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/attention", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/attention", { cache: "no-store", cacheKey: "dashboard_attention" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/finance", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/finance", { cache: "no-store", cacheKey: "dashboard_finance" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/projects", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/projects", { cache: "no-store", cacheKey: "dashboard_projects" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/calendar", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/calendar", { cache: "no-store", cacheKey: "dashboard_calendar" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/shopping", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/shopping", { cache: "no-store", cacheKey: "dashboard_shopping" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/university/dashboard", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/university/dashboard", { cache: "no-store", cacheKey: "dashboard_university" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/notes", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/notes", { cache: "no-store", cacheKey: "dashboard_notes" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
-        fetch("/api/menu?day=TODAY", { cache: "no-store" })
-          .then((r) => r.json())
+        offlineFetch("/api/menu?day=TODAY", { cache: "no-store", cacheKey: "dashboard_menu" })
+          .then((r: any) => r.json())
           .catch(() => ({ success: false })),
       ]);
 
@@ -402,6 +403,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadData();
+
+    const handleSync = () => {
+      loadData();
+    };
+    window.addEventListener("faida-sync-completed", handleSync);
+    return () => window.removeEventListener("faida-sync-completed", handleSync);
   }, []);
 
   const topPriorityTask = tasks[0];

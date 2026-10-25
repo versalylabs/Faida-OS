@@ -19,6 +19,7 @@ import {
   Save,
 } from "lucide-react";
 import { formatKES } from "@/lib/utils";
+import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
 
 interface ShoppingItem {
   id: string;
@@ -87,13 +88,18 @@ export default function ShoppingPage() {
 
   const fetchItems = async () => {
     try {
-      const res = await fetch("/api/shopping", { cache: "no-store" });
+      const res = await offlineFetch("/api/shopping", { cache: "no-store", cacheKey: "shopping_items" });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.items) {
         setItems(data.items);
+        cacheOfflineData("shopping_items", { success: true, items: data.items });
       }
     } catch (e) {
       console.error("Failed to load shopping list:", e);
+      const cached = getCachedOfflineData<any>("shopping_items");
+      if (cached?.items) {
+        setItems(cached.items);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -101,48 +107,70 @@ export default function ShoppingPage() {
 
   const fetchCategories = async () => {
     try {
-      const res = await fetch("/api/shopping/categories", { cache: "no-store" });
+      const res = await offlineFetch("/api/shopping/categories", { cache: "no-store", cacheKey: "shopping_categories" });
       const data = await res.json();
       if (data.success && data.categories) {
         setCategories(data.categories);
+        cacheOfflineData("shopping_categories", { success: true, categories: data.categories });
         if (!category && data.categories.length > 0) {
           setCategory(data.categories[0].name);
         }
       }
     } catch (e) {
       console.error("Failed to load shopping categories:", e);
+      const cached = getCachedOfflineData<any>("shopping_categories");
+      if (cached?.categories) {
+        setCategories(cached.categories);
+      }
     }
   };
 
   useEffect(() => {
     fetchItems();
     fetchCategories();
+
+    const handleSyncRefresh = () => {
+      fetchItems();
+      fetchCategories();
+    };
+    window.addEventListener("faida-sync-completed", handleSyncRefresh);
+    return () => window.removeEventListener("faida-sync-completed", handleSyncRefresh);
   }, []);
 
   const handleToggleCheck = async (item: ShoppingItem) => {
     const nextChecked = !item.isChecked;
-    setItems(
-      items.map((i) => (i.id === item.id ? { ...i, isChecked: nextChecked } : i))
-    );
+    setItems((prev) => {
+      const updated = prev.map((i) => (i.id === item.id ? { ...i, isChecked: nextChecked } : i));
+      cacheOfflineData("shopping_items", { success: true, items: updated });
+      return updated;
+    });
 
     try {
-      await fetch("/api/shopping", {
+      await offlineFetch("/api/shopping", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: item.id, isChecked: nextChecked }),
+        description: `${nextChecked ? "Purchased" : "Unchecked"} "${item.name}"`,
       });
     } catch (e) {
-      fetchItems();
+      console.error("Failed to toggle item:", e);
     }
   };
 
   const handleDelete = async (id: string) => {
-    setItems(items.filter((i) => i.id !== id));
+    setItems((prev) => {
+      const updated = prev.filter((i) => i.id !== id);
+      cacheOfflineData("shopping_items", { success: true, items: updated });
+      return updated;
+    });
     try {
-      await fetch(`/api/shopping?id=${id}`, { method: "DELETE" });
+      await offlineFetch(`/api/shopping?id=${id}`, {
+        method: "DELETE",
+        description: `Delete shopping item ${id}`,
+      });
       fetchCategories();
     } catch (e) {
-      fetchItems();
+      console.error("Failed to delete item:", e);
     }
   };
 

@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
 import { FaidaAIChatDrawer } from "@/components/assistant/FaidaAIChatDrawer";
 import { GlobalShortcutsHandler } from "@/components/shortcuts/ShortcutsModal";
+import { ServiceWorkerRegister } from "@/components/offline/ServiceWorkerRegister";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -29,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <FaidaAIChatDrawer />
       <GlobalShortcutsHandler />
+      <ServiceWorkerRegister />
     </>
   );
 }

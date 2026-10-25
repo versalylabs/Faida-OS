@@ -20,6 +20,7 @@ import {
   Save,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
 
 interface SubtaskItem {
   id: string;
@@ -89,13 +90,18 @@ export default function TasksPage() {
 
   const fetchTasks = async () => {
     try {
-      const res = await fetch("/api/tasks", { cache: "no-store" });
+      const res = await offlineFetch("/api/tasks", { cache: "no-store", cacheKey: "tasks" });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.tasks) {
         setTasks(data.tasks);
+        cacheOfflineData("tasks", { success: true, tasks: data.tasks });
       }
     } catch (e) {
       console.error("Failed to load tasks:", e);
+      const cached = getCachedOfflineData<any>("tasks");
+      if (cached?.tasks) {
+        setTasks(cached.tasks);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -103,42 +109,53 @@ export default function TasksPage() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch("/api/projects", { cache: "no-store" });
+      const res = await offlineFetch("/api/projects", { cache: "no-store", cacheKey: "projects" });
       const data = await res.json();
       if (data.success && data.projects) {
         setProjects(data.projects);
+        cacheOfflineData("projects", { success: true, projects: data.projects });
       }
     } catch (e) {
       console.error("Failed to load projects:", e);
+      const cached = getCachedOfflineData<any>("projects");
+      if (cached?.projects) {
+        setProjects(cached.projects);
+      }
     }
   };
 
   useEffect(() => {
     fetchTasks();
     fetchProjects();
+
+    const handleSyncRefresh = () => {
+      fetchTasks();
+      fetchProjects();
+    };
+    window.addEventListener("faida-sync-completed", handleSyncRefresh);
+    return () => window.removeEventListener("faida-sync-completed", handleSyncRefresh);
   }, []);
 
   // Toggle task completed status
   const handleToggleDone = async (task: TaskItem) => {
     const nextStatus = task.status === "DONE" ? "TODO" : "DONE";
-    // Optimistic update
-    setTasks(
-      tasks.map((t) => (t.id === task.id ? { ...t, status: nextStatus } : t))
-    );
+    // 1. Instant optimistic update
+    setTasks((prev) => {
+      const updated = prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus as any } : t));
+      cacheOfflineData("tasks", { success: true, tasks: updated });
+      return updated;
+    });
 
+    // 2. Dispatch offline-aware fetch (synchronous or queued)
     try {
-      const res = await fetch(`/api/tasks/${task.id}`, {
+      await offlineFetch(`/api/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
+        description: `Mark task "${task.title}" as ${nextStatus}`,
       });
-      const data = await res.json();
-      if (!data.success) {
-        fetchTasks();
-      }
     } catch (e) {
       console.error("Failed to update status:", e);
-      fetchTasks();
     }
   };
 
@@ -147,8 +164,8 @@ export default function TasksPage() {
     const nextDone = !subtask.isDone;
 
     // Optimistic update
-    setTasks((prev) =>
-      prev.map((t) => {
+    setTasks((prev) => {
+      const updated = prev.map((t) => {
         if (t.id !== taskId) return t;
         return {
           ...t,
@@ -156,25 +173,23 @@ export default function TasksPage() {
             s.id === subtask.id ? { ...s, isDone: nextDone } : s
           ),
         };
-      })
-    );
+      });
+      cacheOfflineData("tasks", { success: true, tasks: updated });
+      return updated;
+    });
 
     try {
-      const res = await fetch(`/api/tasks/${taskId}/subtasks`, {
+      await offlineFetch(`/api/tasks/${taskId}/subtasks`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subtaskId: subtask.id,
           isDone: nextDone,
         }),
+        description: `Toggle subtask "${subtask.title}" to ${nextDone ? "done" : "todo"}`,
       });
-      const data = await res.json();
-      if (!data.success) {
-        fetchTasks();
-      }
     } catch (e) {
       console.error("Failed to toggle subtask:", e);
-      fetchTasks();
     }
   };
 
@@ -183,23 +198,31 @@ export default function TasksPage() {
     const titleVal = (inlineSubtaskInputs[taskId] || "").trim();
     if (!titleVal) return;
 
+    const tempSubtask: SubtaskItem = {
+      id: `temp_sub_${Date.now()}`,
+      taskId,
+      title: titleVal,
+      isDone: false,
+    };
+
+    setTasks((prev) => {
+      const updated = prev.map((t) =>
+        t.id === taskId
+          ? { ...t, subtasks: [...(t.subtasks || []), tempSubtask] }
+          : t
+      );
+      cacheOfflineData("tasks", { success: true, tasks: updated });
+      return updated;
+    });
+    setInlineSubtaskInputs((prev) => ({ ...prev, [taskId]: "" }));
+
     try {
-      const res = await fetch(`/api/tasks/${taskId}/subtasks`, {
+      await offlineFetch(`/api/tasks/${taskId}/subtasks`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: titleVal }),
+        description: `Add subtask "${titleVal}"`,
       });
-      const data = await res.json();
-      if (data.success && data.subtask) {
-        setTasks((prev) =>
-          prev.map((t) =>
-            t.id === taskId
-              ? { ...t, subtasks: [...(t.subtasks || []), data.subtask] }
-              : t
-          )
-        );
-        setInlineSubtaskInputs((prev) => ({ ...prev, [taskId]: "" }));
-      }
     } catch (e) {
       console.error("Failed to add subtask:", e);
     }
@@ -207,19 +230,21 @@ export default function TasksPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this task?")) return;
-    setTasks(tasks.filter((t) => t.id !== id));
+    setTasks((prev) => {
+      const updated = prev.filter((t) => t.id !== id);
+      cacheOfflineData("tasks", { success: true, tasks: updated });
+      return updated;
+    });
     if (editingTask?.id === id) {
       setEditingTask(null);
     }
     try {
-      const res = await fetch(`/api/tasks/${id}`, { method: "DELETE" });
-      const data = await res.json();
-      if (!data.success) {
-        fetchTasks();
-      }
+      await offlineFetch(`/api/tasks/${id}`, {
+        method: "DELETE",
+        description: `Delete task ${id}`,
+      });
     } catch (e) {
       console.error("Failed to delete task:", e);
-      fetchTasks();
     }
   };
 
@@ -272,21 +297,25 @@ export default function TasksPage() {
         })),
       };
 
-      const res = await fetch(`/api/tasks/${editingTask.id}`, {
+      const res = await offlineFetch(`/api/tasks/${editingTask.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
+        description: `Update task "${payload.title}"`,
       });
 
       const data = await res.json();
-      if (data.success && data.task) {
-        setTasks((prev) =>
-          prev.map((t) => (t.id === data.task.id ? data.task : t))
-        );
-        closeEditModal();
-      } else {
-        alert(data.error || "Failed to update task");
-      }
+      const updatedTask: TaskItem = data.task || {
+        ...editingTask,
+        ...payload,
+        subtasks: payload.subtasks.filter((s: any) => !s._deleted),
+      };
+      setTasks((prev) => {
+        const list = prev.map((t) => (t.id === editingTask.id ? updatedTask : t));
+        cacheOfflineData("tasks", { success: true, tasks: list });
+        return list;
+      });
+      closeEditModal();
     } catch (e) {
       console.error("Error saving task:", e);
       alert("Error saving task. Please try again.");
@@ -335,29 +364,55 @@ export default function TasksPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/tasks", {
+      const payload = {
+        title: title.trim(),
+        description: description.trim() || undefined,
+        priority,
+        estimatedMinutes: parseInt(estimatedMinutes, 10) || 30,
+        projectId: projectId || undefined,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
+        subtasks: quickSubtasks.map((t) => ({ title: t, isDone: false })),
+      };
+
+      const res = await offlineFetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim() || undefined,
-          priority,
-          estimatedMinutes: parseInt(estimatedMinutes, 10) || 30,
-          projectId: projectId || undefined,
-          dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
-          subtasks: quickSubtasks.map((t) => ({ title: t, isDone: false })),
-        }),
+        body: JSON.stringify(payload),
+        description: `Create task "${payload.title}"`,
       });
       const data = await res.json();
-      if (data.success) {
-        setTitle("");
-        setDescription("");
-        setProjectId("");
-        setDueDate("");
-        setQuickSubtasks([]);
-        setShowAddForm(false);
-        fetchTasks();
-      }
+
+      const createdItem: TaskItem = data.task || {
+        id: `offline_task_${Date.now()}`,
+        title: payload.title,
+        description: payload.description || null,
+        priority: payload.priority as any,
+        status: "TODO",
+        estimatedMinutes: payload.estimatedMinutes,
+        actualMinutes: 0,
+        dueDate: payload.dueDate || null,
+        createdAt: new Date().toISOString(),
+        projectId: payload.projectId || null,
+        project: projects.find((p) => p.id === payload.projectId) || null,
+        subtasks: (payload.subtasks || []).map((st, i) => ({
+          id: `temp_st_${Date.now()}_${i}`,
+          title: st.title,
+          isDone: false,
+        })),
+      };
+
+      setTasks((prev) => {
+        const list = [createdItem, ...prev];
+        cacheOfflineData("tasks", { success: true, tasks: list });
+        return list;
+      });
+
+      setTitle("");
+      setDescription("");
+      setProjectId("");
+      setDueDate("");
+      setQuickSubtasks([]);
+      setShowAddForm(false);
     } catch (e) {
       console.error("Failed to create task:", e);
     } finally {

@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
 
 interface ProjectOption {
   id: string;
@@ -89,13 +90,16 @@ export default function NotesPage() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch("/api/projects", { cache: "no-store" });
+      const res = await offlineFetch("/api/projects", { cache: "no-store", cacheKey: "notes_projects" });
       const data = await res.json();
       if (data.success) {
         setProjects(data.projects || []);
+        cacheOfflineData("notes_projects", data);
       }
     } catch (e) {
       console.error("Failed to load projects:", e);
+      const cached = getCachedOfflineData<any>("notes_projects");
+      if (cached?.projects) setProjects(cached.projects);
     }
   };
 
@@ -106,10 +110,11 @@ export default function NotesPage() {
       if (selectedProjectId !== "ALL") url.searchParams.set("projectId", selectedProjectId);
       if (selectedCategory !== "ALL") url.searchParams.set("category", selectedCategory);
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
+      const res = await offlineFetch(url.toString(), { cache: "no-store", cacheKey: "notes_list" });
       const data = await res.json();
       if (data.success) {
         setNotes(data.notes || []);
+        cacheOfflineData("notes_list", data);
         if (viewingNote) {
           const updated = (data.notes || []).find((n: NoteItem) => n.id === viewingNote.id);
           if (updated) setViewingNote(updated);
@@ -117,10 +122,21 @@ export default function NotesPage() {
       }
     } catch (e) {
       console.error("Failed to load notes:", e);
+      const cached = getCachedOfflineData<any>("notes_list");
+      if (cached?.notes) setNotes(cached.notes);
     } finally {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const handleSyncRefresh = () => {
+      fetchNotes();
+      fetchProjects();
+    };
+    window.addEventListener("faida-sync-completed", handleSyncRefresh);
+    return () => window.removeEventListener("faida-sync-completed", handleSyncRefresh);
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -156,28 +172,47 @@ export default function NotesPage() {
     if (!createTitle.trim() || isCreating) return;
 
     setIsCreating(true);
+    const payload = {
+      title: createTitle.trim(),
+      content: createContent,
+      projectId: createProjectId || null,
+      category: createCategory.trim() || "General",
+      tags: createTags.trim() || null,
+    };
+
     try {
-      const res = await fetch("/api/notes", {
+      const res = await offlineFetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: createTitle.trim(),
-          content: createContent,
-          projectId: createProjectId || null,
-          category: createCategory.trim() || "General",
-          tags: createTags.trim() || null,
-        }),
+        body: JSON.stringify(payload),
+        description: `Create note "${payload.title}"`,
       });
       const data = await res.json();
-      if (data.success) {
-        setCreateTitle("");
-        setCreateContent("");
-        setCreateProjectId("");
-        setCreateCategory("General");
-        setCreateTags("");
-        setShowCreateModal(false);
-        fetchNotes();
-      }
+
+      const newNoteItem: NoteItem = data.note || {
+        id: `offline_note_${Date.now()}`,
+        title: payload.title,
+        content: payload.content,
+        projectId: payload.projectId,
+        category: payload.category,
+        tags: payload.tags,
+        project: projects.find((p) => p.id === payload.projectId) || null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setNotes((prev) => {
+        const updated = [newNoteItem, ...prev];
+        cacheOfflineData("notes_list", { success: true, notes: updated });
+        return updated;
+      });
+
+      setCreateTitle("");
+      setCreateContent("");
+      setCreateProjectId("");
+      setCreateCategory("General");
+      setCreateTags("");
+      setShowCreateModal(false);
     } catch (e) {
       console.error("Failed to create note:", e);
     } finally {
@@ -200,24 +235,40 @@ export default function NotesPage() {
     if (!editingNote || !editTitle.trim() || isUpdating) return;
 
     setIsUpdating(true);
+    const payload = {
+      id: editingNote.id,
+      title: editTitle.trim(),
+      content: editContent,
+      projectId: editProjectId || null,
+      category: editCategory.trim() || "General",
+      tags: editTags.trim() || null,
+    };
+
     try {
-      const res = await fetch("/api/notes", {
+      const res = await offlineFetch("/api/notes", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: editingNote.id,
-          title: editTitle.trim(),
-          content: editContent,
-          projectId: editProjectId || null,
-          category: editCategory.trim() || "General",
-          tags: editTags.trim() || null,
-        }),
+        body: JSON.stringify(payload),
+        description: `Update note "${payload.title}"`,
       });
       const data = await res.json();
-      if (data.success) {
-        setEditingNote(null);
-        fetchNotes();
+
+      const updatedNote: NoteItem = data.note || {
+        ...editingNote,
+        ...payload,
+        project: projects.find((p) => p.id === payload.projectId) || null,
+        updatedAt: new Date().toISOString(),
+      };
+
+      setNotes((prev) => {
+        const updated = prev.map((n) => (n.id === editingNote.id ? updatedNote : n));
+        cacheOfflineData("notes_list", { success: true, notes: updated });
+        return updated;
+      });
+      if (viewingNote?.id === editingNote.id) {
+        setViewingNote(updatedNote);
       }
+      setEditingNote(null);
     } catch (e) {
       console.error("Failed to update note:", e);
     } finally {
@@ -229,18 +280,23 @@ export default function NotesPage() {
     if (!deleteConfirmNote || isDeleting) return;
 
     setIsDeleting(true);
+    const targetId = deleteConfirmNote.id;
+
+    setNotes((prev) => {
+      const updated = prev.filter((n) => n.id !== targetId);
+      cacheOfflineData("notes_list", { success: true, notes: updated });
+      return updated;
+    });
+    if (viewingNote?.id === targetId) {
+      setViewingNote(null);
+    }
+    setDeleteConfirmNote(null);
+
     try {
-      const res = await fetch(`/api/notes?id=${deleteConfirmNote.id}`, {
+      await offlineFetch(`/api/notes?id=${targetId}`, {
         method: "DELETE",
+        description: `Delete note "${deleteConfirmNote.title}"`,
       });
-      const data = await res.json();
-      if (data.success) {
-        if (viewingNote?.id === deleteConfirmNote.id) {
-          setViewingNote(null);
-        }
-        setDeleteConfirmNote(null);
-        fetchNotes();
-      }
     } catch (e) {
       console.error("Failed to delete note:", e);
     } finally {
