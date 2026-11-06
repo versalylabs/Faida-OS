@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Lock, Mail, User as UserIcon, ArrowRight, ShieldCheck, KeyRound, AlertCircle, Loader2 } from "lucide-react";
+import { Sparkles, Lock, Mail, User as UserIcon, ArrowRight, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
 import { FaidaLogoIcon } from "@/components/brand/FaidaLogo";
 
 export default function LoginPage() {
@@ -49,13 +49,6 @@ export default function LoginPage() {
     }
   };
 
-  const fillTedCredentials = () => {
-    setEmail("khalwaleted@gmail.com");
-    setPassword("teddyfaida");
-    setIsLogin(true);
-    setError(null);
-  };
-
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.15),rgba(2,6,23,1))]">
       {/* Background ambient lighting */}
@@ -77,25 +70,6 @@ export default function LoginPage() {
 
         {/* Auth Card */}
         <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 backdrop-blur-xl shadow-2xl p-6 sm:p-8">
-          {/* Quick Credential Chip for Default Account */}
-          <div className="mb-6 p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2 text-xs text-slate-300">
-              <ShieldCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-              <div>
-                <span className="font-semibold text-white">khalwaleted@gmail.com</span>
-                <span className="block text-[11px] text-slate-400 font-mono">Owner Account</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={fillTedCredentials}
-              className="text-xs px-2.5 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 transition-all font-medium flex items-center gap-1 cursor-pointer"
-            >
-              <KeyRound className="h-3 w-3" />
-              Autofill
-            </button>
-          </div>
-
           {/* Mode Tabs */}
           <div className="flex rounded-xl bg-slate-950/60 p-1 border border-slate-800 mb-6">
             <button
@@ -184,7 +158,7 @@ export default function LoginPage() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={isLogin ? "Enter your password" : "At least 6 characters"}
+                  placeholder={isLogin ? "Enter your password" : "At least 12 characters"}
                   className="w-full pl-9 pr-3 py-2.5 text-sm bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
                 />
               </div>

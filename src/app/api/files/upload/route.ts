@@ -1,33 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import fs from "fs";
-import path from "path";
+import {
+  cleanText,
+  FILE_CATEGORIES,
+  inferFileType,
+  MAX_UPLOAD_BYTES,
+  normalizeEnum,
+  resolveOwnedProjectId,
+} from "@/lib/files";
 
 export const dynamic = "force-dynamic";
-
-function inferFileType(filename: string, mimeType?: string): string {
-  const ext = path.extname(filename).toLowerCase();
-  if ([".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif", ".ico"].includes(ext) || mimeType?.startsWith("image/")) {
-    return "IMAGE";
-  }
-  if (ext === ".pdf" || mimeType === "application/pdf") {
-    return "PDF";
-  }
-  if ([".ts", ".tsx", ".js", ".jsx", ".py", ".json", ".sql", ".html", ".css", ".rs", ".go", ".sh", ".yaml", ".yml"].includes(ext)) {
-    return "CODE";
-  }
-  if ([".xlsx", ".xls", ".csv"].includes(ext)) {
-    return "SPREADSHEET";
-  }
-  if ([".zip", ".tar", ".gz", ".7z", ".rar"].includes(ext)) {
-    return "ARCHIVE";
-  }
-  if ([".mp4", ".mov", ".avi", ".mkv", ".mp3", ".wav", ".m4a"].includes(ext) || mimeType?.startsWith("video/") || mimeType?.startsWith("audio/")) {
-    return "MEDIA";
-  }
-  return "DOCUMENT";
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,66 +20,72 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    const declaredLength = Number(req.headers.get("content-length") || 0);
+    if (declaredLength > MAX_UPLOAD_BYTES + 64 * 1024) {
+      return NextResponse.json(
+        { success: false, error: `File is too large. The limit is ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.` },
+        { status: 413 }
+      );
+    }
 
-    if (!file) {
+    const formData = await req.formData();
+    const file = formData.get("file");
+
+    if (!(file instanceof File)) {
       return NextResponse.json({ success: false, error: "No file provided" }, { status: 400 });
     }
-
-    const category = (formData.get("category") as string) || "PROJECT_ASSET";
-    const projectId = (formData.get("projectId") as string) || null;
-    const tags = (formData.get("tags") as string) || null;
-    const description = (formData.get("description") as string) || null;
-    const customName = (formData.get("name") as string) || file.name;
-
-    // Convert file to buffer and save in public/uploads/
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    const uploadsDir = path.join(process.cwd(), "public", "uploads");
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    if (file.size === 0) {
+      return NextResponse.json({ success: false, error: "The file is empty" }, { status: 400 });
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { success: false, error: `File is too large. The limit is ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.` },
+        { status: 413 }
+      );
     }
 
-    const cleanBaseName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const uniqueFileName = `${Date.now()}_${cleanBaseName}`;
-    const destinationPath = path.join(uploadsDir, uniqueFileName);
+    const projectId = await resolveOwnedProjectId(user.id, formData.get("projectId"));
+    if (projectId === undefined) {
+      return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
+    }
 
-    fs.writeFileSync(destinationPath, buffer);
+    const originalName = file.name.slice(0, 200) || "upload";
+    const displayName = cleanText(formData.get("name"), 200) ?? originalName;
+    const category = normalizeEnum(formData.get("category"), FILE_CATEGORIES, "PROJECT_ASSET");
+    const tags = cleanText(formData.get("tags"), 300);
+    const description = cleanText(formData.get("description"), 1000);
+    const mimeType = (file.type || "application/octet-stream").slice(0, 100);
 
-    const publicFilePath = `/uploads/${uniqueFileName}`;
-    const fileType = inferFileType(file.name, file.type);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const id = randomUUID();
 
     const created = await prisma.fileAsset.create({
       data: {
+        id,
         userId: user.id,
-        name: customName.trim(),
-        filePath: publicFilePath,
-        fileType,
+        name: displayName,
+        // Served only through the authenticated content route.
+        filePath: `/api/files/${id}/content`,
+        fileType: inferFileType(originalName, file.type),
         fileSize: file.size,
-        category: category.toUpperCase(),
-        projectId: projectId || null,
-        tags: tags ? tags.trim() : null,
-        description: description ? description.trim() : null,
+        category,
+        projectId,
+        tags,
+        description,
+        blob: { create: { data: buffer, mimeType } },
       },
       include: {
-        project: {
-          select: { id: true, name: true, color: true },
-        },
+        project: { select: { id: true, name: true, color: true } },
       },
     });
 
     return NextResponse.json({
       success: true,
       file: created,
-      message: `File "${file.name}" uploaded successfully (${Math.round(file.size / 1024)} KB).`,
+      message: `File "${originalName}" uploaded successfully (${Math.round(file.size / 1024)} KB).`,
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Error uploading file asset:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to upload file" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Failed to upload file" }, { status: 500 });
   }
 }

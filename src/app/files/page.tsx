@@ -455,7 +455,7 @@ export default function FilesPage() {
                     </span>
 
                     {/* View / Open Button if uploaded asset */}
-                    {file.filePath.startsWith("/uploads/") && (
+                    {file.filePath.startsWith("/api/files/") && (
                       <>
                         <a
                           href={file.filePath}
@@ -469,7 +469,7 @@ export default function FilesPage() {
                         </a>
 
                         <a
-                          href={file.filePath}
+                          href={`${file.filePath}?download=1`}
                           download={file.name}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium transition-colors"
                           title="Download file to device"

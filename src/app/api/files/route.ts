@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { cleanText, FILE_CATEGORIES, FILE_TYPES, normalizeEnum, resolveOwnedProjectId } from "@/lib/files";
 
 export async function GET(req: NextRequest) {
   try {
@@ -78,17 +79,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const {
-      name,
-      filePath,
-      fileType = "DOCUMENT",
-      fileSize,
-      category = "PROJECT_ASSET",
-      projectId,
-      tags,
-      description,
-    } = body;
+    const body = await req.json().catch(() => null);
+    const name = cleanText(body?.name, 200);
+    const filePath = cleanText(body?.filePath, 500);
 
     if (!name || !filePath) {
       return NextResponse.json(
@@ -97,17 +90,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const projectId = await resolveOwnedProjectId(user.id, body?.projectId);
+    if (projectId === undefined) {
+      return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
+    }
+
+    const rawSize = body?.fileSize === null || body?.fileSize === undefined || body?.fileSize === "" ? null : Number(body.fileSize);
+    if (rawSize !== null && (!Number.isFinite(rawSize) || rawSize < 0 || rawSize > 2_000_000_000)) {
+      return NextResponse.json({ success: false, error: "Invalid file size" }, { status: 400 });
+    }
+
     const created = await prisma.fileAsset.create({
       data: {
         userId: user.id,
-        name: name.trim(),
-        filePath: filePath.trim(),
-        fileType: fileType.toUpperCase(),
-        fileSize: fileSize ? parseInt(fileSize.toString(), 10) : null,
-        category: category.toUpperCase(),
-        projectId: projectId || null,
-        tags: tags ? tags.trim() : null,
-        description: description ? description.trim() : null,
+        name,
+        filePath,
+        fileType: normalizeEnum(body?.fileType, FILE_TYPES, "DOCUMENT"),
+        fileSize: rawSize === null ? null : Math.round(rawSize),
+        category: normalizeEnum(body?.category, FILE_CATEGORIES, "PROJECT_ASSET"),
+        projectId,
+        tags: cleanText(body?.tags, 300),
+        description: cleanText(body?.description, 1000),
       },
       include: {
         project: {

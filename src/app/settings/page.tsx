@@ -1,16 +1,51 @@
 "use client";
 
-import { Settings, Shield, Cpu, Database, Save } from "lucide-react";
+import { Settings, Shield, Cpu, Database, Save, KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 export default function SettingsPage() {
   const [geminiKey, setGeminiKey] = useState("");
   const [isSaved, setIsSaved] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordMessage, setPasswordMessage] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaved(true);
     setTimeout(() => setIsSaved(false), 2000);
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordMessage("");
+    setPasswordError("");
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords do not match.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    try {
+      const response = await fetch("/api/auth/password", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Unable to change password.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage(result.message);
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Unable to change password.");
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   return (
@@ -25,6 +60,36 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-4">
+        <section className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4" aria-labelledby="password-heading">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-emerald-400" />
+            <h2 id="password-heading" className="text-sm font-semibold text-slate-100">Change Password</h2>
+          </div>
+          <p className="text-xs text-slate-400">Choose a unique password with at least 12 characters. Changing it signs out your other sessions.</p>
+          <form onSubmit={handlePasswordChange} className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="text-xs text-slate-300 font-medium">
+                Current password
+                <input required type="password" autoComplete="current-password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+              </label>
+              <label className="text-xs text-slate-300 font-medium">
+                New password
+                <input required minLength={12} type="password" autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+              </label>
+              <label className="text-xs text-slate-300 font-medium">
+                Confirm new password
+                <input required minLength={12} type="password" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="mt-1 w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" />
+              </label>
+            </div>
+            {passwordError && <p role="alert" className="text-xs text-rose-400">{passwordError}</p>}
+            {passwordMessage && <p role="status" className="text-xs text-emerald-400">{passwordMessage}</p>}
+            <button type="submit" disabled={passwordLoading} className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer">
+              {passwordLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Shield className="h-3.5 w-3.5" />}
+              <span>{passwordLoading ? "Changing…" : "Update Password"}</span>
+            </button>
+          </form>
+        </section>
+
         {/* AI Provider Config */}
         <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
           <div className="flex items-center gap-2">

@@ -61,6 +61,15 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+model AuthRateLimit {
+  key             String   @id
+  count           Int      @default(0)
+  windowStartedAt DateTime @default(now())
+  blockedUntil    DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 // -------------------------------------------------------------
 // 1. Core Connected Graph Layer
 // -------------------------------------------------------------
@@ -576,6 +585,17 @@ model FileAsset {
 
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  blob        FileBlob?
+}
+
+// Private file contents, kept apart from FileAsset so list queries never load bytes.
+model FileBlob {
+  fileId    String    @id
+  data      Bytes
+  mimeType  String
+  createdAt DateTime  @default(now())
+
+  file      FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
 }
 
 // -------------------------------------------------------------

@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+const SESSION_COOKIE = "faida_session";
+// Session tokens are 32 random bytes encoded as base64url (43 chars). This is only a
+// cheap shape check; the real session lookup happens in route handlers (the edge
+// runtime cannot reach the database).
+const TOKEN_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -8,7 +14,6 @@ export function middleware(request: NextRequest) {
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
-    pathname.startsWith("/uploads") ||
     pathname === "/favicon.ico" ||
     pathname === "/icon.svg" ||
     pathname === "/sw.js" ||
@@ -18,19 +23,23 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const sessionToken = request.cookies.get("faida_session")?.value;
+  const rawToken = request.cookies.get(SESSION_COOKIE)?.value;
+  const sessionToken = rawToken && TOKEN_SHAPE.test(rawToken) ? rawToken : undefined;
   const isLoginPage = pathname === "/login";
+  const isApi = pathname.startsWith("/api/");
 
-  // If no session token and trying to access protected route, redirect to /login
   if (!sessionToken && !isLoginPage) {
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
+    if (isApi) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    if (rawToken) response.cookies.delete(SESSION_COOKIE); // malformed cookie
+    return response;
   }
 
   // If already authenticated and navigating to /login, redirect to /
   if (sessionToken && isLoginPage) {
-    const dashboardUrl = new URL("/", request.url);
-    return NextResponse.redirect(dashboardUrl);
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();

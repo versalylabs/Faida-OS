@@ -35,6 +35,14 @@ export function Header() {
   const fetchCurrentUser = async () => {
     try {
       const res = await fetch("/api/auth/me");
+      if (res.status === 401) {
+        // Cookie is present but the session is expired/revoked: clear it so the
+        // middleware stops bouncing between /login and the dashboard.
+        await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+        router.replace("/login");
+        router.refresh();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);

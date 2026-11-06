@@ -47,9 +47,8 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 ## 🔐 Multi-User Authentication & Privacy
 
 - **Strict Multi-Tenant Isolation**: Every user account has its own isolated data sandbox. No user can view or modify another user's tasks, notes, or finances.
-- **Default Owner Account**: Pre-configured for `khalwaleted@gmail.com` with password `teddyfaida` and convenient one-click login autofill.
 - **Clean Slate for New Users**: Any newly registered user begins with an entirely empty, clean state (0 tasks, 0 projects, 0 transactions).
-- **Security**: Salted password hashing via `bcryptjs`, cryptographic session tokens, and route protection via Next.js Middleware.
+- **Security**: Passwords are hashed with `bcryptjs`; opaque database-backed sessions are revocable on logout; login and registration attempts are throttled.
 
 ---
 
@@ -88,7 +87,10 @@ Visit `http://localhost:3000` in your browser.
 1. Push your code to GitHub.
 2. Import the repository into **[Vercel](https://vercel.com)**.
 3. Configure the `DATABASE_URL` environment variable (e.g. Supabase, Neon, or Turso connection string).
-4. Deploy! Build command `prisma generate && next build` runs automatically.
+4. Apply the Prisma schema to the configured database with `npx prisma db push` before deploying schema changes.
+5. Deploy! Build command `prisma generate && next build` runs automatically.
+
+If an existing account used the previously published default password, sign in after deployment and change it immediately in **Settings → Change Password**. Changing the password revokes that account's other sessions.
 
 ---
 

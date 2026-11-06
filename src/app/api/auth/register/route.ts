@@ -1,27 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { hashPassword, createSession, SESSION_COOKIE_NAME, SESSION_MAX_AGE } from "@/lib/auth";
+import {
+  createSession,
+  getClientAddress,
+  hashPassword,
+  isRegistrationRateLimited,
+  recordRegistrationAttempt,
+  SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE,
+} from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { email, password, name } = body;
+    const { email, password, name } = body ?? {};
 
-    if (!email || !password) {
+    if (typeof email !== "string" || typeof password !== "string") {
       return NextResponse.json(
         { error: "Email and password are required." },
         { status: 400 }
       );
     }
 
-    if (password.length < 6) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail) ||
+      normalizedEmail.length > 254
+    ) {
+      return NextResponse.json({ error: "Enter a valid email address." }, { status: 400 });
+    }
+
+    if (password.length < 12 || Buffer.byteLength(password, "utf8") > 72) {
       return NextResponse.json(
-        { error: "Password must be at least 6 characters." },
+        { error: "Password must be at least 12 characters and no more than 72 bytes." },
         { status: 400 }
       );
     }
 
-    const normalizedEmail = String(email).trim().toLowerCase();
+    if (name !== undefined && (typeof name !== "string" || name.trim().length > 80)) {
+      return NextResponse.json({ error: "Name must be 80 characters or fewer." }, { status: 400 });
+    }
+
+    const clientAddress = getClientAddress(req);
+    if (await isRegistrationRateLimited(clientAddress)) {
+      return NextResponse.json(
+        { error: "Too many registration attempts. Try again in 15 minutes." },
+        { status: 429, headers: { "Retry-After": "900" } }
+      );
+    }
+    await recordRegistrationAttempt(clientAddress);
+
     const existing = await prisma.user.findUnique({
       where: { email: normalizedEmail },
     });
