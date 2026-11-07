@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface MaintenanceItem {
   id: string;
   title: string;
@@ -80,7 +81,7 @@ export default function MaintenancePage() {
 
   const fetchItems = async () => {
     try {
-      const res = await fetch("/api/maintenance", { cache: "no-store" });
+      const res = await offlineFetch("/api/maintenance", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setItems(data.items);
@@ -104,7 +105,7 @@ export default function MaintenancePage() {
   // 1. Complete action
   const handleComplete = async (item: MaintenanceItem) => {
     try {
-      const res = await fetch("/api/maintenance", {
+      const res = await offlineFetch("/api/maintenance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: item.id, action: "COMPLETE" }),
@@ -126,7 +127,7 @@ export default function MaintenancePage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/maintenance", {
+      const res = await offlineFetch("/api/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,7 +176,7 @@ export default function MaintenancePage() {
 
     setIsUpdating(true);
     try {
-      const res = await fetch("/api/maintenance", {
+      const res = await offlineFetch("/api/maintenance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -207,7 +208,7 @@ export default function MaintenancePage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/maintenance?id=${deleteConfirmItem.id}`, {
+      const res = await offlineFetch(`/api/maintenance?id=${deleteConfirmItem.id}`, {
         method: "DELETE",
       });
       const data = await res.json();

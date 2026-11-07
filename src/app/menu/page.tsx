@@ -298,7 +298,7 @@ export default function MenuPage() {
         tags: modalTags.trim() || null,
       };
 
-      const res = await fetch("/api/menu", {
+      const res = await offlineFetch("/api/menu", {
         method: editingMealId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -321,7 +321,7 @@ export default function MenuPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/menu?id=${deleteConfirmMeal.id}`, {
+      const res = await offlineFetch(`/api/menu?id=${deleteConfirmMeal.id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -369,7 +369,7 @@ export default function MenuPage() {
   const handleResetToDefault = async () => {
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/menu", {
+      const res = await offlineFetch("/api/menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "RESET" }),

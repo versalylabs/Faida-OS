@@ -28,6 +28,8 @@ import {
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
+import { lmsLinkFor } from "@/lib/lms";
+import { isOnline as isOnlineNow, offlineFetch } from "@/lib/offlineSync";
 import { formatDate } from "@/lib/utils";
 
 interface Course {
@@ -203,9 +205,9 @@ export default function UniversityPage() {
     try {
       setIsLoading(true);
       const [dashRes, assignRes, classRes] = await Promise.all([
-        fetch("/api/university/dashboard", { cache: "no-store" }),
-        fetch("/api/university/assignments", { cache: "no-store" }),
-        fetch("/api/university/classes", { cache: "no-store" }),
+        offlineFetch("/api/university/dashboard", { cache: "no-store" }),
+        offlineFetch("/api/university/assignments", { cache: "no-store" }),
+        offlineFetch("/api/university/classes", { cache: "no-store" }),
       ]);
 
       const dashData = await dashRes.json();
@@ -295,13 +297,19 @@ export default function UniversityPage() {
   // Complete a task / assignment
   const handleToggleTask = async (taskId: string, currentStatus: string) => {
     const newStatus = currentStatus === "DONE" ? "TODO" : "DONE";
+    // Show the change straight away; offline it is also saved and sent when the connection returns.
+    const apply = (list: AssignmentItem[]) =>
+      list.map((a) => (a.id === taskId ? { ...a, status: newStatus as AssignmentItem["status"] } : a));
+    setAllAssignments(apply);
+    setDueSoonAssignments(apply);
     try {
-      await fetch(`/api/tasks/${taskId}`, {
+      await offlineFetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
-      fetchData();
+      // Offline the refresh would only bring back the older saved copy, so skip it until synced.
+      if (isOnlineNow()) fetchData();
     } catch (e) {
       console.error("Failed to toggle task status:", e);
     }
@@ -337,7 +345,7 @@ export default function UniversityPage() {
       ];
 
       for (const s of studySessions) {
-        await fetch("/api/tasks", {
+        await offlineFetch("/api/tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -365,7 +373,7 @@ export default function UniversityPage() {
       // Mark or schedule tasks in the batch
       for (const item of lowEnergyBatch) {
         if (item.type === "TASK") {
-          await fetch(`/api/tasks/${item.id}`, {
+          await offlineFetch(`/api/tasks/${item.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ status: "DONE" }),
@@ -385,7 +393,7 @@ export default function UniversityPage() {
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/university/courses", {
+      const res = await offlineFetch("/api/university/courses", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newCourse),
@@ -404,7 +412,7 @@ export default function UniversityPage() {
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/university/assignments", {
+      const res = await offlineFetch("/api/university/assignments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -426,7 +434,7 @@ export default function UniversityPage() {
   const handleCreateAssessment = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/university/assessments", {
+      const res = await offlineFetch("/api/university/assessments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -449,7 +457,7 @@ export default function UniversityPage() {
   const handleCreateClass = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch("/api/university/classes", {
+      const res = await offlineFetch("/api/university/classes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -924,13 +932,14 @@ export default function UniversityPage() {
                                 Break Down
                               </button>
                             )}
-                            {a.submissionUrl && (
+                            {lmsLinkFor(a.submissionUrl) && (
                               <a
-                                href={a.submissionUrl}
+                                href={lmsLinkFor(a.submissionUrl)!.href}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
-                                title="Open Submission Link"
+                                title={lmsLinkFor(a.submissionUrl)!.label}
+                                aria-label={lmsLinkFor(a.submissionUrl)!.label}
                               >
                                 <ExternalLink className="h-3.5 w-3.5" />
                               </a>
@@ -1168,11 +1177,13 @@ export default function UniversityPage() {
                         <Sparkles className="h-3.5 w-3.5" />
                       </button>
                     )}
-                    {a.submissionUrl && (
+                    {lmsLinkFor(a.submissionUrl) && (
                       <a
-                        href={a.submissionUrl}
+                        href={lmsLinkFor(a.submissionUrl)!.href}
                         target="_blank"
                         rel="noreferrer"
+                        title={lmsLinkFor(a.submissionUrl)!.label}
+                        aria-label={lmsLinkFor(a.submissionUrl)!.label}
                         className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />

@@ -168,15 +168,24 @@ export async function POST(req: NextRequest) {
         // Simple iCal VEVENT parser
         const events = icsText.split("BEGIN:VEVENT").slice(0, 2001); // cap work per sync
         for (let i = 1; i < events.length; i++) {
-          const evChunk = events[i].split("END:VEVENT")[0];
+          // iCal folds long lines (CRLF + space); join them back before reading fields.
+          const evChunk = events[i].split("END:VEVENT")[0].replace(/\r?\n[ \t]/g, "");
           const summaryMatch = evChunk.match(/SUMMARY:(.+)/);
           const dtStartMatch = evChunk.match(/DTSTART(?:;[^:]+)?:(\d{8}T\d{6}Z?)/);
           const uidMatch = evChunk.match(/UID:(.+)/);
 
           if (!summaryMatch || !dtStartMatch) continue;
 
-          const title = summaryMatch[1].trim();
+          const title = summaryMatch[1].trim().replace(/\\([,;])/g, "$1");
           const uid = uidMatch ? uidMatch[1].trim() : `ical-${i}`;
+
+          // Prefer a real activity address when the feed carries one (URL: line, or a Moodle
+          // activity link inside the description); otherwise remember the event id so the
+          // same event is never imported twice. The id is not a link and is marked as such.
+          const explicitUrl = evChunk.match(/^URL[^:\r\n]*:(https?:\/\/\S+)/m)?.[1];
+          const activityUrl = evChunk.match(/https?:\/\/[^\s"'<>\\]+\/mod\/\w+\/view\.php\?id=\d+/)?.[0];
+          const realUrl = explicitUrl || activityUrl || null;
+          const sourceRef = realUrl || `ical:${uid}`;
 
           // Parse YYYYMMDDTHHMMSS
           const rawDate = dtStartMatch[1].replace("Z", "");
@@ -192,7 +201,8 @@ export async function POST(req: NextRequest) {
             where: {
               userId: user.id,
               isAcademic: true,
-              OR: [{ title }, { submissionUrl: uid }],
+              // `uid` alone is how earlier syncs stored it, so it still counts as a match.
+              OR: [{ title }, { submissionUrl: uid }, { submissionUrl: `ical:${uid}` }, ...(realUrl ? [{ submissionUrl: realUrl }] : [])],
             },
           });
 
@@ -207,12 +217,16 @@ export async function POST(req: NextRequest) {
                 estimatedMinutes: 180,
                 priority: "HIGH",
                 status: "TODO",
-                submissionUrl: uid,
+                submissionUrl: sourceRef,
                 category: "Moodle LMS",
               },
             });
             importedCount++;
           } else {
+            // Repair earlier imports whose link was just an event id.
+            if (realUrl && existing.submissionUrl !== realUrl) {
+              await prisma.task.update({ where: { id: existing.id }, data: { submissionUrl: realUrl } });
+            }
             updatedCount++;
           }
         }

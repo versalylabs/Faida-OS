@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface DeliverableItem {
   id: string;
   businessId: string;
@@ -171,7 +172,7 @@ export default function BusinessPage() {
 
   const fetchBusinessData = async () => {
     try {
-      const res = await fetch("/api/business", { cache: "no-store" });
+      const res = await offlineFetch("/api/business", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setBusinesses(data.businesses || []);
@@ -233,7 +234,7 @@ export default function BusinessPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/business/metrics", {
+      const res = await offlineFetch("/api/business/metrics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -287,7 +288,7 @@ export default function BusinessPage() {
       };
       if (editingClient) payload.id = editingClient.id;
 
-      const res = await fetch("/api/business/clients", {
+      const res = await offlineFetch("/api/business/clients", {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -310,7 +311,7 @@ export default function BusinessPage() {
     if (!deleteClientConfirm || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/business/clients?id=${deleteClientConfirm.id}`, {
+      const res = await offlineFetch(`/api/business/clients?id=${deleteClientConfirm.id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -350,7 +351,7 @@ export default function BusinessPage() {
     setIsSubmitting(true);
     try {
       const editing = editingDeliverable;
-      const res = await fetch("/api/business/deliverables", {
+      const res = await offlineFetch("/api/business/deliverables", {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -395,7 +396,7 @@ export default function BusinessPage() {
     if (!deleteDeliverableConfirm || isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const res = await fetch(`/api/business/deliverables?id=${deleteDeliverableConfirm.id}`, { method: "DELETE" });
+      const res = await offlineFetch(`/api/business/deliverables?id=${deleteDeliverableConfirm.id}`, { method: "DELETE" });
       const data = await res.json();
       if (data.success) {
         setDeleteDeliverableConfirm(null);
@@ -413,7 +414,7 @@ export default function BusinessPage() {
   const handleToggleDeliverableStatus = async (deliverable: DeliverableItem) => {
     const nextStatus = deliverable.status === "COMPLETED" ? "PENDING" : "COMPLETED";
     try {
-      const res = await fetch("/api/business/deliverables", {
+      const res = await offlineFetch("/api/business/deliverables", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: deliverable.id, status: nextStatus }),

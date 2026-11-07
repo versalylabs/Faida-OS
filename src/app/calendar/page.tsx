@@ -23,6 +23,7 @@ import {
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface ConnectedTask {
   id: string;
   title: string;
@@ -108,7 +109,7 @@ export default function CalendarPage() {
   const fetchCalendarData = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/calendar?month=${monthYearString}`, { cache: "no-store" });
+      const res = await offlineFetch(`/api/calendar?month=${monthYearString}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setEvents(data.events || []);
@@ -174,7 +175,7 @@ export default function CalendarPage() {
         }
       }
 
-      const res = await fetch("/api/calendar", {
+      const res = await offlineFetch("/api/calendar", {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -230,7 +231,7 @@ export default function CalendarPage() {
     );
 
     try {
-      await fetch("/api/calendar", {
+      await offlineFetch("/api/calendar", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -251,7 +252,7 @@ export default function CalendarPage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/calendar?id=${deleteConfirm.id}&itemType=${deleteConfirm.itemType}`, {
+      const res = await offlineFetch(`/api/calendar?id=${deleteConfirm.id}&itemType=${deleteConfirm.itemType}`, {
         method: "DELETE",
       });
       const data = await res.json();

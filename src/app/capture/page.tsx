@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface EntityItem {
   id: string;
   type: string;
@@ -39,7 +40,7 @@ export default function CapturePage() {
 
   const fetchEntities = async () => {
     try {
-      const res = await fetch("/api/entities/recent?limit=25");
+      const res = await offlineFetch("/api/entities/recent?limit=25");
       const data = await res.json();
       if (data.success) {
         setEntities(data.entities);
@@ -63,7 +64,7 @@ export default function CapturePage() {
     setFeedback(null);
 
     try {
-      const res = await fetch("/api/capture", {
+      const res = await offlineFetch("/api/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: input.trim() }),
@@ -86,7 +87,7 @@ export default function CapturePage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/entities/recent?id=${id}`, { method: "DELETE" });
+      const res = await offlineFetch(`/api/entities/recent?id=${id}`, { method: "DELETE" });
       if (res.ok) {
         setEntities(entities.filter((e) => e.id !== id));
       }

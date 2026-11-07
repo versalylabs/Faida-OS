@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface MilestoneItem {
   id: string;
   title: string;
@@ -90,7 +91,7 @@ export default function ProjectsPage() {
 
   const fetchProjects = async () => {
     try {
-      const res = await fetch("/api/projects", { cache: "no-store" });
+      const res = await offlineFetch("/api/projects", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setProjects(data.projects);
@@ -117,7 +118,7 @@ export default function ProjectsPage() {
       .filter((m) => m.length > 0);
 
     try {
-      const res = await fetch("/api/projects", {
+      const res = await offlineFetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -165,7 +166,7 @@ export default function ProjectsPage() {
 
     setIsUpdating(true);
     try {
-      const res = await fetch(`/api/projects/${editingProject.id}`, {
+      const res = await offlineFetch(`/api/projects/${editingProject.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -193,7 +194,7 @@ export default function ProjectsPage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/projects/${deleteConfirmProject.id}`, {
+      const res = await offlineFetch(`/api/projects/${deleteConfirmProject.id}`, {
         method: "DELETE",
       });
       const data = await res.json();

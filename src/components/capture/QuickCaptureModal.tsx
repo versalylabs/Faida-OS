@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Sparkles, ArrowRight, X, Check, Loader2, Command } from "lucide-react";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface QuickCaptureModalProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -57,7 +58,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
     setFeedback(null);
 
     try {
-      const res = await fetch("/api/capture", {
+      const res = await offlineFetch("/api/capture", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input: text.trim() }),

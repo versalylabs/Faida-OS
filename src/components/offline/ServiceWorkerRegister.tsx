@@ -1,56 +1,72 @@
 "use client";
 
 import { useEffect } from "react";
-import { syncPendingMutations, isOnline } from "@/lib/offlineSync";
+import { syncPendingMutations, isOnline, getActiveOfflineUser, warmOfflineCache } from "@/lib/offlineSync";
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
-    // 1. Register Service Worker
-    if (typeof window !== "undefined" && "serviceWorker" in navigator && process.env.NODE_ENV !== "production") {
-      // In development the worker's cache-first handling of /_next/static serves stale chunks, so keep it off.
+    const supported = typeof window !== "undefined" && "serviceWorker" in navigator;
+    const production = process.env.NODE_ENV === "production";
+
+    // 1. Register the service worker (production only: in development its cache would serve stale code).
+    if (supported && !production) {
       navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
       if (typeof caches !== "undefined") caches.keys().then((names) => names.forEach((n) => caches.delete(n)));
-    } else if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      navigator.serviceWorker
-        .register("/sw.js")
-        .then((reg) => {
-          console.log("[ServiceWorker] Registered successfully with scope:", reg.scope);
-        })
-        .catch((err) => {
-          console.warn("[ServiceWorker] Registration failed:", err);
-        });
+    } else if (supported) {
+      navigator.serviceWorker.register("/sw.js").catch((err) => {
+        console.warn("[ServiceWorker] Registration failed:", err);
+      });
     }
 
-    // 2. Handle connection status transitions
+    // 2. Once signed in and online, save every page and the data behind it for offline use.
+    let prepareTimer: ReturnType<typeof setTimeout> | undefined;
+    const prepareOffline = () => {
+      if (!isOnline() || !getActiveOfflineUser()) return;
+      clearTimeout(prepareTimer);
+      // Wait a moment so this never competes with the page the user just opened.
+      prepareTimer = setTimeout(async () => {
+        if (supported && production) {
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            reg.active?.postMessage({ type: "PRECACHE_PAGES" });
+          } catch {}
+        }
+        warmOfflineCache();
+      }, 4000);
+    };
+
+    // 3. Handle connection status transitions
     const handleOnline = () => {
-      console.log("[Connection] Back online. Synchronizing pending mutations...");
       window.dispatchEvent(new CustomEvent("faida-online-status-changed", { detail: { online: true } }));
-      syncPendingMutations();
+      syncPendingMutations().finally(prepareOffline);
     };
 
     const handleOffline = () => {
-      console.log("[Connection] Gone offline. Switching to offline cache & mutation queue.");
       window.dispatchEvent(new CustomEvent("faida-online-status-changed", { detail: { online: false } }));
     };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
+    window.addEventListener("faida-user-ready", prepareOffline);
 
-    // 3. Periodic sync attempt if online and there are pending items
+    // 4. Periodic sync attempt if online and there are pending items
     const interval = setInterval(() => {
       if (isOnline()) {
         syncPendingMutations();
       }
     }, 30000);
 
-    // Initial sync check on mount
+    // Initial checks on mount
     if (isOnline()) {
       syncPendingMutations();
+      prepareOffline();
     }
 
     return () => {
+      clearTimeout(prepareTimer);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("faida-user-ready", prepareOffline);
       clearInterval(interval);
     };
   }, []);

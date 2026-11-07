@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 const COLOR_PRESETS = [
   { label: "Blue", value: "#3b82f6" },
   { label: "Emerald", value: "#10b981" },
@@ -121,7 +122,7 @@ export default function ProjectWorkspacePage({
 
   const fetchWorkspace = async () => {
     try {
-      const res = await fetch(`/api/projects/${id}`, { cache: "no-store" });
+      const res = await offlineFetch(`/api/projects/${id}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setProject(data.project);
@@ -140,7 +141,7 @@ export default function ProjectWorkspacePage({
 
     setIsAddingNote(true);
     try {
-      const res = await fetch("/api/notes", {
+      const res = await offlineFetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -182,7 +183,7 @@ export default function ProjectWorkspacePage({
 
     setIsUpdatingProject(true);
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await offlineFetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -210,7 +211,7 @@ export default function ProjectWorkspacePage({
 
     setIsDeletingProject(true);
     try {
-      const res = await fetch(`/api/projects/${id}`, {
+      const res = await offlineFetch(`/api/projects/${id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -260,7 +261,7 @@ export default function ProjectWorkspacePage({
     });
 
     try {
-      await fetch(`/api/projects/${id}`, {
+      await offlineFetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -278,7 +279,7 @@ export default function ProjectWorkspacePage({
     if (!newMilestone.trim()) return;
 
     try {
-      await fetch(`/api/projects/${id}`, {
+      await offlineFetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newMilestoneTitle: newMilestone.trim() }),
@@ -296,7 +297,7 @@ export default function ProjectWorkspacePage({
 
     setIsAddingTask(true);
     try {
-      const res = await fetch("/api/tasks", {
+      const res = await offlineFetch("/api/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -320,7 +321,7 @@ export default function ProjectWorkspacePage({
   const handleToggleTaskDone = async (task: TaskItem) => {
     const nextStatus = task.status === "DONE" ? "TODO" : "DONE";
     try {
-      await fetch("/api/tasks", {
+      await offlineFetch("/api/tasks", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: task.id, status: nextStatus }),

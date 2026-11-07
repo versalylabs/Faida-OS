@@ -6,7 +6,7 @@ import { Sparkles, Bell, Search, Command, Keyboard, Menu, LogOut, User as UserIc
 import { QuickCaptureModal } from "@/components/capture/QuickCaptureModal";
 import { FaidaLogo, FaidaLogoIcon } from "@/components/brand/FaidaLogo";
 import { OfflineStatusIndicator } from "@/components/offline/OfflineStatusIndicator";
-import { clearOfflineData, getQueuedMutations, setActiveOfflineUser, syncPendingMutations } from "@/lib/offlineSync";
+import { clearOfflineData, getQueuedMutations, setActiveOfflineUser, syncPendingMutations, offlineFetch } from "@/lib/offlineSync";
 
 export function Header() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export function Header() {
 
   const fetchAttention = async () => {
     try {
-      const res = await fetch("/api/attention");
+      const res = await offlineFetch("/api/attention");
       const data = await res.json();
       if (data.success) {
         setAttention({

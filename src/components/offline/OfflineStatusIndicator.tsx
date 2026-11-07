@@ -27,6 +27,7 @@ export function OfflineStatusIndicator() {
   const [showSyncedSuccess, setShowSyncedSuccess] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [droppedCount, setDroppedCount] = useState<number>(0);
+  const [showSavedOffline, setShowSavedOffline] = useState<boolean>(false);
 
   useEffect(() => {
     setOnline(isOnline());
@@ -58,12 +59,22 @@ export function OfflineStatusIndicator() {
       }
     };
 
+    let savedTimer: ReturnType<typeof setTimeout> | undefined;
+    const handleSaved = () => {
+      setShowSavedOffline(true);
+      clearTimeout(savedTimer);
+      savedTimer = setTimeout(() => setShowSavedOffline(false), 4000);
+    };
+
+    window.addEventListener("faida-offline-saved", handleSaved);
     window.addEventListener("faida-online-status-changed", handleStatusChange);
     window.addEventListener("faida-offline-queue-changed", handleQueueChange);
     window.addEventListener("faida-sync-started", handleSyncStart);
     window.addEventListener("faida-sync-completed", handleSyncDone);
 
     return () => {
+      clearTimeout(savedTimer);
+      window.removeEventListener("faida-offline-saved", handleSaved);
       window.removeEventListener("faida-online-status-changed", handleStatusChange);
       window.removeEventListener("faida-offline-queue-changed", handleQueueChange);
       window.removeEventListener("faida-sync-started", handleSyncStart);
@@ -85,7 +96,7 @@ export function OfflineStatusIndicator() {
   };
 
   // If online, not syncing, no queue, and no recent sync, render nothing in the header
-  if (online && queuedMutations.length === 0 && !isSyncing && !showSyncedSuccess && droppedCount === 0) {
+  if (online && queuedMutations.length === 0 && !isSyncing && !showSyncedSuccess && droppedCount === 0 && !showSavedOffline) {
     return null;
   }
 
@@ -93,7 +104,16 @@ export function OfflineStatusIndicator() {
     <>
       {/* HEADER PILL */}
       <div className="flex items-center">
-        {droppedCount > 0 && !isSyncing ? (
+        {showSavedOffline && !isSyncing ? (
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] font-mono font-medium whitespace-nowrap"
+            role="status"
+            title="This change is stored on your device and will be sent when you are back online. It may not show on the page until then."
+          >
+            <CheckCircle2 className="h-3 w-3" />
+            <span>Saved on device · syncs later</span>
+          </div>
+        ) : droppedCount > 0 && !isSyncing ? (
           <div
             className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[11px] font-mono font-medium"
             title="The server rejected these offline changes, so they were discarded"

@@ -66,6 +66,8 @@ export function setActiveOfflineUser(userId: string): void {
   try {
     store.setItem(ACTIVE_USER_KEY, userId);
   } catch {}
+  // Lets the app start saving pages and data for offline use as soon as it knows who is signed in.
+  window.dispatchEvent(new CustomEvent("faida-user-ready", { detail: { userId } }));
 }
 
 /** Remove cached API data (and the service worker's page cache). Pending changes are kept unless asked. */
@@ -73,7 +75,7 @@ export async function clearOfflineData(options: { includeQueue?: boolean } = {})
   const { includeQueue = false } = options;
   removeKeysWhere((key) => {
     if (LEGACY_PREFIXES.some((p) => key.startsWith(p))) return true;
-    if (key.startsWith(CACHE_PREFIX)) return true;
+    if (key.startsWith(CACHE_PREFIX) || key.startsWith("faida_warm_at:")) return true;
     if (includeQueue && key.startsWith(QUEUE_PREFIX)) return true;
     return false;
   });
@@ -109,14 +111,50 @@ export function isOnline(): boolean {
 export function cacheOfflineData<T>(key: string, data: T): void {
   const userId = getActiveOfflineUser();
   if (!userId) return;
+  const store = storage();
+  if (!store) return;
+  const serialized = JSON.stringify({ data, timestamp: Date.now() });
   try {
-    const payload = {
-      data,
-      timestamp: Date.now(),
-    };
-    storage()?.setItem(cacheKey(userId, key), JSON.stringify(payload));
-  } catch (e) {
-    console.warn("[OfflineCache] Failed to cache data for key:", key, e);
+    store.setItem(cacheKey(userId, key), serialized);
+  } catch {
+    // Storage is full: drop the oldest saved responses (never the pending-change queue) and retry once.
+    try {
+      evictOldestCache(userId, key);
+      store.setItem(cacheKey(userId, key), serialized);
+    } catch (e) {
+      console.warn("[OfflineCache] Failed to cache data for key:", key, e);
+    }
+  }
+}
+
+/** Remove roughly the oldest third of this user's saved responses to free space. */
+function evictOldestCache(userId: string, keepKey: string): void {
+  const store = storage();
+  if (!store) return;
+  const prefix = `${CACHE_PREFIX}${userId}:`;
+  const entries: { key: string; at: number }[] = [];
+  for (let i = 0; i < store.length; i++) {
+    const k = store.key(i);
+    if (!k || !k.startsWith(prefix) || k === cacheKey(userId, keepKey)) continue;
+    let at = 0;
+    try {
+      at = JSON.parse(store.getItem(k) || "{}")?.timestamp || 0;
+    } catch {}
+    entries.push({ key: k, at });
+  }
+  entries.sort((a, b) => a.at - b.at);
+  entries.slice(0, Math.max(1, Math.ceil(entries.length / 3))).forEach((e) => store.removeItem(e.key));
+}
+
+/** When a saved response was stored (ms since epoch), or null. */
+export function getCachedAt(key: string): number | null {
+  const userId = getActiveOfflineUser();
+  if (!userId) return null;
+  try {
+    const raw = storage()?.getItem(cacheKey(userId, key));
+    return raw ? JSON.parse(raw)?.timestamp ?? null : null;
+  } catch {
+    return null;
   }
 }
 
@@ -315,6 +353,11 @@ export async function syncPendingMutations(): Promise<{
   }
 }
 
+// How long a page waits for the server before showing its saved copy instead.
+const SLOW_NETWORK_MS = 7000;
+// Keys whose fresh data arrived after the saved copy was already shown.
+const justRefreshed = new Set<string>();
+
 /**
  * Smart offline-aware fetch wrapper
  * - For GET: caches successful responses (per user); falls back to that cache when offline
@@ -324,10 +367,10 @@ export async function syncPendingMutations(): Promise<{
  */
 export async function offlineFetch(
   url: string,
-  options?: RequestInit & { description?: string; cacheKey?: string }
+  options?: RequestInit & { description?: string; cacheKey?: string; quiet?: boolean }
 ): Promise<any> {
   const method = (options?.method || "GET").toUpperCase();
-  const cleanKey = options?.cacheKey || url.split("?")[0].replace(/^\/api\//, "");
+  const cleanKey = options?.cacheKey || defaultCacheKey(url);
 
   const fromCache = () => {
     const cached = getCachedOfflineData(cleanKey);
@@ -335,15 +378,58 @@ export async function offlineFetch(
     return {
       ok: true,
       status: 200,
-      json: async () => ({ ...(cached as object), _isOfflineCached: true }),
+      json: async () => ({ ...(cached as object), _isOfflineCached: true, _cachedAt: getCachedAt(cleanKey) }),
     };
   };
 
   // 1. GET requests
   if (method === "GET") {
     if (isOnline()) {
+      // Data that arrived late on the previous attempt is served once, straight from the saved
+      // copy, so the page that refreshes itself after a slow load does not wait a second time.
+      if (!options?.quiet && justRefreshed.delete(cleanKey)) {
+        const fresh = fromCache();
+        if (fresh) return fresh;
+      }
+
+      // A saved copy exists: do not keep the user waiting on a weak connection. Give the
+      // network a few seconds, show what was saved, and let the request finish in the background
+      // (the page then refreshes itself, see AppShell). With nothing saved, simply wait.
+      const controller = new AbortController();
+      // quiet = background warm-up: just wait for the real answer, never touch the page.
+      const hasSaved = !options?.quiet && getCachedOfflineData(cleanKey) !== null;
+      const hardLimit = setTimeout(() => controller.abort(), 60000);
+      const request = fetch(url, { ...options, signal: options?.signal ?? controller.signal });
       try {
-        const res = await fetch(url, options);
+        let res: Response;
+        if (hasSaved) {
+          const first = await Promise.race([
+            request,
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), SLOW_NETWORK_MS)),
+          ]);
+          if (first === null) {
+            request
+              .then(async (late) => {
+                clearTimeout(hardLimit);
+                if (!late.ok) return;
+                const data = await late.clone().json().catch(() => null);
+                if (data && data.success !== false) {
+                  cacheOfflineData(cleanKey, data);
+                  justRefreshed.add(cleanKey);
+                  window.dispatchEvent(new CustomEvent("faida-cache-updated", { detail: { key: cleanKey } }));
+                }
+              })
+              .catch(() => clearTimeout(hardLimit));
+            const saved = fromCache();
+            if (saved) return saved;
+            res = await request; // saved copy vanished meanwhile: wait for the real answer
+          } else {
+            res = first;
+          }
+        } else {
+          res = await request;
+        }
+        clearTimeout(hardLimit);
         if (res.ok) {
           res
             .clone()
@@ -359,6 +445,7 @@ export async function offlineFetch(
         const cached = fromCache();
         return cached ?? res;
       } catch (e) {
+        clearTimeout(hardLimit);
         console.warn(`[offlineFetch] Network failed for ${url}, falling back to cache`);
       }
     }
@@ -398,8 +485,11 @@ export async function offlineFetch(
       url,
       method: method as QueuedMutation["method"],
       body,
-      description: options?.description || `${method} to ${url}`,
+      description: options?.description || describeMutation(method, url),
     });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("faida-offline-saved", { detail: { message } }));
+    }
     return {
       ok: true,
       status: 200,
@@ -416,5 +506,108 @@ export async function offlineFetch(
   } catch (e) {
     console.warn(`[offlineFetch] Mutation failed online, queueing for background retry:`, url);
     return queueIt("Queued offline mutation.");
+  }
+}
+
+/** Default storage key for a GET: the API path plus its query string, so /api/calendar?month=... differs per month. */
+export function defaultCacheKey(url: string): string {
+  const [path, qs] = url.split("?");
+  const base = path.replace(/^\/api\//, "");
+  return qs ? `${base}?${qs}` : base;
+}
+
+const NOUNS: Record<string, string> = {
+  finance: "finance entry",
+  business: "business item",
+  deliverables: "deliverable",
+  clients: "client",
+  metrics: "business metric",
+  calendar: "calendar item",
+  learning: "learning item",
+  topics: "learning topic",
+  sessions: "study session",
+  maintenance: "maintenance item",
+  projects: "project",
+  university: "university item",
+  tasks: "task",
+  capture: "capture",
+  entities: "capture",
+  menu: "meal",
+  shopping: "shopping item",
+  notes: "note",
+  files: "file",
+  effort: "energy check-in",
+};
+
+function describeMutation(method: string, url: string): string {
+  const parts = url.split("?")[0].replace(/^\/api\//, "").split("/").filter(Boolean);
+  const noun = [...parts].reverse().map((p) => NOUNS[p]).find(Boolean) || parts[0] || "item";
+  const verb = method === "POST" ? "Add" : method === "DELETE" ? "Delete" : "Update";
+  return `${verb} ${noun}`;
+}
+
+const WARM_PREFIX = "faida_warm_at:";
+const WARM_EVERY_MS = 20 * 60 * 1000;
+let warming = false;
+
+/**
+ * Quietly downloads the data every page needs and stores it on this device, so each page
+ * opens with real content even when the connection later drops. Runs at most every 20
+ * minutes, one request at a time, and only while online and signed in. Credentials in the
+ * Developer vault are deliberately never saved here.
+ */
+export async function warmOfflineCache(force = false): Promise<void> {
+  const userId = getActiveOfflineUser();
+  const store = storage();
+  if (warming || !userId || !store || !isOnline()) return;
+
+  const last = Number(store.getItem(WARM_PREFIX + userId) || 0);
+  if (!force && Date.now() - last < WARM_EVERY_MS) return;
+
+  warming = true;
+  try {
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const targets: [string, string?][] = [
+      ["/api/tasks", "tasks"],
+      ["/api/projects", "projects"],
+      ["/api/finance"],
+      ["/api/business"],
+      ["/api/university/dashboard"],
+      ["/api/university/assignments"],
+      ["/api/university/classes"],
+      [`/api/calendar?month=${month}`],
+      ["/api/learning"],
+      ["/api/maintenance"],
+      ["/api/analytics"],
+      ["/api/journal"],
+      ["/api/entities/recent?limit=25"],
+      ["/api/attention"],
+      ["/api/shopping", "shopping_items"],
+      ["/api/shopping/categories", "shopping_categories"],
+      ["/api/menu", "weekly_menu"],
+      ["/api/menu/ideas", "meal_ideas"],
+    ];
+
+    let projectIds: string[] = [];
+    for (const [url, key] of targets) {
+      if (!isOnline()) return;
+      try {
+        const res = await offlineFetch(url, { cache: "no-store", cacheKey: key, quiet: true });
+        if (url === "/api/projects" && res?.ok) {
+          const data = await res.json();
+          projectIds = (data?.projects || []).map((p: any) => p?.id).filter(Boolean).slice(0, 12);
+        }
+      } catch {}
+    }
+    for (const id of projectIds) {
+      if (!isOnline()) return;
+      try {
+        await offlineFetch(`/api/projects/${id}`, { cache: "no-store", quiet: true });
+      } catch {}
+    }
+    store.setItem(WARM_PREFIX + userId, String(Date.now()));
+  } finally {
+    warming = false;
   }
 }

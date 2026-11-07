@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface StudySessionItem {
   id: string;
   topicId: string;
@@ -101,7 +102,7 @@ export default function LearningPage() {
 
   const fetchSubjects = async () => {
     try {
-      const res = await fetch("/api/learning");
+      const res = await offlineFetch("/api/learning");
       const data = await res.json();
       if (data.success) {
         setSubjects(data.subjects);
@@ -157,7 +158,7 @@ export default function LearningPage() {
     }
 
     try {
-      await fetch("/api/learning/topics", {
+      await offlineFetch("/api/learning/topics", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: topic.id, status: nextStatus }),
@@ -176,7 +177,7 @@ export default function LearningPage() {
 
     setIsAddingLesson(true);
     try {
-      const res = await fetch("/api/learning/topics", {
+      const res = await offlineFetch("/api/learning/topics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -218,7 +219,7 @@ export default function LearningPage() {
 
     setIsUpdatingLesson(true);
     try {
-      const res = await fetch("/api/learning/topics", {
+      const res = await offlineFetch("/api/learning/topics", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -247,7 +248,7 @@ export default function LearningPage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/learning/topics?id=${deleteTopicConfirm.id}`, {
+      const res = await offlineFetch(`/api/learning/topics?id=${deleteTopicConfirm.id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -280,7 +281,7 @@ export default function LearningPage() {
 
     setIsUpdatingSubject(true);
     try {
-      const res = await fetch("/api/learning", {
+      const res = await offlineFetch("/api/learning", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -307,7 +308,7 @@ export default function LearningPage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/learning?id=${deleteSubjectConfirm.id}`, {
+      const res = await offlineFetch(`/api/learning?id=${deleteSubjectConfirm.id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -332,7 +333,7 @@ export default function LearningPage() {
 
     setIsLogging(true);
     try {
-      const res = await fetch("/api/learning/sessions", {
+      const res = await offlineFetch("/api/learning/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -368,7 +369,7 @@ export default function LearningPage() {
       .filter((t) => t.length > 0);
 
     try {
-      await fetch("/api/learning", {
+      await offlineFetch("/api/learning", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface AnalyticsData {
   tasksCompletedWeek: number;
   tasksWeekChange: string;
@@ -64,8 +65,8 @@ export default function AnalyticsPage() {
   const fetchData = async () => {
     try {
       const [anRes, jRes] = await Promise.all([
-        fetch("/api/analytics"),
-        fetch("/api/journal"),
+        offlineFetch("/api/analytics"),
+        offlineFetch("/api/journal"),
       ]);
 
       const anData = await anRes.json();
@@ -91,7 +92,7 @@ export default function AnalyticsPage() {
     );
 
     try {
-      await fetch("/api/automations", {
+      await offlineFetch("/api/automations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: rule.id, isActive: nextState }),

@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 
+import { offlineFetch } from "@/lib/offlineSync";
 interface TransactionItem {
   id: string;
   description: string;
@@ -135,7 +136,7 @@ export default function FinancePage() {
 
   const fetchFinance = async () => {
     try {
-      const res = await fetch("/api/finance", { cache: "no-store" });
+      const res = await offlineFetch("/api/finance", { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setTransactions(data.transactions);
@@ -290,7 +291,7 @@ export default function FinancePage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/finance", {
+      const res = await offlineFetch("/api/finance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -318,7 +319,7 @@ export default function FinancePage() {
   const handleDeleteTransaction = async (id: string) => {
     setTransactions(transactions.filter((t) => t.id !== id));
     try {
-      await fetch(`/api/finance?id=${id}`, { method: "DELETE" });
+      await offlineFetch(`/api/finance?id=${id}`, { method: "DELETE" });
       fetchFinance();
     } catch (e) {
       fetchFinance();
@@ -346,7 +347,7 @@ export default function FinancePage() {
 
     setIsSavingBudget(true);
     try {
-      const res = await fetch("/api/finance", {
+      const res = await offlineFetch("/api/finance", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -391,7 +392,7 @@ export default function FinancePage() {
             color: accountColor,
           };
 
-      const res = await fetch(url, {
+      const res = await offlineFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -418,7 +419,7 @@ export default function FinancePage() {
     const newBal = parseFloat(quickBalanceVal) || 0;
     setIsSavingQuickBalance(true);
     try {
-      const res = await fetch("/api/finance/accounts", {
+      const res = await offlineFetch("/api/finance/accounts", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -445,7 +446,7 @@ export default function FinancePage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/finance/accounts?id=${deleteAccountConfirm.id}`, {
+      const res = await offlineFetch(`/api/finance/accounts?id=${deleteAccountConfirm.id}`, {
         method: "DELETE",
       });
       const data = await res.json();
@@ -481,7 +482,7 @@ export default function FinancePage() {
             color: catColor,
           };
 
-      const res = await fetch(url, {
+      const res = await offlineFetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -505,7 +506,7 @@ export default function FinancePage() {
 
     setIsDeleting(true);
     try {
-      const res = await fetch(`/api/finance/categories?id=${deleteCategoryConfirm.id}`, {
+      const res = await offlineFetch(`/api/finance/categories?id=${deleteCategoryConfirm.id}`, {
         method: "DELETE",
       });
       const data = await res.json();

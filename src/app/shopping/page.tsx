@@ -190,7 +190,7 @@ export default function ShoppingPage() {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/shopping", {
+      const res = await offlineFetch("/api/shopping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -233,7 +233,7 @@ export default function ShoppingPage() {
 
     setIsSavingItem(true);
     try {
-      const res = await fetch("/api/shopping", {
+      const res = await offlineFetch("/api/shopping", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -267,7 +267,7 @@ export default function ShoppingPage() {
 
     setIsAddingCat(true);
     try {
-      const res = await fetch("/api/shopping/categories", {
+      const res = await offlineFetch("/api/shopping/categories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -296,7 +296,7 @@ export default function ShoppingPage() {
 
     setIsSavingCat(true);
     try {
-      const res = await fetch("/api/shopping/categories", {
+      const res = await offlineFetch("/api/shopping/categories", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -331,7 +331,7 @@ export default function ShoppingPage() {
     }
 
     try {
-      const res = await fetch(`/api/shopping/categories?id=${id}`, {
+      const res = await offlineFetch(`/api/shopping/categories?id=${id}`, {
         method: "DELETE",
       });
       const data = await res.json();
