@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Header } from "@/components/layout/Header";
@@ -13,6 +13,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const isAuthPage = pathname === "/login";
   const [refreshCount, setRefreshCount] = useState(0);
+  const refreshedFor = useRef<string | null>(null); // the page visit already refreshed once
+
+  // A new page visit gets its own single automatic refresh.
+  useEffect(() => {
+    refreshedFor.current = null;
+  }, [pathname]);
 
   // When a slow server finally answers after the page already showed its saved copy, reload the
   // page's data once so the fresh numbers replace the old ones. Skipped while the user is in the
@@ -25,6 +31,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const el = document.activeElement as HTMLElement | null;
         const typing = !!el && ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName);
         if (typing || document.querySelector(".fixed.inset-0")) return;
+        // At most once per page visit, so a slow connection can never make a page reload in a loop.
+        if (refreshedFor.current === window.location.pathname) return;
+        refreshedFor.current = window.location.pathname;
         setRefreshCount((n) => n + 1);
       }, 500);
     };

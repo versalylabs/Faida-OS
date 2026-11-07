@@ -29,6 +29,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { lmsLinkFor } from "@/lib/lms";
+import { useLms } from "@/lib/useLms";
+import { LmsAttentionCard, LmsFeedCard, LmsStatusCard, LmsUnitsGrid } from "@/components/university/LmsPanels";
 import { isOnline as isOnlineNow, offlineFetch } from "@/lib/offlineSync";
 import { formatDate } from "@/lib/utils";
 
@@ -149,7 +151,7 @@ interface ClassBriefing {
 const DAYS_OF_WEEK = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export default function UniversityPage() {
-  const [activeTab, setActiveTab] = useState<"orbit" | "assignments" | "classes" | "assessments" | "courses">("orbit");
+  const [activeTab, setActiveTab] = useState<"orbit" | "units" | "assignments" | "classes" | "assessments" | "courses">("orbit");
   const [isLoading, setIsLoading] = useState(true);
 
   // Data State
@@ -201,13 +203,14 @@ export default function UniversityPage() {
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Fetch all dashboard & university data
-  const fetchData = async () => {
+  const fetchData = async (patient = false) => {
+    const wait = patient ? { waitMs: 25000 } : {};
     try {
       setIsLoading(true);
       const [dashRes, assignRes, classRes] = await Promise.all([
-        offlineFetch("/api/university/dashboard", { cache: "no-store" }),
-        offlineFetch("/api/university/assignments", { cache: "no-store" }),
-        offlineFetch("/api/university/classes", { cache: "no-store" }),
+        offlineFetch("/api/university/dashboard", { cache: "no-store", ...wait }),
+        offlineFetch("/api/university/assignments", { cache: "no-store", ...wait }),
+        offlineFetch("/api/university/classes", { cache: "no-store", ...wait }),
       ]);
 
       const dashData = await dashRes.json();
@@ -251,6 +254,15 @@ export default function UniversityPage() {
     fetchData();
   }, []);
 
+  // LMS connection, per-unit progress and activity feed
+  const lms = useLms(() => fetchData(true));
+  const openConnect = () => {
+    setSyncMode("MOODLE_REST");
+    if (lms.data?.connection?.baseUrl) setMoodleUrl(lms.data.connection.baseUrl);
+    setSyncStatus(null);
+    setShowSyncModal(true);
+  };
+
   // Trigger "Prepare Me" Briefing
   const handlePrepareMe = async (courseId?: string, classId?: string) => {
     try {
@@ -287,7 +299,7 @@ export default function UniversityPage() {
       const data = await res.json();
       if (data.success) {
         // Refresh assignments to show newly created subtasks
-        fetchData();
+        fetchData(true);
       }
     } catch (e) {
       console.error("Failed to decompose assignment:", e);
@@ -309,7 +321,7 @@ export default function UniversityPage() {
         body: JSON.stringify({ status: newStatus }),
       });
       // Offline the refresh would only bring back the older saved copy, so skip it until synced.
-      if (isOnlineNow()) fetchData();
+      if (isOnlineNow()) fetchData(true);
     } catch (e) {
       console.error("Failed to toggle task status:", e);
     }
@@ -360,7 +372,7 @@ export default function UniversityPage() {
       }
 
       alert(`Generated 3 study sessions in Daily Planner for ${assessment.title} (${assessment.course.code})!`);
-      fetchData();
+      fetchData(true);
     } catch (e) {
       console.error("Failed to generate study plan:", e);
     }
@@ -381,7 +393,7 @@ export default function UniversityPage() {
         }
       }
       setTimeout(() => {
-        fetchData();
+        fetchData(true);
         setBatchCompleted(false);
       }, 1200);
     } catch (e) {
@@ -401,7 +413,7 @@ export default function UniversityPage() {
       if (res.ok) {
         setShowCourseModal(false);
         setNewCourse({ code: "", name: "", lecturer: "", semester: "Year 2 Sem 1", color: "#3b82f6", credits: 3 });
-        fetchData();
+        fetchData(true);
       }
     } catch (e) {
       console.error("Failed to create course:", e);
@@ -423,7 +435,7 @@ export default function UniversityPage() {
       if (res.ok) {
         setShowAssignmentModal(false);
         setNewAssign({ courseId: "", title: "", dueDate: "", estimatedMinutes: 120, priority: "MEDIUM", submissionUrl: "" });
-        fetchData();
+        fetchData(true);
       }
     } catch (e) {
       console.error("Failed to create assignment:", e);
@@ -446,7 +458,7 @@ export default function UniversityPage() {
       if (res.ok) {
         setShowAssessmentModal(false);
         setNewAssessment({ courseId: "", title: "CAT 1", type: "CAT_1", date: "", weightPercent: 20, topicsCovered: "", estimatedEffortHours: 4 });
-        fetchData();
+        fetchData(true);
       }
     } catch (e) {
       console.error("Failed to create assessment:", e);
@@ -468,7 +480,7 @@ export default function UniversityPage() {
       if (res.ok) {
         setShowClassModal(false);
         setNewClass({ courseId: "", dayOfWeek: 1, startTime: "08:00", endTime: "11:00", room: "", lecturer: "", isOnline: false, meetingUrl: "" });
-        fetchData();
+        fetchData(true);
       }
     } catch (e) {
       console.error("Failed to create class:", e);
@@ -481,13 +493,37 @@ export default function UniversityPage() {
       setIsSyncing(true);
       setSyncStatus("Connecting to academic data feed...");
 
+      if (syncMode === "MOODLE_REST") {
+        const connectRes = await fetch("/api/lms/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ baseUrl: moodleUrl, token: moodleToken }),
+        });
+        const connectData = await connectRes.json();
+        if (connectData.success) {
+          setMoodleToken("");
+          const sum = connectData.summary;
+          setSyncStatus(
+            sum && !sum.skipped
+              ? `Connected${connectData.studentName ? " as " + connectData.studentName : ""}. Read ${sum.courses ?? 0} units and ${sum.items ?? 0} items.`
+              : connectData.message || "Connected."
+          );
+          setTimeout(() => {
+            setShowSyncModal(false);
+            setSyncStatus(null);
+            lms.reload();
+            fetchData(true);
+          }, 1500);
+        } else {
+          setSyncStatus(connectData.error || "Could not connect to the LMS.");
+        }
+        return;
+      }
+
       let payload: any = { mode: syncMode };
 
       if (syncMode === "ICAL_SYNC") {
         payload.iCalUrl = iCalUrl;
-      } else if (syncMode === "MOODLE_REST") {
-        payload.moodleUrl = moodleUrl;
-        payload.moodleToken = moodleToken;
       } else if (syncMode === "MANUAL_IMPORT") {
         try {
           payload.importData = JSON.parse(jsonImportText);
@@ -510,7 +546,7 @@ export default function UniversityPage() {
         setTimeout(() => {
           setShowSyncModal(false);
           setSyncStatus(null);
-          fetchData();
+          fetchData(true);
         }, 1200);
       } else {
         setSyncStatus(`Sync Failed: ${data.error || "Unknown error"}`);
@@ -725,10 +761,14 @@ export default function UniversityPage() {
         </div>
       )}
 
+      {/* LMS connection + sync status */}
+      <LmsStatusCard lms={lms} onConnect={openConnect} />
+
       {/* 3. Navigation Tabs */}
-      <div className="flex items-center gap-1 border-b border-slate-800">
+      <div className="flex items-center gap-1 border-b border-slate-800 overflow-x-auto">
         {[
           { id: "orbit", label: "Today & Orbit", icon: CompassIcon },
+          { id: "units", label: `Units (${lms.data?.units?.length ?? courses.length})`, icon: GraduationCap },
           { id: "assignments", label: `Assignments (${dueSoonAssignments.length})`, icon: CheckSquare },
           { id: "classes", label: `Weekly Timetable (${allClasses.length})`, icon: Calendar },
           { id: "assessments", label: `CATs & Exams (${assessments.length})`, icon: Zap },
@@ -740,7 +780,7 @@ export default function UniversityPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap shrink-0 transition-all ${
                 isActive
                   ? "border-blue-500 text-blue-400 bg-blue-500/5"
                   : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-800/40"
@@ -762,6 +802,12 @@ export default function UniversityPage() {
       ) : activeTab === "orbit" ? (
         /* ORBIT TAB: Today's Classes, Due Soon, and Low-Energy Batch */
         <div className="space-y-6">
+          {lms.data?.connected && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              <LmsAttentionCard lms={lms} />
+              <LmsFeedCard lms={lms} />
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left: Today's Classes & Academic Tasks */}
             <div className="lg:col-span-2 space-y-6">
@@ -925,7 +971,7 @@ export default function UniversityPage() {
                             {a.subtasks.length === 0 && (
                               <button
                                 onClick={() => handleDecomposeAssignment(a)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-all"
+                                className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium whitespace-nowrap shrink-0 transition-all"
                                 title="Break down into 5 conservative steps"
                               >
                                 <Sparkles className="h-3 w-3 text-blue-400" />
@@ -1095,6 +1141,8 @@ export default function UniversityPage() {
             </div>
           </div>
         </div>
+      ) : activeTab === "units" ? (
+        <LmsUnitsGrid lms={lms} onConnect={openConnect} />
       ) : activeTab === "assignments" ? (
         /* ASSIGNMENTS TAB */
         <div className="space-y-4">
@@ -1590,14 +1638,23 @@ export default function UniversityPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-slate-300">Web Service Token</label>
+                  <label className="text-xs font-semibold text-slate-300">Access key (token)</label>
                   <input
                     type="password"
                     value={moodleToken}
                     onChange={(e) => setMoodleToken(e.target.value)}
-                    placeholder="Moodle User Security Key"
+                    autoComplete="off"
+                    placeholder="Paste your Moodle mobile service key"
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                   />
+                </div>
+                <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1 leading-relaxed">
+                  <p className="font-semibold text-slate-100">Where to find your key</p>
+                  <p>In your LMS open your profile menu, then Preferences, then Security keys. Copy the key named “Moodle mobile web service”.</p>
+                  <p className="text-slate-400">
+                    Faida OS only reads your courses, assignments, marks and announcements. It is stored encrypted and never shown again; you
+                    can disconnect any time, and you can reset the key in the LMS to cut off access instantly.
+                  </p>
                 </div>
               </div>
             )}
@@ -1630,7 +1687,7 @@ export default function UniversityPage() {
                 ) : (
                   <>
                     <RefreshCw className="h-3.5 w-3.5" />
-                    Execute Sync
+                    {syncMode === "MOODLE_REST" ? "Connect & sync" : "Execute Sync"}
                   </>
                 )}
               </button>

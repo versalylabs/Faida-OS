@@ -21,7 +21,7 @@ export function Header() {
 
   const fetchAttention = async () => {
     try {
-      const res = await offlineFetch("/api/attention");
+      const res = await offlineFetch("/api/attention", { quiet: true });
       const data = await res.json();
       if (data.success) {
         setAttention({

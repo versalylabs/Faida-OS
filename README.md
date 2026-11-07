@@ -128,3 +128,21 @@ Nothing is invented. Finance totals for the month are computed over every transa
 
 ## 📄 License
 MIT License. Built for high agency by Ted Khalwale.
+
+## University & LMS sync
+
+Connect a Moodle LMS under **University → Connect LMS** with the student's own access key
+(*Profile → Preferences → Security keys → "Moodle mobile web service"*). Faida OS then reads, and never
+changes, the LMS:
+
+- units (code, name, lecturer, the LMS's completion %), assignments, quizzes/CATs, marks, class links,
+  announcements and newly added materials
+- **Units** tab: progress per unit from the work actually completed, marks so far, missed work, next deadline
+- **Today & Orbit**: work missed (follow up), due today/tomorrow, live class links, and an activity feed
+  of what changed (submitted, marked, new, deadline moved, announced, uploaded)
+
+How it stays current: the app checks quietly when it opens and re-syncs if the last sync is over
+8 hours old; a daily job (`vercel.json` → `/api/cron/lms`) covers days the app is not opened. The job
+only runs when `CRON_SECRET` is set in the hosting environment, and refuses requests without it.
+The access key is stored AES-256-GCM encrypted (key derived from `LMS_TOKEN_SECRET`, or the database URL
+when that is unset) and is never sent back to the browser.

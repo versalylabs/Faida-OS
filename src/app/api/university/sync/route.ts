@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ValidationError, badRequest, readBody } from "@/lib/validate";
-import { assertPublicHttpsUrl, fetchPublicText } from "@/lib/safeFetch";
+import { fetchPublicText } from "@/lib/safeFetch";
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { mode, moodleUrl, moodleToken, iCalUrl, importData } = body;
+    const { mode, iCalUrl, importData } = body;
 
     let importedCount = 0;
     let updatedCount = 0;
@@ -241,118 +241,6 @@ export async function POST(req: NextRequest) {
         if (err instanceof ValidationError) return badRequest(err.message);
         return NextResponse.json(
           { success: false, error: "Failed to fetch or parse the iCal feed" },
-          { status: 500 }
-        );
-      }
-    }
-
-    // -------------------------------------------------------------------------
-    // Mode 3: Official Moodle Web Services API
-    // -------------------------------------------------------------------------
-    if (mode === "MOODLE_API" && moodleUrl && moodleToken) {
-      const parsedMoodle = await assertPublicHttpsUrl(moodleUrl, "Moodle URL");
-      if (typeof moodleToken !== "string" || moodleToken.length > 200) {
-        throw new ValidationError("Moodle token is invalid");
-      }
-      const cleanUrl = (parsedMoodle.origin + parsedMoodle.pathname).replace(/\/+$/, "");
-      const wsEndpoint = `${cleanUrl}/webservice/rest/server.php`;
-      const tokenParam = encodeURIComponent(moodleToken);
-
-      try {
-        // 1. Test token & get user site info
-        const infoUrl = `${wsEndpoint}?wstoken=${tokenParam}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`;
-        const infoData = JSON.parse(await fetchPublicText(infoUrl, { label: "Moodle URL" }));
-
-        if (infoData.exception || infoData.errorcode) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: `Moodle API error: ${infoData.message || infoData.errorcode}`,
-            },
-            { status: 400 }
-          );
-        }
-
-        const moodleUserId = infoData.userid;
-
-        // 2. Fetch Enrolled Courses
-        const coursesUrl = `${wsEndpoint}?wstoken=${tokenParam}&wsfunction=core_enrol_get_users_courses&userid=${encodeURIComponent(String(moodleUserId))}&moodlewsrestformat=json`;
-        const enrolledCourses = JSON.parse(await fetchPublicText(coursesUrl, { label: "Moodle URL" }));
-
-        if (Array.isArray(enrolledCourses)) {
-          for (const mc of enrolledCourses) {
-            if (mc.id === 1) continue; // Skip site home
-
-            const code = (mc.shortname || mc.fullname).slice(0, 15).toUpperCase();
-            const existingCourse = await prisma.universityCourse.findFirst({
-              where: {
-                userId: user.id,
-                OR: [{ sourceId: String(mc.id) }, { code }],
-              },
-            });
-
-            if (existingCourse) {
-              await prisma.universityCourse.update({
-                where: { id: existingCourse.id },
-                data: {
-                  sourceId: String(mc.id),
-                  sourceSystem: "MOODLE",
-                  sourceUrl: `${cleanUrl}/course/view.php?id=${mc.id}`,
-                  lastSyncedAt: new Date(),
-                },
-              });
-              updatedCount++;
-            } else {
-              await prisma.universityCourse.create({
-                data: {
-                  userId: user.id,
-                  code,
-                  name: mc.fullname,
-                  sourceId: String(mc.id),
-                  sourceSystem: "MOODLE",
-                  sourceUrl: `${cleanUrl}/course/view.php?id=${mc.id}`,
-                  lastSyncedAt: new Date(),
-                },
-              });
-              importedCount++;
-            }
-          }
-        }
-
-        // Store credential safely in DevCredential
-        await prisma.devCredential.upsert({
-          where: {
-            id: `moodle-${user.id}`,
-          },
-          create: {
-            id: `moodle-${user.id}`,
-            userId: user.id,
-            serviceName: "Moodle LMS",
-            environment: "production",
-            keyName: "MOODLE_TOKEN",
-            keyValue: moodleToken,
-            url: cleanUrl,
-            notes: `Moodle user: ${infoData.fullname || infoData.username}`,
-          },
-          update: {
-            keyValue: moodleToken,
-            url: cleanUrl,
-            notes: `Moodle user: ${infoData.fullname || infoData.username}`,
-          },
-        }).catch(() => {});
-
-        return NextResponse.json({
-          success: true,
-          message: `Connected to Moodle (${infoData.sitename || cleanUrl}). Enrolled courses synchronized.`,
-          importedCount,
-          updatedCount,
-          siteName: infoData.sitename,
-          studentName: infoData.fullname,
-        });
-      } catch (err: any) {
-        if (err instanceof ValidationError) return badRequest(err.message);
-        return NextResponse.json(
-          { success: false, error: "Could not connect to Moodle" },
           { status: 500 }
         );
       }

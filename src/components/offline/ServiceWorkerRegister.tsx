@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { syncPendingMutations, isOnline, getActiveOfflineUser, warmOfflineCache } from "@/lib/offlineSync";
+import { syncPendingMutations, isOnline, getActiveOfflineUser, warmOfflineCache, offlineFetch } from "@/lib/offlineSync";
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
@@ -31,6 +31,27 @@ export function ServiceWorkerRegister() {
             reg.active?.postMessage({ type: "PRECACHE_PAGES" });
           } catch {}
         }
+        // Quietly refresh the LMS if it has been more than 8 hours (the server decides). It runs
+        // alongside the offline warm-up, and the saved LMS summary is refreshed once it finishes.
+        try {
+          const last = Number(localStorage.getItem("faida_lms_auto_at") || 0);
+          if (Date.now() - last > 30 * 60 * 1000) {
+            localStorage.setItem("faida_lms_auto_at", String(Date.now()));
+            fetch("/api/lms/sync", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ auto: true }),
+            })
+              .then((r) => r.json())
+              .then((j) => {
+                if (j?.success && j.summary && !j.summary.skipped) {
+                  offlineFetch("/api/lms", { cache: "no-store", cacheKey: "lms", quiet: true }).catch(() => {});
+                  window.dispatchEvent(new CustomEvent("faida-lms-synced"));
+                }
+              })
+              .catch(() => {});
+          }
+        } catch {}
         warmOfflineCache();
       }, 4000);
     };

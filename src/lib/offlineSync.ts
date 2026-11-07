@@ -356,7 +356,12 @@ export async function syncPendingMutations(): Promise<{
 // How long a page waits for the server before showing its saved copy instead.
 const SLOW_NETWORK_MS = 7000;
 // Keys whose fresh data arrived after the saved copy was already shown.
-const justRefreshed = new Set<string>();
+const justRefreshed = new Map<string, number>();
+// A page that refreshed after a slow load is only served the new data this soon afterwards.
+const JUST_REFRESHED_TTL_MS = 2 * 60 * 1000;
+// Slow requests still running after their page showed saved data, and whether any brought new data.
+let lateInFlight = 0;
+let lateUpdated = false;
 
 /**
  * Smart offline-aware fetch wrapper
@@ -367,7 +372,7 @@ const justRefreshed = new Set<string>();
  */
 export async function offlineFetch(
   url: string,
-  options?: RequestInit & { description?: string; cacheKey?: string; quiet?: boolean }
+  options?: RequestInit & { description?: string; cacheKey?: string; quiet?: boolean; waitMs?: number }
 ): Promise<any> {
   const method = (options?.method || "GET").toUpperCase();
   const cleanKey = options?.cacheKey || defaultCacheKey(url);
@@ -387,9 +392,14 @@ export async function offlineFetch(
     if (isOnline()) {
       // Data that arrived late on the previous attempt is served once, straight from the saved
       // copy, so the page that refreshes itself after a slow load does not wait a second time.
-      if (!options?.quiet && justRefreshed.delete(cleanKey)) {
-        const fresh = fromCache();
-        if (fresh) return fresh;
+      if (!options?.quiet) {
+        const at = justRefreshed.get(cleanKey);
+        justRefreshed.delete(cleanKey);
+        if (at && Date.now() - at < JUST_REFRESHED_TTL_MS) {
+          const fresh = getCachedOfflineData(cleanKey);
+          // This is the answer the server just gave, so it is not marked as "saved/offline" data.
+          if (fresh) return { ok: true, status: 200, json: async () => ({ ...(fresh as object) }) };
+        }
       }
 
       // A saved copy exists: do not keep the user waiting on a weak connection. Give the
@@ -405,9 +415,10 @@ export async function offlineFetch(
         if (hasSaved) {
           const first = await Promise.race([
             request,
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), SLOW_NETWORK_MS)),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), options?.waitMs ?? SLOW_NETWORK_MS)),
           ]);
           if (first === null) {
+            lateInFlight++;
             request
               .then(async (late) => {
                 clearTimeout(hardLimit);
@@ -415,11 +426,19 @@ export async function offlineFetch(
                 const data = await late.clone().json().catch(() => null);
                 if (data && data.success !== false) {
                   cacheOfflineData(cleanKey, data);
-                  justRefreshed.add(cleanKey);
-                  window.dispatchEvent(new CustomEvent("faida-cache-updated", { detail: { key: cleanKey } }));
+                  justRefreshed.set(cleanKey, Date.now());
+                  lateUpdated = true;
                 }
               })
-              .catch(() => clearTimeout(hardLimit));
+              .catch(() => clearTimeout(hardLimit))
+              .finally(() => {
+                // One event once every slow request of this page has finished, never one per request.
+                lateInFlight = Math.max(0, lateInFlight - 1);
+                if (lateInFlight === 0 && lateUpdated) {
+                  lateUpdated = false;
+                  window.dispatchEvent(new CustomEvent("faida-cache-updated"));
+                }
+              });
             const saved = fromCache();
             if (saved) return saved;
             res = await request; // saved copy vanished meanwhile: wait for the real answer
@@ -576,6 +595,7 @@ export async function warmOfflineCache(force = false): Promise<void> {
       ["/api/university/dashboard"],
       ["/api/university/assignments"],
       ["/api/university/classes"],
+      ["/api/lms", "lms"],
       [`/api/calendar?month=${month}`],
       ["/api/learning"],
       ["/api/maintenance"],

@@ -43,6 +43,9 @@ model User {
   academicClasses       AcademicClass[]
   academicMaterials     AcademicMaterial[]
   academicAnnouncements AcademicAnnouncement[]
+  lmsConnection         LmsConnection?
+  lmsItems              LmsItem[]
+  lmsActivities         LmsActivity[]
   businesses            Business[]
   businessClients       BusinessClient[]
   businessWeeklyMetrics BusinessWeeklyMetric[]
@@ -281,6 +284,7 @@ model UniversityCourse {
   sourceSystem  String?   @default("MANUAL") // MOODLE, MANUAL, ICAL
   sourceUrl     String?
   lastSyncedAt  DateTime?
+  lmsCompletion Int?      // Moodle's own course-completion percentage, when the unit tracks it
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -362,6 +366,78 @@ model AcademicAnnouncement {
 
   user        User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
   course      UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+// -------------------------------------------------------------
+// 3.6. LMS (Moodle) connection, tracked items and activity feed
+// -------------------------------------------------------------
+
+// One per user. The access key is stored encrypted, never in plain text.
+model LmsConnection {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  baseUrl      String
+  tokenEnc     String
+  lmsUserId    Int?
+  lmsUserName  String?
+  status       String    @default("ACTIVE") // ACTIVE, INVALID, ERROR
+  lastError    String?
+  lastSyncAt   DateTime?
+  syncingSince DateTime?
+  baselineDone Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// An assignment, quiz/CAT or class link that exists in the LMS.
+model LmsItem {
+  id            String   @id @default(uuid())
+  userId        String
+  courseId      String?
+  kind          String   // ASSIGNMENT, QUIZ, ZOOM
+  sourceId      String   // the LMS "course module" id
+  title         String
+  url           String?
+  openAt        DateTime?
+  dueAt         DateTime?
+  state         String   @default("TODO") // TODO, SUBMITTED, GRADED
+  gradeEarned   Float?
+  gradeMax      Float?
+  dismissed     Boolean  @default(false)
+  taskId        String?
+  assessmentId  String?
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+  lastChangedAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, sourceId])
+  @@index([userId, dueAt])
+}
+
+// Things that happened in the LMS since the last sync (the University activity feed).
+model LmsActivity {
+  id         String    @id @default(uuid())
+  userId     String
+  courseId   String?
+  itemId     String?
+  type       String    // NEW_ITEM, SUBMITTED, GRADED, DUE_CHANGED, ANNOUNCEMENT, NEW_MATERIAL
+  title      String
+  detail     String?
+  url        String?
+  dedupeKey  String
+  occurredAt DateTime  @default(now())
+  readAt     DateTime?
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, occurredAt])
 }
 
 // -------------------------------------------------------------
