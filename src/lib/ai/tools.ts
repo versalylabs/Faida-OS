@@ -3,6 +3,7 @@ import { buildBriefing, briefingToMarkdown } from "@/lib/briefing";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
 import { zonedNow } from "@/lib/tz";
+import { createPlan } from "@/lib/ai/assignmentPlan";
 
 export interface ToolActionPayload {
   type:
@@ -403,58 +404,34 @@ export async function executeClassBriefing(userId: string, courseCodeOrName?: st
 
 // 9. Assignment Decomposer Tool
 export async function executeDecomposeAssignment(userId: string, assignmentTitle: string): Promise<{ message: string; action: ToolActionPayload }> {
+  const notFound = {
+    message: `I couldn't find an open assignment matching "${assignmentTitle}". Please give more of the title.`,
+    action: { type: "GOAL_DECOMPOSED" as const, title: "Assignment not found", link: "/university" },
+  };
+  const title = assignmentTitle.trim();
+  if (!title) return notFound;
+
+  // The nearest open deadline wins when several titles match.
   const task = await prisma.task.findFirst({
-    where: {
-      userId,
-      isAcademic: true,
-      title: { contains: assignmentTitle },
-    },
-    include: { course: true, subtasks: true },
+    where: { userId, isAcademic: true, status: { not: "DONE" }, title: { contains: title, mode: "insensitive" } },
+    orderBy: { dueDate: "asc" },
+    select: { id: true, title: true, course: { select: { code: true } } },
   });
+  if (!task) return notFound;
 
-  if (!task) {
-    return {
-      message: `I couldn't find an academic assignment matching "${assignmentTitle}". Please specify the exact title.`,
-      action: {
-        type: "GOAL_DECOMPOSED",
-        title: "Assignment Not Found",
-        link: "/university",
-      },
-    };
+  const plan = await createPlan(userId, task.id);
+  if (!plan.ok || !plan.steps) {
+    return { message: plan.error || "I could not plan that assignment.", action: { type: "GOAL_DECOMPOSED", title: task.title, link: "/university" } };
   }
-
-  // Generate 5 conservative subtasks
-  const subtaskTitles = [
-    `1. Read assignment requirements & rubrics (${task.course?.code || "Course"}) — 20m`,
-    `2. Research key concepts & architectural approaches — 45m`,
-    `3. Draft solution & write core algorithms / implementation — 60m`,
-    `4. Test edge cases & verify against assignment specs — 30m`,
-    `5. Format documentation & prepare Moodle submission archive — 25m`,
-  ];
-
-  for (const st of subtaskTitles) {
-    await prisma.subtask.create({
-      data: {
-        taskId: task.id,
-        title: st,
-      },
-    });
-  }
-
-  const updatedTask = await prisma.task.update({
-    where: { id: task.id },
-    data: {
-      estimatedMinutes: 180,
-    },
-  });
-
+  const hours = Math.round(((plan.totalMinutes || 0) / 60) * 10) / 10;
+  const lines = plan.steps.map((s) => `\u2022 ${s.title} (${s.minutes} min, by ${s.by})`);
   return {
-    message: `I've broken down **"${task.title}"** into 5 conservative, manageable steps totaling 3 hours:\n\n${subtaskTitles.map((t) => `• ${t}`).join("\n")}\n\nEach step is logged under the assignment so you can tackle them in low-friction sprints.`,
+    message: `I planned **"${task.title}"** into ${plan.steps.length} steps (about ${hours} h), spread before the deadline:\n\n${lines.join("\n")}`,
     action: {
       type: "ASSIGNMENT_DECOMPOSED",
       title: task.title,
-      badge: "5 Steps Generated",
-      details: `${task.course?.code || "Academic"} • 3h total`,
+      badge: `${plan.steps.length} steps planned`,
+      details: `${task.course?.code || "Academic"} \u2022 ${hours} h total`,
       link: "/university",
     },
   };

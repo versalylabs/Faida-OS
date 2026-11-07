@@ -5,6 +5,7 @@ import { encryptToken } from "@/lib/lms/crypto";
 import { MoodleError, MoodleLoginError, MoodleTokenError, createMoodleClient, normalizeBaseUrl, requestTokenWithPassword } from "@/lib/lms/moodle";
 import { clearAuthFailures, isAuthRateLimited, recordAuthFailure } from "@/lib/auth";
 import { syncUser } from "@/lib/lms/sync";
+import { extractMoodleToken } from "@/lib/lms/ssoToken";
 import { ValidationError, badRequest, must, readBody, serverError, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +48,11 @@ export async function POST(req: NextRequest) {
       }
       await Promise.all(limiterKeys.map((k) => clearAuthFailures(k)));
     } else {
-      token = must(str(body.token, { max: 200, min: 10, required: true }), "Enter your LMS username and password, or paste an access key");
+      // Accepts the bare key, the whole address the LMS redirected to, or its encoded part.
+      const pasted = must(str(body.token, { max: 1000, min: 10, required: true }), "Paste the access key or the link you were given");
+      const found = extractMoodleToken(pasted);
+      if (!found) throw new ValidationError("I could not find an access key in that text. Paste the whole address that starts with moodlemobile:// or web+faida://, or the 32-character key.");
+      token = found;
     }
     if (!/^[A-Za-z0-9]+$/.test(token)) throw new ValidationError("That does not look like an LMS access key");
 

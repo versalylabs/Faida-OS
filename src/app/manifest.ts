@@ -9,6 +9,8 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",
+    // Lets the installed desktop app receive the LMS's sign-in reply (University > Connect LMS).
+    protocol_handlers: [{ protocol: "web+faida", url: "/lms/sso#uri=%s" }],
     background_color: "#0a1130",
     theme_color: "#05070f",
     icons: [

@@ -30,6 +30,7 @@ import {
 import Link from "next/link";
 import { lmsLinkFor } from "@/lib/lms";
 import { useLms } from "@/lib/useLms";
+import { PlanButton, PlanChecklist } from "@/components/university/AssignmentPlan";
 import { LmsAttentionCard, LmsFeedCard, LmsStatusCard, LmsUnitsGrid } from "@/components/university/LmsPanels";
 import { isOnline as isOnlineNow, offlineFetch } from "@/lib/offlineSync";
 import { formatDate } from "@/lib/utils";
@@ -197,7 +198,8 @@ export default function UniversityPage() {
   const [syncMode, setSyncMode] = useState<"MANUAL_IMPORT" | "ICAL_SYNC" | "MOODLE_REST">("MANUAL_IMPORT");
   const [iCalUrl, setICalUrl] = useState("");
   const [moodleUrl, setMoodleUrl] = useState("");
-  const [lmsAuthMode, setLmsAuthMode] = useState<"login" | "key">("login");
+  const [lmsAuthMode, setLmsAuthMode] = useState<"sso" | "login" | "key">("sso");
+  const [ssoNote, setSsoNote] = useState<string | null>(null);
   const [lmsUsername, setLmsUsername] = useState("");
   const [lmsPassword, setLmsPassword] = useState("");
   const [moodleToken, setMoodleToken] = useState("");
@@ -262,6 +264,7 @@ export default function UniversityPage() {
   const openConnect = () => {
     setSyncMode("MOODLE_REST");
     if (lms.data?.connection?.baseUrl) setMoodleUrl(lms.data.connection.baseUrl);
+    setSsoNote(null);
     setSyncStatus(null);
     setShowSyncModal(true);
   };
@@ -289,23 +292,26 @@ export default function UniversityPage() {
     }
   };
 
-  // Trigger AI Assignment Decomposition
-  const handleDecomposeAssignment = async (assign: AssignmentItem) => {
-    try {
-      const res = await fetch("/api/assistant", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: `break down assignment ${assign.title}`,
-        }),
+  // Tick or untick one step of an assignment's plan
+  const handleToggleStep = async (taskId: string, subtaskId: string, done: boolean) => {
+    const apply = (list: AssignmentItem[]) =>
+      list.map((a) => {
+        if (a.id !== taskId) return a;
+        const subtasks = a.subtasks.map((st) => (st.id === subtaskId ? { ...st, isDone: done } : st));
+        return { ...a, subtasks, progressPercent: subtasks.length ? Math.round((subtasks.filter((x) => x.isDone).length / subtasks.length) * 100) : 0 };
       });
-      const data = await res.json();
-      if (data.success) {
-        // Refresh assignments to show newly created subtasks
-        fetchData(true);
-      }
+    setAllAssignments(apply);
+    setDueSoonAssignments(apply);
+    try {
+      await offlineFetch(`/api/tasks/${taskId}/subtasks`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subtaskId, isDone: done }),
+        description: "Update an assignment step",
+      });
     } catch (e) {
-      console.error("Failed to decompose assignment:", e);
+      console.error("Failed to update step:", e);
+      fetchData(true);
     }
   };
 
@@ -488,6 +494,49 @@ export default function UniversityPage() {
     } catch (e) {
       console.error("Failed to create class:", e);
     }
+  };
+
+  // ---- "Sign in with my university account" -----------------------------------------------------
+  const lmsRoot = (raw: string): string | null => {
+    let v = raw.trim();
+    if (!v) return null;
+    if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+    try {
+      const u = new URL(v);
+      return (u.origin + u.pathname.replace(/\/(login|my|course|admin|user|mod|calendar)(\/.*)?$/i, "").replace(/\/+$/, "")).toString();
+    } catch {
+      return null;
+    }
+  };
+  const isPhone = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // Let this browser hand the LMS's reply back to Faida OS (Chrome/Edge/Firefox on a computer).
+  useEffect(() => {
+    if (!showSyncModal || syncMode !== "MOODLE_REST" || lmsAuthMode !== "sso") return;
+    try {
+      if (typeof navigator.registerProtocolHandler !== "function") throw new Error("unsupported");
+      navigator.registerProtocolHandler("web+faida", `${window.location.origin}/lms/sso#uri=%s`);
+      setSsoNote(null);
+    } catch {
+      setSsoNote("This browser cannot do one-tap sign-in. Use a computer with Chrome or Edge (you only need to connect once, it keeps syncing for your phone), or use the \u201cPaste key\u201d tab.");
+    }
+  }, [showSyncModal, syncMode, lmsAuthMode]);
+
+  const startSso = () => {
+    const root = lmsRoot(moodleUrl);
+    if (!root) {
+      setSyncStatus("Enter your LMS address first (for example https://virtualcampus.kcau.ac.ke).");
+      return;
+    }
+    const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("");
+    try {
+      localStorage.setItem("faida_lms_sso", JSON.stringify({ base: root, ts: Date.now() }));
+    } catch {
+      setSyncStatus("Your browser is blocking site data, which this sign-in needs. Allow it for this site and try again.");
+      return;
+    }
+    setSyncStatus("Opening your LMS sign-in\u2026");
+    window.location.assign(`${root}/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=${nonce}&urlscheme=${encodeURIComponent("web+faida")}`);
   };
 
   // Sync / Import Trigger
@@ -976,16 +1025,7 @@ export default function UniversityPage() {
                           </div>
 
                           <div className="flex items-center gap-2">
-                            {a.subtasks.length === 0 && (
-                              <button
-                                onClick={() => handleDecomposeAssignment(a)}
-                                className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium whitespace-nowrap shrink-0 transition-all"
-                                title="Break down into 5 conservative steps"
-                              >
-                                <Sparkles className="h-3 w-3 text-blue-400" />
-                                Break Down
-                              </button>
-                            )}
+                            <PlanButton a={a} onDone={() => fetchData(true)} />
                             {lmsLinkFor(a.submissionUrl) && (
                               <a
                                 href={lmsLinkFor(a.submissionUrl)!.href}
@@ -1001,22 +1041,7 @@ export default function UniversityPage() {
                           </div>
                         </div>
 
-                        {/* Subtask Progress Bar if available */}
-                        {a.subtasks.length > 0 && (
-                          <div className="pt-2 border-t border-slate-900 flex items-center justify-between text-[11px] text-slate-400">
-                            <div className="flex items-center gap-2 w-full max-w-xs">
-                              <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                                <div
-                                  className="h-full bg-emerald-500 rounded-full"
-                                  style={{ width: `${a.progressPercent || 0}%` }}
-                                />
-                              </div>
-                              <span className="text-[10px] shrink-0 font-medium">
-                                {a.subtasks.filter((s) => s.isDone).length}/{a.subtasks.length} steps
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                        <PlanChecklist a={a} onToggle={handleToggleStep} onReplanned={() => fetchData(true)} />
                       </div>
                     ))}
                   </div>
@@ -1210,6 +1235,8 @@ export default function UniversityPage() {
                   </div>
                 </div>
 
+                <PlanChecklist a={a} onToggle={handleToggleStep} onReplanned={() => fetchData(true)} />
+
                 <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between">
                   <button
                     onClick={() => handleToggleTask(a.id, a.status)}
@@ -1224,15 +1251,7 @@ export default function UniversityPage() {
                   </button>
 
                   <div className="flex items-center gap-2">
-                    {a.subtasks.length === 0 && (
-                      <button
-                        onClick={() => handleDecomposeAssignment(a)}
-                        className="p-1.5 rounded bg-slate-800 hover:bg-slate-700 text-blue-400 text-xs flex items-center gap-1"
-                        title="Decompose into steps"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </button>
-                    )}
+                    <PlanButton a={a} compact onDone={() => fetchData(true)} />
                     {lmsLinkFor(a.submissionUrl) && (
                       <a
                         href={lmsLinkFor(a.submissionUrl)!.href}
@@ -1645,16 +1664,20 @@ export default function UniversityPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-slate-950 border border-slate-800">
+                <div className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-slate-950 border border-slate-800">
                   {[
-                    { id: "login", label: "Sign in with LMS login" },
-                    { id: "key", label: "I have an access key" },
+                    { id: "sso", label: "Sign in" },
+                    { id: "login", label: "Password" },
+                    { id: "key", label: "Paste key" },
                   ].map((m) => (
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => setLmsAuthMode(m.id as "login" | "key")}
-                      className={`py-1.5 px-2 rounded-md text-[11px] font-semibold whitespace-nowrap ${
+                      onClick={() => {
+                        setLmsAuthMode(m.id as "sso" | "login" | "key");
+                        setSyncStatus(null);
+                      }}
+                      className={`py-1.5 px-1.5 rounded-md text-[11px] font-semibold leading-tight ${
                         lmsAuthMode === m.id ? "bg-blue-600 text-white" : "text-slate-300 hover:text-white"
                       }`}
                     >
@@ -1663,7 +1686,41 @@ export default function UniversityPage() {
                   ))}
                 </div>
 
-                {lmsAuthMode === "login" ? (
+                {lmsAuthMode === "sso" && (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                      <p className="font-semibold text-slate-100">For LMS sites you open with a Google or Microsoft account</p>
+                      <p>
+                        You sign in on your LMS&apos;s own page, the way you normally do, and it sends you straight back here with a read-only key. Faida OS never
+                        sees your Google or Microsoft password.
+                      </p>
+                      <ol className="list-decimal pl-4 space-y-0.5">
+                        <li>Enter your LMS address above.</li>
+                        <li>
+                          If your browser asks to let Faida OS open these sign-in links, choose <span className="font-semibold text-white">Allow</span>.
+                        </li>
+                        <li>Press the button, sign in if asked, and you will land back in University.</li>
+                      </ol>
+                    </div>
+                    {ssoNote && <p className="text-[11px] text-amber-200 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">{ssoNote}</p>}
+                    {isPhone && (
+                      <p className="text-[11px] text-slate-300">
+                        On a phone this usually does not work. Connect once from your laptop in Chrome or Edge; syncing and reminders then keep working on your phone.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={startSso}
+                      disabled={!moodleUrl.trim()}
+                      className="press w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
+                    >
+                      Sign in with my university account
+                    </button>
+                    <p className="text-[11px] text-slate-400">If you do not come back here, use the &ldquo;Paste key&rdquo; tab.</p>
+                  </div>
+                )}
+
+                {lmsAuthMode === "login" && (
                   <div className="space-y-3">
                     <div>
                       <label className="text-xs font-semibold text-slate-300">LMS username</label>
@@ -1688,47 +1745,51 @@ export default function UniversityPage() {
                         className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       />
                     </div>
-                    <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1 leading-relaxed">
+                    <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 leading-relaxed">
                       <p>
-                        Faida OS signs in to your LMS once to get a read-only access key, then forgets your password. Only the key is kept, encrypted. If you
-                        sign in to your LMS with a university account (single sign-on) this will not work; use the access-key method instead.
+                        Only for LMS sites that have their own passwords. Faida OS signs in once to get a read-only key, then forgets the password; only the key is kept,
+                        encrypted. If you open your LMS with a Google or Microsoft button, use the &ldquo;Sign in&rdquo; tab instead.
                       </p>
                     </div>
                   </div>
-                ) : (
-                <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300">Access key (token)</label>
-                  <input
-                    type="password"
-                    value={moodleToken}
-                    onChange={(e) => setMoodleToken(e.target.value)}
-                    autoComplete="off"
-                    placeholder="Paste your Moodle mobile service key"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                </div>
                 )}
+
                 {lmsAuthMode === "key" && (
-                <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1 leading-relaxed">
-                  <p className="font-semibold text-slate-100">Where do I get the key?</p>
-                  <p>
-                    Newer Moodle sites do not show key values under Security keys (they only list them, and Reset makes a new hidden one). Get a key by
-                    opening this address in your browser, with your own LMS username and password filled in:
-                  </p>
-                  <p className="font-mono text-[10px] text-blue-200 break-all">
-                    {(moodleUrl || "https://your-lms-address").replace(/\/+$/, "")}/login/token.php?username=YOURUSERNAME&amp;password=YOURPASSWORD&amp;service=moodle_mobile_app
-                  </p>
-                  <p>
-                    The page answers with a short code after <span className="font-mono">&quot;token&quot;:</span>. Paste only that code above. Then clear your browser history for that
-                    page. Keys can expire (the LMS decides when); Faida OS tells you to reconnect if that happens.
-                  </p>
-                  <p className="text-slate-400">
-                    Faida OS only reads your courses, assignments, marks and announcements. The key is stored encrypted and never shown again, and you can
-                    disconnect any time. Your password is never sent to Faida OS in this method.
-                  </p>
-                </div>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300">Key or sign-in address</label>
+                      <input
+                        type="text"
+                        value={moodleToken}
+                        onChange={(e) => setMoodleToken(e.target.value)}
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        placeholder="Paste the key, or the whole address starting moodlemobile:// or web+faida://"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                      <p className="font-semibold text-slate-100">Getting it by hand (Chrome or Edge on a computer)</p>
+                      <ol className="list-decimal pl-4 space-y-0.5">
+                        <li>Open a new tab, press F12, open the Network tab and tick &ldquo;Preserve log&rdquo;.</li>
+                        <li>
+                          In that tab open this address (sign in if asked):
+                          <span className="block font-mono text-[10px] text-blue-200 break-all mt-0.5">
+                            {lmsRoot(moodleUrl) || "https://your-lms-address"}/admin/tool/mobile/launch.php?service=moodle_mobile_app&amp;passport=12345&amp;urlscheme=moodlemobile
+                          </span>
+                          If the browser asks to open an app, cancel.
+                        </li>
+                        <li>
+                          In the Network list click <span className="font-mono">launch.php</span>, then Headers, and copy the value of <span className="font-mono">Location</span>{" "}
+                          (it starts <span className="font-mono">moodlemobile://token=</span>). Paste it above. Faida OS takes the key out of it.
+                        </li>
+                      </ol>
+                      <p className="text-slate-400">
+                        The key is read-only, stored encrypted and never shown again. Your LMS decides when it expires; Faida OS then asks you to reconnect.
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
@@ -1747,6 +1808,7 @@ export default function UniversityPage() {
               >
                 Cancel
               </button>
+              {!(syncMode === "MOODLE_REST" && lmsAuthMode === "sso") && (
               <button
                 type="button"
                 onClick={handleRunSync}
@@ -1765,6 +1827,7 @@ export default function UniversityPage() {
                   </>
                 )}
               </button>
+              )}
             </div>
           </div>
         </div>
