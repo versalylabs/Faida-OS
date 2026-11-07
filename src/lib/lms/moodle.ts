@@ -3,6 +3,8 @@ import { ValidationError } from "@/lib/validate";
 
 /** Raised when the LMS refuses the key (wrong, revoked or expired). */
 export class MoodleTokenError extends Error {}
+/** Raised when the LMS says the username or password is wrong. */
+export class MoodleLoginError extends Error {}
 /** Raised for any other LMS error answer (a feature switched off, no permission, ...). */
 export class MoodleError extends Error {
   constructor(public code: string, message: string) {
@@ -135,4 +137,38 @@ export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, in
   });
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * Exchanges a student's LMS username and password for an access key, once.
+ * The password is used for this one request and is never stored, logged or returned.
+ */
+export async function requestTokenWithPassword(base: string, username: string, password: string): Promise<string> {
+  const body = new URLSearchParams({ username, password, service: "moodle_mobile_app" });
+  let res: Response;
+  try {
+    res = await fetch(`${base}/login/token.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "FaidaOS/1.0" },
+      body,
+      redirect: "manual",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    throw new MoodleError("network", "Could not reach the LMS");
+  }
+  if (res.status >= 300 && res.status < 400) throw new MoodleError("redirect", "The LMS address redirects elsewhere");
+  if (!res.ok) throw new MoodleError(`http_${res.status}`, `The LMS answered with status ${res.status}`);
+
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > 64 * 1024) throw new MoodleError("too_large", "The LMS response was too large");
+  let data: any;
+  try {
+    data = JSON.parse(new TextDecoder().decode(buf));
+  } catch {
+    throw new MoodleError("bad_json", "The LMS did not answer as expected");
+  }
+  if (data && typeof data.token === "string" && data.token) return data.token;
+  if (data?.errorcode === "invalidlogin") throw new MoodleLoginError("The LMS did not accept that username and password");
+  throw new MoodleError(String(data?.errorcode || "no_token"), String(data?.error || "The LMS did not give out a key"));
 }

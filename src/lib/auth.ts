@@ -171,7 +171,7 @@ export async function isAuthRateLimited(key: string): Promise<boolean> {
   return Boolean(record?.blockedUntil && record.blockedUntil.getTime() > Date.now());
 }
 
-export async function recordAuthFailure(key: string): Promise<void> {
+export async function recordAuthFailure(key: string, limit: number = AUTH_RATE_LIMIT): Promise<void> {
   const hashedKey = hashRateLimitKey(key);
   await prisma.$executeRaw`
     INSERT INTO "AuthRateLimit" ("key", "count", "windowStartedAt", "blockedUntil", "createdAt", "updatedAt")
@@ -187,7 +187,7 @@ export async function recordAuthFailure(key: string): Promise<void> {
       END,
       "blockedUntil" = CASE
         WHEN "AuthRateLimit"."windowStartedAt" <= NOW() - (${AUTH_RATE_WINDOW_MINUTES} * INTERVAL '1 minute') THEN NULL
-        WHEN "AuthRateLimit"."count" + 1 >= ${AUTH_RATE_LIMIT} THEN NOW() + (${AUTH_RATE_WINDOW_MINUTES} * INTERVAL '1 minute')
+        WHEN "AuthRateLimit"."count" + 1 >= ${limit} THEN NOW() + (${AUTH_RATE_WINDOW_MINUTES} * INTERVAL '1 minute')
         ELSE "AuthRateLimit"."blockedUntil"
       END,
       "updatedAt" = NOW()

@@ -197,6 +197,9 @@ export default function UniversityPage() {
   const [syncMode, setSyncMode] = useState<"MANUAL_IMPORT" | "ICAL_SYNC" | "MOODLE_REST">("MANUAL_IMPORT");
   const [iCalUrl, setICalUrl] = useState("");
   const [moodleUrl, setMoodleUrl] = useState("");
+  const [lmsAuthMode, setLmsAuthMode] = useState<"login" | "key">("login");
+  const [lmsUsername, setLmsUsername] = useState("");
+  const [lmsPassword, setLmsPassword] = useState("");
   const [moodleToken, setMoodleToken] = useState("");
   const [jsonImportText, setJsonImportText] = useState("");
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
@@ -497,9 +500,14 @@ export default function UniversityPage() {
         const connectRes = await fetch("/api/lms/connect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ baseUrl: moodleUrl, token: moodleToken }),
+          body: JSON.stringify(
+            lmsAuthMode === "login"
+              ? { baseUrl: moodleUrl, username: lmsUsername.trim(), password: lmsPassword }
+              : { baseUrl: moodleUrl, token: moodleToken }
+          ),
         });
         const connectData = await connectRes.json();
+        setLmsPassword(""); // never keep the password around, whatever the outcome
         if (connectData.success) {
           setMoodleToken("");
           const sum = connectData.summary;
@@ -1637,6 +1645,58 @@ export default function UniversityPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
+                <div className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-slate-950 border border-slate-800">
+                  {[
+                    { id: "login", label: "Sign in with LMS login" },
+                    { id: "key", label: "I have an access key" },
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setLmsAuthMode(m.id as "login" | "key")}
+                      className={`py-1.5 px-2 rounded-md text-[11px] font-semibold whitespace-nowrap ${
+                        lmsAuthMode === m.id ? "bg-blue-600 text-white" : "text-slate-300 hover:text-white"
+                      }`}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+
+                {lmsAuthMode === "login" ? (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300">LMS username</label>
+                      <input
+                        type="text"
+                        value={lmsUsername}
+                        onChange={(e) => setLmsUsername(e.target.value)}
+                        autoComplete="off"
+                        autoCapitalize="none"
+                        placeholder="The username you use to sign in to the LMS"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-slate-300">LMS password</label>
+                      <input
+                        type="password"
+                        value={lmsPassword}
+                        onChange={(e) => setLmsPassword(e.target.value)}
+                        autoComplete="off"
+                        placeholder="Used once to get a key, never stored"
+                        className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1 leading-relaxed">
+                      <p>
+                        Faida OS signs in to your LMS once to get a read-only access key, then forgets your password. Only the key is kept, encrypted. If you
+                        sign in to your LMS with a university account (single sign-on) this will not work; use the access-key method instead.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                <div className="space-y-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300">Access key (token)</label>
                   <input
@@ -1648,6 +1708,9 @@ export default function UniversityPage() {
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                   />
                 </div>
+                </div>
+                )}
+                {lmsAuthMode === "key" && (
                 <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1 leading-relaxed">
                   <p className="font-semibold text-slate-100">Where do I get the key?</p>
                   <p>
@@ -1663,9 +1726,10 @@ export default function UniversityPage() {
                   </p>
                   <p className="text-slate-400">
                     Faida OS only reads your courses, assignments, marks and announcements. The key is stored encrypted and never shown again, and you can
-                    disconnect any time. Your password is never sent to Faida OS.
+                    disconnect any time. Your password is never sent to Faida OS in this method.
                   </p>
                 </div>
+                )}
               </div>
             )}
 

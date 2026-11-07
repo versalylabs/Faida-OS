@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { encryptToken } from "@/lib/lms/crypto";
-import { MoodleError, MoodleTokenError, createMoodleClient, normalizeBaseUrl } from "@/lib/lms/moodle";
+import { MoodleError, MoodleLoginError, MoodleTokenError, createMoodleClient, normalizeBaseUrl, requestTokenWithPassword } from "@/lib/lms/moodle";
+import { clearAuthFailures, isAuthRateLimited, recordAuthFailure } from "@/lib/auth";
 import { syncUser } from "@/lib/lms/sync";
 import { ValidationError, badRequest, must, readBody, serverError, str } from "@/lib/validate";
 
@@ -19,7 +20,35 @@ export async function POST(req: NextRequest) {
 
     const body = await readBody(req);
     const base = await normalizeBaseUrl(body.baseUrl);
-    const token = must(str(body.token, { max: 200, min: 10, required: true }), "Paste the access key from your LMS");
+    let token: string;
+    if (typeof body.password === "string" && body.password.length > 0) {
+      // Sign in with the LMS login once to obtain a key. The password is never stored or logged.
+      const username = must(str(body.username, { max: 100, required: true }), "Enter your LMS username");
+      if (body.password.length > 200) throw new ValidationError("That password is too long");
+      const limiterKeys = [`lms-login:user:${user.id}`, `lms-login:site:${new URL(base).host}:${username.toLowerCase()}`];
+      for (const k of limiterKeys) {
+        if (await isAuthRateLimited(k)) {
+          return NextResponse.json(
+            { success: false, error: "Too many failed sign-ins. Wait 15 minutes before trying again." },
+            { status: 429, headers: { ...noStore, "Retry-After": "900" } }
+          );
+        }
+      }
+      try {
+        token = await requestTokenWithPassword(base, username, body.password);
+      } catch (err) {
+        if (err instanceof MoodleLoginError) {
+          // Stricter than app sign-in: this endpoint forwards guesses to another organisation's login.
+          await Promise.all(limiterKeys.map((k) => recordAuthFailure(k, 5)));
+          throw new ValidationError("The LMS did not accept that username and password. If you sign in to your LMS through a university account (single sign-on), use the key method instead.");
+        }
+        if (err instanceof MoodleError) throw new ValidationError("The LMS did not hand out a key for that login. It may need the key method instead.");
+        throw new ValidationError("Could not reach that LMS address. Check it and try again.");
+      }
+      await Promise.all(limiterKeys.map((k) => clearAuthFailures(k)));
+    } else {
+      token = must(str(body.token, { max: 200, min: 10, required: true }), "Enter your LMS username and password, or paste an access key");
+    }
     if (!/^[A-Za-z0-9]+$/.test(token)) throw new ValidationError("That does not look like an LMS access key");
 
     // Prove the key works before saving anything.
