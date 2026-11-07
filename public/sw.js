@@ -5,8 +5,8 @@
 // per-user offline cache instead (see src/lib/offlineSync.ts).
 //
 // Changing these names makes the activate handler delete every older cache.
-const STATIC_CACHE = "faida-static-v4";
-const PAGES_CACHE = "faida-pages-v4";
+const STATIC_CACHE = "faida-static-v5";
+const PAGES_CACHE = "faida-pages-v5";
 
 // Every page of the app. After sign-in the app asks the worker to save all of them (plus the
 // scripts each needs) so any page can open offline, even one never visited before.
@@ -16,7 +16,7 @@ const APP_ROUTES = [
   "/developer", "/lazy", "/settings", "/capture",
 ];
 
-const PRECACHE_ASSETS = ["/favicon.ico", "/icon.svg", "/manifest.webmanifest", "/icon-192.png"];
+const PRECACHE_ASSETS = ["/favicon.ico", "/icon.svg", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 // A saved page is reused if the network is slower than this.
 const NAVIGATION_TIMEOUT_MS = 4000;

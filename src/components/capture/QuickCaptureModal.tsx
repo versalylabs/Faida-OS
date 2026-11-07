@@ -123,7 +123,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
             <button
               type="submit"
               disabled={!text.trim() || isSubmitting}
-              className="absolute right-1.5 sm:right-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1 sm:gap-1.5 shadow-md shadow-blue-500/20 cursor-pointer transition-all"
+              className="absolute right-1.5 sm:right-2 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1 sm:gap-1.5 shadow-md shadow-blue-500/10 cursor-pointer transition-all"
             >
               {isSubmitting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

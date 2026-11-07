@@ -324,7 +324,7 @@ export default function FilesPage() {
             setUploadMode("DEVICE");
             setShowAddModal(true);
           }}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm shadow-blue-500/20 self-start md:self-auto"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-md shadow-blue-500/10 self-start md:self-auto"
         >
           <UploadCloud className="h-4 w-4" />
           <span>Upload / Add File</span>
@@ -806,7 +806,7 @@ export default function FilesPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting || (uploadMode === "DEVICE" && !selectedDeviceFile)}
-                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-lg shadow-blue-600/20"
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-blue-600/10"
                 >
                   {isSubmitting ? (
                     <>

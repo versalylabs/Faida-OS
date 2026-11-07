@@ -52,8 +52,9 @@ export function ServiceWorkerRegister() {
               .catch(() => {});
           }
         } catch {}
-        warmOfflineCache();
-      }, 4000);
+        // The warm-up is only for the installed app; in development it just slows the page down.
+        if (production) warmOfflineCache();
+      }, 5000);
     };
 
     // 3. Handle connection status transitions

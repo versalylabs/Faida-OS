@@ -251,7 +251,7 @@ export function Sidebar() {
             className={cn(
               "group relative flex items-center gap-3 p-2.5 rounded-2xl transition-all duration-300 cursor-pointer overflow-hidden",
               isLazyActive
-                ? "bg-gradient-to-br from-amber-300/35 to-amber-500/15 border border-amber-200/60 shadow-[0_10px_30px_-10px_rgba(255,184,107,0.8),inset_0_1px_0_rgba(255,255,255,0.5)]"
+                ? "bg-gradient-to-br from-amber-300/35 to-amber-500/15 border border-amber-200/60 shadow-[0_8px_22px_-10px_rgba(255,184,107,0.5),inset_0_1px_0_rgba(255,255,255,0.5)]"
                 : "bg-gradient-to-br from-amber-300/15 to-amber-500/5 border border-amber-200/25 hover:border-amber-200/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]"
             )}
           >

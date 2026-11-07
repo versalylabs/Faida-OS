@@ -31,6 +31,8 @@ import {
 import Link from "next/link";
 import { formatKES } from "@/lib/utils";
 import { getCachedOfflineData, offlineFetch } from "@/lib/offlineSync";
+import { BriefingCard } from "@/components/dashboard/BriefingCard";
+import type { Briefing } from "@/lib/briefing";
 
 interface TaskItem {
   id: string;
@@ -191,6 +193,7 @@ export default function DashboardPage() {
     netCashFlow: 45000,
   });
   const [isLoading, setIsLoading] = useState(true);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
 
   const currentDate = new Date().toLocaleDateString("en-US", {
     weekday: "long",
@@ -367,6 +370,7 @@ export default function DashboardPage() {
         universityData,
         notesData,
         menuData,
+        briefingData,
       ] = await Promise.all([
         offlineFetch("/api/tasks?status=TODO", { cache: "no-store", cacheKey: "dashboard_tasks" })
           .then((r: any) => r.json())
@@ -395,7 +399,11 @@ export default function DashboardPage() {
         offlineFetch("/api/menu?day=TODAY", { cache: "no-store", cacheKey: "dashboard_menu" })
           .then((r: any) => r.json())
           .catch(() => ({ success: false })),
+        offlineFetch("/api/briefing", { cache: "no-store", cacheKey: "dashboard_briefing" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
       ]);
+      if (briefingData?.success && briefingData.briefing) setBriefing(briefingData.briefing);
 
       processAll(tasksData, attentionData, financeData, projectsData, calendarData, shoppingData, universityData, notesData, menuData);
     } catch (e) {
@@ -408,6 +416,8 @@ export default function DashboardPage() {
   useEffect(() => {
     // Paint the last-known dashboard immediately, then refresh it in the background
     const c = (key: string) => getCachedOfflineData<any>(key) || { success: false };
+    const cachedBriefing = c("dashboard_briefing");
+    if (cachedBriefing.success && cachedBriefing.briefing) setBriefing(cachedBriefing.briefing);
     const cachedTasks = c("dashboard_tasks");
     if (cachedTasks.success) {
       processAll(
@@ -451,7 +461,7 @@ export default function DashboardPage() {
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Link
             href="/capture"
-            className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs shadow-lg shadow-blue-500/25 transition-all"
+            className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-medium text-xs shadow-md shadow-blue-500/10 transition-all"
           >
             <Sparkles className="h-3.5 w-3.5" />
             <span>Universal Capture</span>
@@ -466,31 +476,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Faida AI Copilot Briefing Box */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-950/40 via-slate-900 to-slate-950 border border-blue-500/20 p-4 sm:p-6 shadow-xl">
-        <div className="flex items-start gap-3 sm:gap-4">
-          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0 shadow-inner">
-            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
-          </div>
-          <div className="space-y-1.5 flex-1">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-blue-300 flex items-center gap-2">
-                Faida Intelligence Briefing
-                <span className="text-[10px] bg-blue-500/20 border border-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full font-mono">
-                  Autonomous
-                </span>
-              </h2>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed max-w-3xl">
-              &quot;Good day. You have <strong>{tasks.length} active tasks</strong> in the execution queue,{" "}
-              <strong>{scheduleItems.length} upcoming events</strong> on your schedule,{" "}
-              <strong>{projects.length} active projects</strong>, and{" "}
-              <strong>{shoppingSummary.pendingCount} items</strong> to buy on your shopping list.
-              Faida has organized your priorities across all subsystems.&quot;
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* Faida Intelligence Briefing: what needs attention now */}
+      <BriefingCard briefing={briefing} loading={isLoading} />
 
       {/* PRIMARY ROW: Tasks Focus, Active Projects, Finance */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">

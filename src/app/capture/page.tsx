@@ -177,7 +177,7 @@ export default function CapturePage() {
           <button
             type="submit"
             disabled={!input.trim() || isCapturing}
-            className="absolute right-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-blue-500/20 cursor-pointer transition-all"
+            className="absolute right-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-blue-500/10 cursor-pointer transition-all"
           >
             {isCapturing ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

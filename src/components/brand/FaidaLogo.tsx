@@ -11,74 +11,84 @@ interface FaidaLogoProps {
 }
 
 export function FaidaLogoIcon({ className, size = 32 }: { className?: string; size?: number }) {
+  // Same liquid-glass artwork as the app icon (see scripts/generate-icons.cjs).
+  const shapes = (
+    <>
+      <rect x="120" y="112" width="64" height="288" rx="32" />
+      <path d="M152 112 H368 C385.6 112 396.8 129.6 390.4 145.6 L377.6 177.6 C373.6 186.4 364.8 192 355.2 192 H152 Z" />
+      <path d="M152 228 H312 C326.4 228 334.4 244 326.4 255.2 L260 320 H308 C321.6 320 328.8 336 320 346.4 L216 432 C206.4 440 192 430.4 196.8 419.2 L224 356 H152 Z" />
+    </>
+  );
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 64 64"
+      viewBox="0 0 512 512"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={cn("shrink-0 select-none", className)}
+      aria-hidden="true"
     >
       <defs>
-        <linearGradient id="fl-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#0f172a" />
-          <stop offset="50%" stopColor="#090d16" />
-          <stop offset="100%" stopColor="#020617" />
+        <linearGradient id="fl-bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#2c3b94" />
+          <stop offset="0.5" stopColor="#101a48" />
+          <stop offset="1" stopColor="#060c26" />
         </linearGradient>
-
-        <linearGradient id="fl-border" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.8" />
-          <stop offset="50%" stopColor="#3b82f6" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0.7" />
+        <radialGradient id="fl-glow-a" cx="0.18" cy="0.08" r="0.75">
+          <stop offset="0" stopColor="#8d9dff" stopOpacity="0.6" />
+          <stop offset="1" stopColor="#8d9dff" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id="fl-glow-b" cx="0.88" cy="0.96" r="0.7">
+          <stop offset="0" stopColor="#6ee7d0" stopOpacity="0.5" />
+          <stop offset="1" stopColor="#6ee7d0" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="fl-sheen" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.34" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
-
-        <linearGradient id="fl-top" x1="14" y1="12" x2="50" y2="24" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#38bdf8" />
-          <stop offset="60%" stopColor="#2563eb" />
-          <stop offset="100%" stopColor="#1d4ed8" />
+        <linearGradient id="fl-rim" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.65" />
+          <stop offset="0.5" stopColor="#fff" stopOpacity="0.08" />
+          <stop offset="1" stopColor="#b9f5e8" stopOpacity="0.3" />
         </linearGradient>
-
-        <linearGradient id="fl-bolt" x1="16" y1="26" x2="48" y2="54" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#60a5fa" />
-          <stop offset="45%" stopColor="#3b82f6" />
-          <stop offset="85%" stopColor="#06b6d4" />
-          <stop offset="100%" stopColor="#10b981" />
+        <linearGradient id="fl-mark" x1="120" y1="110" x2="400" y2="440" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#f3f5ff" />
+          <stop offset="0.35" stopColor="#b7c3ff" />
+          <stop offset="0.7" stopColor="#7d92ff" />
+          <stop offset="1" stopColor="#4fe0c4" />
         </linearGradient>
-
-        <filter id="fl-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
-          <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        <linearGradient id="fl-mark-hi" x1="0" y1="110" x2="0" y2="330" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.7" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+        <clipPath id="fl-face">
+          <rect width="512" height="512" rx="116" />
+        </clipPath>
+        <clipPath id="fl-mk">{shapes}</clipPath>
+        <filter id="fl-drop" x="-20%" y="-20%" width="140%" height="150%">
+          <feDropShadow dx="0" dy="14" stdDeviation="14" floodColor="#050a24" floodOpacity="0.5" />
         </filter>
       </defs>
 
-      {/* Squircle base */}
-      <rect width="64" height="64" rx="16" fill="url(#fl-bg)" />
-      <rect x="1" y="1" width="62" height="62" rx="15" stroke="url(#fl-border)" strokeWidth="1.5" fill="none" />
+      <rect width="512" height="512" rx="116" fill="url(#fl-bg)" />
+      <g clipPath="url(#fl-face)">
+        <rect width="512" height="512" fill="url(#fl-glow-a)" />
+        <rect width="512" height="512" fill="url(#fl-glow-b)" />
+        <rect width="512" height="300" fill="url(#fl-sheen)" />
+      </g>
+      <rect x="2.5" y="2.5" width="507" height="507" rx="113.5" fill="none" stroke="url(#fl-rim)" strokeWidth="5" />
 
-      {/* Internal ambient glow */}
-      <circle cx="32" cy="30" r="18" fill="#3b82f6" fillOpacity="0.2" filter="url(#fl-glow)" />
-
-      {/* Stylized F + Execution Bolt */}
-      <g filter="url(#fl-glow)">
-        {/* Vertical Spine */}
-        <rect x="15" y="14" width="7" height="36" rx="3.5" fill="url(#fl-top)" />
-
-        {/* Top Arm of F */}
-        <path
-          d="M19 14 H46 C48.2 14 49.6 16.2 48.8 18.2 L47.2 22.2 C46.7 23.3 45.6 24 44.4 24 H19 Z"
-          fill="url(#fl-top)"
-        />
-
-        {/* Middle Lightning Bolt Arm */}
-        <path
-          d="M19 28.5 H39 C40.8 28.5 41.8 30.5 40.8 31.9 L32.5 40 H38.5 C40.2 40 41.1 42 40 43.3 L27 54 C25.8 55 24 53.8 24.6 52.4 L28 44.5 H19 Z"
-          fill="url(#fl-bolt)"
-        />
-
-        {/* Cyber energy spark dots */}
-        <circle cx="47.5" cy="18.5" r="2" fill="#38bdf8" />
-        <circle cx="27" cy="53" r="1.5" fill="#10b981" />
+      <g transform="translate(256 256) scale(1) translate(-258 -276)">
+        <g filter="url(#fl-drop)">
+          <g clipPath="url(#fl-mk)">
+            <rect x="100" y="90" width="320" height="370" fill="url(#fl-mark)" />
+            <rect x="100" y="90" width="320" height="230" fill="url(#fl-mark-hi)" />
+          </g>
+        </g>
+        <circle cx="378" cy="146" r="15" fill="#ffffff" />
+        <circle cx="378" cy="146" r="15" fill="none" stroke="#4fe0c4" strokeOpacity="0.9" strokeWidth="3" />
+        <circle cx="214" cy="424" r="11" fill="#4fe0c4" />
       </g>
     </svg>
   );

@@ -539,7 +539,7 @@ export default function MenuPage() {
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => openAddModal(currentDay, "BREAKFAST")}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 cursor-pointer"
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/10 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Plan a Meal</span>

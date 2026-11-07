@@ -195,7 +195,7 @@ export function FaidaAIChatDrawer() {
       {/* Floating Trigger Button */}
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-xs shadow-2xl shadow-blue-500/40 hover:scale-105 transition-all cursor-pointer border border-blue-400/30"
+        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-full bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-bold text-xs shadow-xl shadow-blue-500/20 hover:scale-105 transition-all cursor-pointer border border-blue-400/30"
       >
         <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-200 animate-pulse" />
         <span className="text-[11px] sm:text-xs">Ask Faida AI</span>

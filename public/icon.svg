@@ -1,61 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
   <defs>
-    <!-- Background Gradient -->
-    <linearGradient id="faida-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#0f172a"/>
-      <stop offset="50%" stop-color="#090d16"/>
-      <stop offset="100%" stop-color="#020617"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2c3b94"/>
+      <stop offset="0.5" stop-color="#101a48"/>
+      <stop offset="1" stop-color="#060c26"/>
     </linearGradient>
-
-    <!-- Outer Border Gradient -->
-    <linearGradient id="faida-border" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.8"/>
-      <stop offset="50%" stop-color="#3b82f6" stop-opacity="0.3"/>
-      <stop offset="100%" stop-color="#6366f1" stop-opacity="0.6"/>
+    <radialGradient id="glowA" cx="0.18" cy="0.08" r="0.75">
+      <stop offset="0" stop-color="#8d9dff" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#8d9dff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowB" cx="0.88" cy="0.96" r="0.7">
+      <stop offset="0" stop-color="#6ee7d0" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#6ee7d0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
     </linearGradient>
-
-    <!-- Top Wing Gradient -->
-    <linearGradient id="faida-top" x1="14" y1="12" x2="50" y2="24" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="60%" stop-color="#2563eb"/>
-      <stop offset="100%" stop-color="#1d4ed8"/>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.65"/>
+      <stop offset="0.5" stop-color="#fff" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#b9f5e8" stop-opacity="0.3"/>
     </linearGradient>
-
-    <!-- Lightning Bolt Gradient -->
-    <linearGradient id="faida-bolt" x1="16" y1="26" x2="48" y2="54" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#60a5fa"/>
-      <stop offset="45%" stop-color="#3b82f6"/>
-      <stop offset="85%" stop-color="#06b6d4"/>
-      <stop offset="100%" stop-color="#10b981"/>
+    <linearGradient id="mark" x1="120" y1="110" x2="400" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f3f5ff"/>
+      <stop offset="0.35" stop-color="#b7c3ff"/>
+      <stop offset="0.7" stop-color="#7d92ff"/>
+      <stop offset="1" stop-color="#4fe0c4"/>
     </linearGradient>
-
-    <!-- Core Glow -->
-    <filter id="faida-glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="3" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    <linearGradient id="markHi" x1="0" y1="110" x2="0" y2="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.7"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="face"><rect width="512" height="512" rx="116"/></clipPath>
+    <clipPath id="mk">
+      <rect x="120" y="112" width="64" height="288" rx="32"/>
+      <path d="M152 112 H368 C385.6 112 396.8 129.6 390.4 145.6 L377.6 177.6 C373.6 186.4 364.8 192 355.2 192 H152 Z"/>
+      <path d="M152 228 H312 C326.4 228 334.4 244 326.4 255.2 L260 320 H308 C321.6 320 328.8 336 320 346.4 L216 432 C206.4 440 192 430.4 196.8 419.2 L224 356 H152 Z"/></clipPath>
+    <filter id="drop" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#050a24" flood-opacity="0.5"/>
     </filter>
   </defs>
 
-  <!-- Rounded Squircle Base -->
-  <rect width="64" height="64" rx="16" fill="url(#faida-bg)"/>
-  <rect x="1" y="1" width="62" height="62" rx="15" stroke="url(#faida-border)" stroke-width="1.5" fill="none"/>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <g clip-path="url(#face)">
+    <rect width="512" height="512" fill="url(#glowA)"/>
+    <rect width="512" height="512" fill="url(#glowB)"/>
+    <rect width="512" height="300" fill="url(#sheen)"/>
+  </g>
+  <rect x="2.5" y="2.5" width="507" height="507" rx="113.5" fill="none" stroke="url(#rim)" stroke-width="5"/>
 
-  <!-- Subtle Radial Ambient Light -->
-  <circle cx="32" cy="30" r="20" fill="#3b82f6" fill-opacity="0.15" filter="url(#faida-glow)"/>
-
-  <!-- Stylized F + Execution Bolt Emblem -->
-  <g filter="url(#faida-glow)">
-    <!-- Vertical Spine of F -->
-    <rect x="15" y="14" width="7" height="36" rx="3.5" fill="url(#faida-top)"/>
-
-    <!-- Top Bar of F -->
-    <path d="M19 14 H46 C48.2 14 49.6 16.2 48.8 18.2 L47.2 22.2 C46.7 23.3 45.6 24 44.4 24 H19 Z" fill="url(#faida-top)"/>
-
-    <!-- Middle Lightning Bolt Arm -->
-    <path d="M19 28.5 H39 C40.8 28.5 41.8 30.5 40.8 31.9 L32.5 40 H38.5 C40.2 40 41.1 42 40 43.3 L27 54 C25.8 55 24 53.8 24.6 52.4 L28 44.5 H19 Z" fill="url(#faida-bolt)"/>
-
-    <!-- Golden/Emerald Spark Accent -->
-    <circle cx="47.5" cy="18.5" r="2" fill="#38bdf8"/>
-    <circle cx="27" cy="53" r="1.5" fill="#10b981"/>
+  <g transform="translate(256 256) scale(1) translate(-258 -276)">
+    <g filter="url(#drop)">
+      <g clip-path="url(#mk)">
+        <rect x="100" y="90" width="320" height="370" fill="url(#mark)"/>
+        <rect x="100" y="90" width="320" height="230" fill="url(#markHi)"/>
+      </g>
+    </g>
+    <circle cx="378" cy="146" r="15" fill="#ffffff"/>
+    <circle cx="378" cy="146" r="15" fill="none" stroke="#4fe0c4" stroke-opacity="0.9" stroke-width="3"/>
+    <circle cx="214" cy="424" r="11" fill="#4fe0c4"/>
   </g>
 </svg>

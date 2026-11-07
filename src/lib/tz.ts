@@ -36,3 +36,24 @@ export function zonedNow(now: Date = new Date(), timeZone: string = APP_TIME_ZON
 
   return { year, month, day, hour, minute, dayOfWeek, startOfDay, endOfDay, startOfMonth, offsetMs };
 }
+
+/** YYYY-MM-DD of an instant as seen in the app's time zone. */
+export function zonedDateKey(date: Date, timeZone: string = APP_TIME_ZONE): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+/** The instant of "HH:mm" on a YYYY-MM-DD calendar day in the app's time zone. */
+export function zonedTime(dateKey: string, hm: string, timeZone: string = APP_TIME_ZONE): Date {
+  const [h, m] = hm.split(":").map((n) => parseInt(n, 10) || 0);
+  const guess = Date.parse(`${dateKey}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`);
+  const local = zonedNow(new Date(guess), timeZone);
+  const asUtc = Date.UTC(local.year, local.month - 1, local.day, local.hour, local.minute);
+  const offset = asUtc - Math.floor(guess / 60000) * 60000;
+  return new Date(guess - offset);
+}
+
+/** ISO weekday of a YYYY-MM-DD key: 1 = Monday ... 7 = Sunday. */
+export function isoWeekday(dateKey: string): number {
+  const d = new Date(`${dateKey}T12:00:00Z`).getUTCDay();
+  return d === 0 ? 7 : d;
+}

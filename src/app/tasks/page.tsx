@@ -497,7 +497,7 @@ export default function TasksPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-500/20 cursor-pointer transition-all"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-500/10 cursor-pointer transition-all"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>New Task</span>

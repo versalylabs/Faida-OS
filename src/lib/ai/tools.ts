@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { buildBriefing, briefingToMarkdown } from "@/lib/briefing";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
 
@@ -288,84 +289,21 @@ export async function executeDecomposeGoal(userId: string, goal: string, project
 
 // 6. Morning Briefing Tool (Enhanced with Academic Context)
 export async function executeMorningBriefing(userId: string): Promise<{ message: string; action: ToolActionPayload }> {
-  const now = new Date();
-  const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
-
-  const [tasks, allTxs, todayClasses, upcomingAssignments, upcomingAssessments, userBudget] = await Promise.all([
-    prisma.task.findMany({
-      where: { userId, status: { not: "DONE" } },
-      orderBy: { createdAt: "desc" },
-      include: { project: true, course: true },
-      take: 60,
-    }).then((rows) => rows.sort(byPriorityThenNewest).slice(0, 4)),
-    prisma.financeTransaction.findMany({
-      where: { userId },
-    }),
-    prisma.academicClass.findMany({
-      where: { userId, dayOfWeek: currentDayOfWeek },
-      include: { course: true },
-      orderBy: { startTime: "asc" },
-    }),
-    prisma.task.findMany({
-      where: { userId, isAcademic: true, status: { not: "DONE" } },
-      include: { course: true },
-      orderBy: { dueDate: "asc" },
-      take: 2,
-    }),
-    prisma.academicAssessment.findMany({
-      where: { userId, isCompleted: false },
-      include: { course: true },
-      orderBy: { date: "asc" },
-      take: 1,
-    }),
-    prisma.budget.findFirst({
-      where: { userId },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
-
-  const userLimit = userBudget?.monthlyLimit ?? 310000;
-  let totalSpent = 0;
-  allTxs.forEach((t) => {
-    if (t.amount < 0) totalSpent += Math.abs(t.amount);
-  });
-  const remainingBudget = userLimit - totalSpent;
-
-  const topTask = tasks[0];
-  const topTaskText = topTask
-    ? `• **Top Focus:** "${topTask.title}" (${topTask.priority} • ${topTask.estimatedMinutes}m${topTask.course ? ` in ${topTask.course.code}` : topTask.project ? ` in ${topTask.project.name}` : ""})`
-    : "• **Top Focus:** Queue is clear!";
-
-  // Academic Section in Briefing
-  let academicSnippet = "";
-  if (todayClasses.length > 0 || upcomingAssignments.length > 0 || upcomingAssessments.length > 0) {
-    const classList = todayClasses.length > 0
-      ? `\n  - Classes today (${todayClasses.length}): ${todayClasses.map((c) => `${c.course.code} at ${c.startTime} (${c.location || "Online"})`).join(", ")}`
-      : "";
-    const assignList = upcomingAssignments.length > 0
-      ? `\n  - Urgent assignment: "${upcomingAssignments[0].title}" (${upcomingAssignments[0].course?.code || "Academic"})`
-      : "";
-    const catList = upcomingAssessments.length > 0
-      ? `\n  - Approaching CAT: "${upcomingAssessments[0].title}" on ${upcomingAssessments[0].date.toLocaleDateString()}`
-      : "";
-    academicSnippet = `\n• **🎓 University Orbit:**${classList}${assignList}${catList}`;
-  }
-
-  const briefing = `🌅 **Good morning! Here is your daily mission briefing:**
-
-${topTaskText}
-• **Queue:** ${tasks.length} active tasks queued up today (~${tasks.reduce((sum, t) => sum + (t.estimatedMinutes || 30), 0)}m focus time required).${academicSnippet}
-• **Finance:** ${formatKES(remainingBudget)} remaining in your monthly budget.
-• **Energy:** You're in your morning peak window (🔋 85%). I recommend tackling the top priority task first before switching to lighter administrative work.`;
+  // Same engine as the dashboard briefing and the Calendar, so the numbers always agree.
+  const briefing = await buildBriefing(userId);
+  const overdue = briefing.groups.find((g) => g.key === "overdue")?.total ?? 0;
+  const today = briefing.groups.find((g) => g.key === "today")?.total ?? 0;
 
   return {
-    message: briefing,
+    message: `${briefingToMarkdown(briefing)}
+
+_Faida OS · ${briefing.dateLabel}_`,
     action: {
       type: "BRIEFING_DELIVERED",
       title: "Daily Mission Briefing",
-      badge: "🔋 85% Morning Peak",
-      details: todayClasses.length > 0 ? `${todayClasses.length} classes scheduled today` : undefined,
-      link: "/university",
+      badge: overdue ? `${overdue} overdue` : today ? `${today} for today` : "All clear",
+      details: briefing.headline,
+      link: "/",
     },
   };
 }

@@ -692,7 +692,7 @@ export default function UniversityPage() {
             {nextClass ? (
               <button
                 onClick={() => handlePrepareMe(nextClass.courseId, nextClass.id)}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-500/20 transition-all active:scale-95 shrink-0"
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-blue-500/10 transition-all active:scale-95 shrink-0"
               >
                 <Sparkles className="h-3.5 w-3.5 text-blue-200" />
                 Prepare Me
@@ -1063,7 +1063,7 @@ export default function UniversityPage() {
                   className={`w-full py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 ${
                     batchCompleted
                       ? "bg-emerald-600 text-white"
-                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 active:scale-95"
+                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-500/10 active:scale-95"
                   }`}
                 >
                   {batchCompleted ? (

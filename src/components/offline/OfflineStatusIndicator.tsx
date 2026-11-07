@@ -267,7 +267,7 @@ export function OfflineStatusIndicator() {
                 <button
                   onClick={handleManualSync}
                   disabled={!online || isSyncing || queuedMutations.length === 0}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shadow-md shadow-emerald-600/10 cursor-pointer"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`} />
                   <span>{isSyncing ? "Syncing..." : "Sync Now"}</span>

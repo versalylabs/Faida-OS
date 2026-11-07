@@ -59,7 +59,7 @@ export default function LoginPage() {
         {/* Faida OS Brand Header */}
         <div className="text-center mb-7">
           <div className="inline-flex items-center justify-center mb-3">
-            <FaidaLogoIcon size={64} className="drop-shadow-[0_12px_28px_rgba(125,141,252,0.55)]" />
+            <FaidaLogoIcon size={64} className="drop-shadow-[0_10px_22px_rgba(125,141,252,0.32)]" />
           </div>
           <h1 className="text-4xl font-semibold tracking-tight text-white flex items-center justify-center gap-2.5">
             Faida <span className="text-aurora">OS</span>

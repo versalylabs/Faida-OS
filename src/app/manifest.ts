@@ -2,14 +2,14 @@ import { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Faida OS — Personal Operating System",
+    name: "Faida OS",
     short_name: "Faida OS",
     description: "Personal second brain, execution engine, and digital assistant.",
     start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",
-    background_color: "#05070f",
+    background_color: "#0a1130",
     theme_color: "#05070f",
     icons: [
       {
@@ -25,7 +25,7 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
       {
-        src: "/icon-512.png",
+        src: "/icon-maskable-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

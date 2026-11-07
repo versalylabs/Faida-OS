@@ -114,7 +114,7 @@ export default function SettingsPage() {
             </div>
             <button
               type="submit"
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-lg shadow-blue-500/20"
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer shadow-md shadow-blue-500/10"
             >
               <Save className="h-3.5 w-3.5" />
               <span>{isSaved ? "Saved!" : "Save Configuration"}</span>

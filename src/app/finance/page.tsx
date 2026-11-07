@@ -565,7 +565,7 @@ export default function FinancePage() {
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-lg shadow-emerald-500/20 cursor-pointer transition-all shrink-0"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-500/10 cursor-pointer transition-all shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Log Transaction</span>
@@ -1272,7 +1272,7 @@ export default function FinancePage() {
                 <button
                   type="submit"
                   disabled={isSavingBudget}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-600/20"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-600/10"
                 >
                   {isSavingBudget ? "Saving..." : "Save Budgets"}
                 </button>

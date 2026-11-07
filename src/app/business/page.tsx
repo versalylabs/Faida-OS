@@ -482,7 +482,7 @@ export default function BusinessPage() {
               if (activeBusiness) setMetricBusinessId(activeBusiness.id);
               setShowMetricModal(true);
             }}
-            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs text-white font-medium flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs text-white font-medium flex items-center gap-1.5 transition-all shadow-md shadow-blue-500/10 cursor-pointer"
           >
             <TrendingUp className="h-3.5 w-3.5" />
             <span>Log Weekly Numbers</span>

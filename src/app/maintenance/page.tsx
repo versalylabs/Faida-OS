@@ -279,7 +279,7 @@ export default function MaintenancePage() {
 
         <button
           onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-lg shadow-blue-500/20 cursor-pointer transition-all shrink-0"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md shadow-blue-500/10 cursor-pointer transition-all shrink-0"
         >
           <Plus className="h-3.5 w-3.5" />
           <span>New Hygiene Task</span>
@@ -333,7 +333,7 @@ export default function MaintenancePage() {
                   onClick={() => setAreaFilter(tab)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
                     areaFilter === tab
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/20 font-semibold"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 font-semibold"
                       : "bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800"
                   }`}
                 >

@@ -199,7 +199,7 @@ export default function DeveloperHubPage() {
 
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-sm shadow-blue-500/20"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer transition-colors shadow-md shadow-blue-500/10"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>Add Credential</span>

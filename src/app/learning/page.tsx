@@ -422,7 +422,7 @@ export default function LearningPage() {
               setSelectedTopicId("");
               setShowSessionModal(true);
             }}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-lg shadow-purple-500/20 cursor-pointer transition-all"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold shadow-md shadow-purple-500/10 cursor-pointer transition-all"
           >
             <Clock className="h-3.5 w-3.5" />
             <span>Log Study Session</span>

@@ -342,7 +342,7 @@ export default function LazyModePage() {
           }}
           className={`press w-full sm:w-auto px-5 py-3 rounded-full font-semibold text-sm transition-all cursor-pointer flex items-center justify-center gap-2.5 shrink-0 ${
             lazyOn
-              ? "bg-amber-400 text-slate-950 shadow-[0_10px_30px_-8px_rgba(251,191,36,0.8)]"
+              ? "bg-amber-400 text-slate-950 shadow-[0_8px_22px_-8px_rgba(251,191,36,0.5)]"
               : "glass-orb !rounded-full text-amber-200 px-5"
           }`}
         >

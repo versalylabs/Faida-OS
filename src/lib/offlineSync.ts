@@ -589,6 +589,8 @@ export async function warmOfflineCache(force = false): Promise<void> {
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const targets: [string, string?][] = [
       ["/api/tasks", "tasks"],
+      ["/api/briefing", "dashboard_briefing"],
+      [`/api/agenda?month=${month}`],
       ["/api/projects", "projects"],
       ["/api/finance"],
       ["/api/business"],
