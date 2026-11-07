@@ -165,6 +165,9 @@ export default function BusinessPage() {
   const [delivDescription, setDelivDescription] = useState("");
   const [delivPriority, setDelivPriority] = useState("MEDIUM");
   const [delivDueDate, setDelivDueDate] = useState("");
+  const [delivStatus, setDelivStatus] = useState("PENDING");
+  const [editingDeliverable, setEditingDeliverable] = useState<DeliverableItem | null>(null);
+  const [deleteDeliverableConfirm, setDeleteDeliverableConfirm] = useState<DeliverableItem | null>(null);
 
   const fetchBusinessData = async () => {
     try {
@@ -322,34 +325,86 @@ export default function BusinessPage() {
     }
   };
 
+  const closeDeliverableModal = () => {
+    setShowDeliverableModal(false);
+    setEditingDeliverable(null);
+  };
+
+  const openEditDeliverable = (item: DeliverableItem) => {
+    setEditingDeliverable(item);
+    setDelivBusinessId(item.businessId);
+    setDelivClientId(item.clientId || "");
+    setDelivTitle(item.title);
+    setDelivDescription(item.description || "");
+    setDelivPriority(item.priority || "MEDIUM");
+    setDelivStatus(item.status || "PENDING");
+    setDelivDueDate(item.dueDate ? item.dueDate.slice(0, 10) : "");
+    setShowDeliverableModal(true);
+  };
+
+  // Adds a new deliverable, or saves the edits when one is being edited
   const handleCreateDeliverable = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!delivTitle.trim() || !delivBusinessId || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
+      const editing = editingDeliverable;
       const res = await fetch("/api/business/deliverables", {
-        method: "POST",
+        method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          businessId: delivBusinessId,
-          clientId: delivClientId || null,
-          title: delivTitle.trim(),
-          description: delivDescription.trim(),
-          priority: delivPriority,
-          dueDate: delivDueDate || null,
-        }),
+        body: JSON.stringify(
+          editing
+            ? {
+                id: editing.id,
+                title: delivTitle.trim(),
+                description: delivDescription.trim(),
+                priority: delivPriority,
+                status: delivStatus,
+                dueDate: delivDueDate || null,
+              }
+            : {
+                businessId: delivBusinessId,
+                clientId: delivClientId || null,
+                title: delivTitle.trim(),
+                description: delivDescription.trim(),
+                priority: delivPriority,
+                dueDate: delivDueDate || null,
+              }
+        ),
       });
       const data = await res.json();
       if (data.success) {
-        setShowDeliverableModal(false);
+        closeDeliverableModal();
         setDelivTitle("");
         setDelivDescription("");
         setDelivDueDate("");
+        setDelivStatus("PENDING");
         fetchBusinessData();
+      } else {
+        alert(data.error || "Could not save the deliverable.");
       }
     } catch (err) {
-      console.error("Failed to create deliverable:", err);
+      console.error("Failed to save deliverable:", err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteDeliverable = async () => {
+    if (!deleteDeliverableConfirm || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/business/deliverables?id=${deleteDeliverableConfirm.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setDeleteDeliverableConfirm(null);
+        fetchBusinessData();
+      } else {
+        alert(data.error || "Could not delete the deliverable.");
+      }
+    } catch (err) {
+      console.error("Failed to delete deliverable:", err);
     } finally {
       setIsSubmitting(false);
     }
@@ -439,7 +494,7 @@ export default function BusinessPage() {
               if (activeBusiness) setClientBusinessId(activeBusiness.id);
               setShowClientModal(true);
             }}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-200 font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-200 font-medium flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 text-emerald-400" />
             <span>Add Client</span>
@@ -815,7 +870,7 @@ export default function BusinessPage() {
               if (activeBusiness) setClientBusinessId(activeBusiness.id);
               setShowClientModal(true);
             }}
-            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-white font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-white font-medium flex items-center gap-1.5 whitespace-nowrap shrink-0 transition-colors cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 text-emerald-400" />
             <span>Add Client</span>
@@ -980,18 +1035,18 @@ export default function BusinessPage() {
 
           <div className="flex items-center gap-2 flex-wrap">
             {/* Filter Tabs */}
-            <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+            <div className="inline-flex max-w-full overflow-x-auto p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs">
               {["ALL", "PENDING", "IN_PROGRESS", "REVIEW", "COMPLETED"].map((st) => (
                 <button
                   key={st}
                   onClick={() => setDeliverableStatusFilter(st)}
-                  className={`px-2.5 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                  className={`px-2.5 py-1 rounded-lg font-medium whitespace-nowrap shrink-0 transition-all cursor-pointer ${
                     deliverableStatusFilter === st
                       ? "bg-slate-800 text-white shadow-sm"
                       : "text-slate-400 hover:text-slate-200"
                   }`}
                 >
-                  {st.replace("_", " ")}
+                  {st === "ALL" ? "All" : st === "IN_PROGRESS" ? "In progress" : st.charAt(0) + st.slice(1).toLowerCase()}
                 </button>
               ))}
             </div>
@@ -1004,7 +1059,7 @@ export default function BusinessPage() {
               className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>Add Deliverable</span>
+              <span>Add deliverable</span>
             </button>
           </div>
         </div>
@@ -1012,7 +1067,7 @@ export default function BusinessPage() {
         {/* Deliverables List */}
         {filteredDeliverables.length === 0 ? (
           <div className="py-8 text-center text-xs text-slate-500">
-            No deliverables matching filter &quot;{deliverableStatusFilter}&quot;.
+            {deliverableStatusFilter === "ALL" ? "No deliverables yet. Use Add deliverable to create the first one." : "Nothing in this status right now."}
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -1024,7 +1079,7 @@ export default function BusinessPage() {
               return (
                 <div
                   key={item.id}
-                  className={`p-3.5 rounded-xl border flex items-center justify-between gap-4 transition-all ${
+                  className={`p-3.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 transition-all ${
                     isDone
                       ? "bg-slate-950/40 border-slate-800/40 opacity-70"
                       : "bg-slate-950/80 border-slate-800/90 hover:border-slate-700"
@@ -1045,7 +1100,7 @@ export default function BusinessPage() {
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span
-                          className={`text-xs font-bold truncate ${
+                          className={`text-xs font-bold break-words ${
                             isDone ? "line-through text-slate-400" : "text-slate-100"
                           }`}
                         >
@@ -1083,21 +1138,21 @@ export default function BusinessPage() {
                       </div>
 
                       {item.description && (
-                        <p className="text-[11px] text-slate-400 truncate">{item.description}</p>
+                        <p className="text-[11px] text-slate-400 line-clamp-2 break-words">{item.description}</p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0 flex-wrap pl-8 sm:pl-0">
                     {item.dueDate && (
-                      <div className="text-[11px] text-slate-500 font-mono hidden sm:flex items-center gap-1">
+                      <div className="text-[11px] text-slate-400 flex items-center gap-1 whitespace-nowrap">
                         <Clock className="h-3 w-3" />
                         <span>Due {formatDate(item.dueDate)}</span>
                       </div>
                     )}
 
                     <span
-                      className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                      className={`text-[10px] font-mono px-2 py-0.5 rounded border whitespace-nowrap ${
                         item.status === "COMPLETED"
                           ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                           : item.status === "IN_PROGRESS"
@@ -1109,6 +1164,23 @@ export default function BusinessPage() {
                     >
                       {item.status.replace("_", " ")}
                     </span>
+
+                    <button
+                      onClick={() => openEditDeliverable(item)}
+                      title="Edit deliverable"
+                      aria-label="Edit deliverable"
+                      className="press glass-orb h-8 w-8 text-slate-200 cursor-pointer"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setDeleteDeliverableConfirm(item)}
+                      title="Delete deliverable"
+                      aria-label="Delete deliverable"
+                      className="press glass-orb h-8 w-8 text-slate-200 hover:text-rose-300 cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
                   </div>
                 </div>
               );
@@ -1500,9 +1572,9 @@ export default function BusinessPage() {
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-white text-base">Add Work Deliverable</h3>
+              <h3 className="font-bold text-white text-base">{editingDeliverable ? "Edit deliverable" : "Add work deliverable"}</h3>
               <button
-                onClick={() => setShowDeliverableModal(false)}
+                onClick={closeDeliverableModal}
                 className="text-slate-400 hover:text-white p-1 rounded-lg"
               >
                 <X className="h-4 w-4" />
@@ -1515,7 +1587,8 @@ export default function BusinessPage() {
                 <select
                   value={delivBusinessId}
                   onChange={(e) => setDelivBusinessId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                  disabled={Boolean(editingDeliverable)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white disabled:opacity-60"
                 >
                   {businesses.map((b) => (
                     <option key={b.id} value={b.id}>
@@ -1530,7 +1603,8 @@ export default function BusinessPage() {
                 <select
                   value={delivClientId}
                   onChange={(e) => setDelivClientId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                  disabled={Boolean(editingDeliverable)}
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white disabled:opacity-60"
                 >
                   <option value="">-- Internal / Company Level --</option>
                   {displayedClients.map((c) => (
@@ -1564,6 +1638,22 @@ export default function BusinessPage() {
                 />
               </div>
 
+              {editingDeliverable && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-300 block mb-1">Status</label>
+                  <select
+                    value={delivStatus}
+                    onChange={(e) => setDelivStatus(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                  >
+                    <option value="PENDING">Pending</option>
+                    <option value="IN_PROGRESS">In progress</option>
+                    <option value="REVIEW">In review</option>
+                    <option value="COMPLETED">Completed</option>
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Priority</label>
@@ -1593,7 +1683,7 @@ export default function BusinessPage() {
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
-                  onClick={() => setShowDeliverableModal(false)}
+                  onClick={closeDeliverableModal}
                   className="px-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-400 hover:text-white"
                 >
                   Cancel
@@ -1604,10 +1694,37 @@ export default function BusinessPage() {
                   className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white flex items-center gap-1.5"
                 >
                   {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                  <span>Create Deliverable</span>
+                  <span>{editingDeliverable ? "Save changes" : "Create deliverable"}</span>
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete deliverable confirmation */}
+      {deleteDeliverableConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
+            <h3 className="font-bold text-white text-base">Delete this deliverable?</h3>
+            <p className="text-xs text-slate-300 leading-relaxed break-words">
+              <span className="font-bold text-white">{deleteDeliverableConfirm.title}</span> will be removed for good.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setDeleteDeliverableConfirm(null)}
+                className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteDeliverable}
+                disabled={isSubmitting}
+                className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs font-bold text-white"
+              >
+                {isSubmitting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
           </div>
         </div>
       )}

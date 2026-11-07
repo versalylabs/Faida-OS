@@ -217,11 +217,11 @@ export default function CapturePage() {
 
       {/* Real-time Universal Stream */}
       <div className="rounded-2xl bg-slate-900/40 border border-slate-800 p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300 min-w-0">
             Live Universal Stream ({entities.length} items recorded)
           </h2>
-          <span className="text-[11px] font-mono text-slate-500">Auto-synchronized</span>
+          <span className="text-[11px] font-mono text-slate-400 whitespace-nowrap shrink-0">Auto-synchronized</span>
         </div>
 
         {isLoading ? (

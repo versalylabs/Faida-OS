@@ -133,7 +133,9 @@ h1 { text-shadow: 0 2px 22px rgba(0, 0, 0, 0.55); }
 main p { text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5); }
 
 /* Long names, emails or amounts wrap instead of spilling out of their card */
-main :is(p, h1, h2, h3, h4, label, span, a, button, li) { overflow-wrap: anywhere; }
+main :is(p, h1, h2, h3, h4, label, li, span) { overflow-wrap: break-word; }
+/* Buttons, tabs and links never break inside a word: they wrap between words or scroll instead */
+main :is(button, a, [role="tab"]) { overflow-wrap: normal; word-break: normal; hyphens: none; }
 
 /* Quiet the shouty micro-labels: sentence/title case with normal tracking */
 .uppercase { text-transform: none; }
@@ -425,14 +427,16 @@ a[class*="rounded"]:active {
   60% { filter: blur(0); }
   to { opacity: 1; transform: none; filter: none; }
 }
-.morph-in { animation: morph-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.morph-in { animation: morph-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 
 /* Each page eases in when you navigate */
 @keyframes page-enter {
   from { opacity: 0; transform: translateY(8px) scale(0.995); filter: blur(5px); }
   to { opacity: 1; transform: none; filter: none; }
 }
-.page-enter { animation: page-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* "backwards", not "both": keeping the final keyframe would leave a transform/filter on the page wrapper, and that turns
+   every position: fixed modal inside a page into one positioned relative to the page instead of the screen */
+.page-enter { animation: page-enter 0.45s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 
 /* Modals and drawers open with the same bloom */
 @keyframes modal-in {
@@ -440,8 +444,8 @@ a[class*="rounded"]:active {
   to { opacity: 1; transform: none; filter: none; }
 }
 @keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
-.fixed.inset-0.z-50 { animation: backdrop-in 0.25s ease-out both; }
-.fixed.inset-0.z-50 > div:not(.fixed) { animation: modal-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.fixed.inset-0.z-50 { animation: backdrop-in 0.25s ease-out backwards; }
+.fixed.inset-0.z-50 > div:not(.fixed) { animation: modal-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 
 /* Cards catch a soft light that follows the pointer (position set by ClickEffects) */
 @layer components {
