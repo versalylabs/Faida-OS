@@ -1649,11 +1649,21 @@ export default function UniversityPage() {
                   />
                 </div>
                 <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1 leading-relaxed">
-                  <p className="font-semibold text-slate-100">Where to find your key</p>
-                  <p>In your LMS open your profile menu, then Preferences, then Security keys. Copy the key named “Moodle mobile web service”.</p>
+                  <p className="font-semibold text-slate-100">Where do I get the key?</p>
+                  <p>
+                    Newer Moodle sites do not show key values under Security keys (they only list them, and Reset makes a new hidden one). Get a key by
+                    opening this address in your browser, with your own LMS username and password filled in:
+                  </p>
+                  <p className="font-mono text-[10px] text-blue-200 break-all">
+                    {(moodleUrl || "https://your-lms-address").replace(/\/+$/, "")}/login/token.php?username=YOURUSERNAME&amp;password=YOURPASSWORD&amp;service=moodle_mobile_app
+                  </p>
+                  <p>
+                    The page answers with a short code after <span className="font-mono">&quot;token&quot;:</span>. Paste only that code above. Then clear your browser history for that
+                    page. Keys can expire (the LMS decides when); Faida OS tells you to reconnect if that happens.
+                  </p>
                   <p className="text-slate-400">
-                    Faida OS only reads your courses, assignments, marks and announcements. It is stored encrypted and never shown again; you
-                    can disconnect any time, and you can reset the key in the LMS to cut off access instantly.
+                    Faida OS only reads your courses, assignments, marks and announcements. The key is stored encrypted and never shown again, and you can
+                    disconnect any time. Your password is never sent to Faida OS.
                   </p>
                 </div>
               </div>
