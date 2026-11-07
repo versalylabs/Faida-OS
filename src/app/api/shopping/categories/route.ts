@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, color, idOf, must, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -70,9 +71,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, categories: enrichedCategories }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching shopping categories:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch shopping categories" },
+      { success: false, error: "Failed to fetch shopping categories" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -85,17 +87,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
-    const { name, color, icon } = body;
+    const body = await readBody(req);
+    const { name, color: colorIn, icon } = body;
 
-    if (!name || !name.trim()) {
-      return NextResponse.json(
-        { success: false, error: "Category name is required" },
-        { status: 400, headers: noCacheHeaders }
-      );
-    }
-
-    const trimmedName = name.trim();
+    const trimmedName = must(str(name, { max: 80, required: true }), "Category name is required (max 80 characters)");
+    const cleanColor = must(color(colorIn), "Color must be a hex value like #10b981") ?? "#10b981";
+    const cleanIcon = must(str(icon, { max: 60 }), "Icon is invalid") ?? "Tag";
 
     // Check for duplicate name for this user
     const existing = await prisma.shoppingCategory.findFirst({
@@ -116,16 +113,17 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         name: trimmedName,
-        color: color || "#10b981",
-        icon: icon || "Tag",
+        color: cleanColor,
+        icon: cleanIcon,
       },
     });
 
     return NextResponse.json({ success: true, category }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating shopping category:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create shopping category" },
+      { success: false, error: "Failed to create shopping category" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -146,30 +144,31 @@ async function handleUpdate(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
-    const { id, name, color, icon } = body;
+    const body = await readBody(req);
+    const { id, name, color: colorIn, icon } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Category ID required" }, { status: 400, headers: noCacheHeaders });
-    }
+    const categoryId = must(idOf(id), "Category ID required");
+    const patchName = name !== undefined ? must(str(name, { max: 80, required: true }), "Category name is required (max 80 characters)") : undefined;
+    const patchColor = colorIn !== undefined ? must(color(colorIn), "Color must be a hex value like #10b981") : undefined;
+    const patchIcon = icon !== undefined ? must(str(icon, { max: 60 }), "Icon is invalid") : undefined;
 
     const existing = await prisma.shoppingCategory.findFirst({
-      where: { id, userId: user.id },
+      where: { id: categoryId, userId: user.id },
     });
 
     if (!existing) {
       return NextResponse.json({ success: false, error: "Category not found" }, { status: 404, headers: noCacheHeaders });
     }
 
-    const trimmedName = name ? name.trim() : existing.name;
+    const trimmedName = patchName ?? existing.name;
 
     // Check duplicate name if renamed
-    if (name && trimmedName.toLowerCase() !== existing.name.toLowerCase()) {
+    if (patchName && trimmedName.toLowerCase() !== existing.name.toLowerCase()) {
       const duplicate = await prisma.shoppingCategory.findFirst({
         where: {
           userId: user.id,
           name: { equals: trimmedName, mode: "insensitive" },
-          NOT: { id },
+          NOT: { id: categoryId },
         },
       });
 
@@ -182,16 +181,16 @@ async function handleUpdate(req: NextRequest) {
     }
 
     const updatedCategory = await prisma.shoppingCategory.update({
-      where: { id },
+      where: { id: categoryId },
       data: {
         name: trimmedName,
-        color: color || existing.color,
-        icon: icon || existing.icon,
+        color: patchColor || existing.color,
+        icon: patchIcon || existing.icon,
       },
     });
 
     // If name changed, update existing shopping items to keep them in sync
-    if (name && trimmedName !== existing.name) {
+    if (patchName && trimmedName !== existing.name) {
       await prisma.shoppingItem.updateMany({
         where: { userId: user.id, category: existing.name },
         data: { category: trimmedName },
@@ -200,9 +199,10 @@ async function handleUpdate(req: NextRequest) {
 
     return NextResponse.json({ success: true, category: updatedCategory }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating shopping category:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update shopping category" },
+      { success: false, error: "Failed to update shopping category" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -220,7 +220,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         id = body.id;
       } catch {}
     }
@@ -247,9 +247,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Category deleted" }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting shopping category:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete shopping category" },
+      { success: false, error: "Failed to delete shopping category" },
       { status: 500, headers: noCacheHeaders }
     );
   }

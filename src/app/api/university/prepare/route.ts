@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -116,9 +117,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, briefing });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error generating class preparation briefing:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate briefing" },
+      { success: false, error: "Failed to generate briefing" },
       { status: 500 }
     );
   }

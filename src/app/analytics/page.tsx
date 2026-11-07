@@ -63,19 +63,16 @@ export default function AnalyticsPage() {
 
   const fetchData = async () => {
     try {
-      const [anRes, jRes, autoRes] = await Promise.all([
+      const [anRes, jRes] = await Promise.all([
         fetch("/api/analytics"),
         fetch("/api/journal"),
-        fetch("/api/automations"),
       ]);
 
       const anData = await anRes.json();
       const jData = await jRes.json();
-      const autoData = await autoRes.json();
 
       if (anData.success) setAnalytics(anData.analytics);
       if (jData.success) setJournal(jData.today);
-      if (autoData.success) setAutomations(autoData.automations);
     } catch (e) {
       console.error("Failed to load analytics:", e);
     } finally {
@@ -178,7 +175,7 @@ export default function AnalyticsPage() {
                   {formatKES(analytics.totalSpentKES)}
                 </div>
                 <span className="text-[10px] text-emerald-400 font-mono block">
-                  Within KES 310,000 budget
+                  All expenses you have logged
                 </span>
               </div>
             </div>
@@ -242,54 +239,26 @@ export default function AnalyticsPage() {
             </div>
           )}
 
-          {/* IF -> THEN Personal Automation Engine */}
+          {/* What Faida really does on its own (no invented rules or counters) */}
           <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Bot className="h-4 w-4 text-blue-400" />
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                  Personal Automation Engine (IF → THEN Rules)
-                </h2>
-              </div>
-              <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                {automations.filter((a) => a.isActive).length} Active Rules
-              </span>
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-blue-400" />
+              <h2 className="text-sm font-semibold text-slate-100">What Faida does for you automatically</h2>
             </div>
-
-            <div className="space-y-2.5">
-              {automations.map((rule) => (
-                <div
-                  key={rule.id}
-                  className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-4"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-200">{rule.name}</span>
-                      <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
-                        {rule.trigger}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed max-w-2xl">
-                      {rule.description}
-                    </p>
-                    <div className="text-[10px] text-slate-500 font-mono">
-                      Fired {rule.timesTriggered} times autonomously
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleToggleAutomation(rule)}
-                    className={`px-3 py-1 rounded-xl text-xs font-mono font-semibold transition-all cursor-pointer ${
-                      rule.isActive
-                        ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                        : "bg-slate-800 text-slate-500 border border-slate-700"
-                    }`}
-                  >
-                    {rule.isActive ? "ENABLED" : "DISABLED"}
-                  </button>
-                </div>
+            <ul className="space-y-2.5 text-sm text-slate-300">
+              {[
+                "Repeating tasks line up their next occurrence the moment you finish one.",
+                "Finished tasks and finished work deliverables clear themselves 48 hours after completion.",
+                "Overdue and due-today work is flagged in the header and placed first in your daily plan.",
+                "Lazy Mode learns your energy by the hour from your check-ins and keeps heavy work for when you have it.",
+                "The planner works around your classes and calendar events, and protects lunch and breaks.",
+              ].map((line) => (
+                <li key={line} className="flex items-start gap-2.5">
+                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-300 shrink-0" />
+                  <span>{line}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </>
       )}

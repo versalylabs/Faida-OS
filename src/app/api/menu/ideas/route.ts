@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, idOf, must, num, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -94,9 +95,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, ideas });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching meal ideas:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch meal ideas" },
+      { success: false, error: "Failed to fetch meal ideas" },
       { status: 500 }
     );
   }
@@ -128,30 +130,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, ideas: reseeded, message: "Reset to default ideas" });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { title, mealType, description, calories, prepTime, tags } = body;
 
-    if (!title || !title.trim()) {
-      return NextResponse.json({ success: false, error: "Meal title is required" }, { status: 400 });
-    }
+    const cleanTitle = must(str(title, { max: 200, required: true }), "Meal title is required (max 200 characters)");
+    const cleanMealType = must(str(mealType, { max: 20 }), "Invalid mealType") ?? "ANY";
+    const cleanDescription = must(str(description, { max: 2000 }), "Description is too long");
+    const cleanCalories = must(num(calories, { min: 0, max: 20000, int: true }), "Calories must be a whole number between 0 and 20000");
+    const cleanPrep = must(num(prepTime, { min: 0, max: 1440, int: true }), "Prep time must be a whole number of minutes between 0 and 1440");
+    const cleanTags = must(str(tags, { max: 300 }), "Tags are too long");
 
     const created = await prisma.mealIdea.create({
       data: {
         userId: user.id,
-        title: title.trim(),
-        mealType: mealType || "ANY",
-        description: description ? description.trim() : null,
-        calories: calories ? parseInt(calories.toString(), 10) : null,
-        prepTime: prepTime ? parseInt(prepTime.toString(), 10) : null,
-        tags: tags ? tags.trim() : null,
+        title: cleanTitle,
+        mealType: cleanMealType,
+        description: cleanDescription,
+        calories: cleanCalories,
+        prepTime: cleanPrep,
+        tags: cleanTags,
       },
     });
 
     return NextResponse.json({ success: true, idea: created });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating meal idea:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create meal idea" },
+      { success: false, error: "Failed to create meal idea" },
       { status: 500 }
     );
   }
@@ -165,38 +171,41 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, title, mealType, description, calories, prepTime, tags } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Idea ID is required" }, { status: 400 });
-    }
+    const ideaId = must(idOf(id), "Idea ID is required");
+    const patchTitle = title !== undefined ? must(str(title, { max: 200, required: true }), "Meal title is required (max 200 characters)") : undefined;
+    const patchMealType = mealType !== undefined ? must(str(mealType, { max: 20, required: true }), "Invalid mealType") : undefined;
+    const patchDescription = description !== undefined ? must(str(description, { max: 2000 }), "Description is too long") : undefined;
+    const patchCalories = calories !== undefined ? must(num(calories, { min: 0, max: 20000, int: true }), "Calories must be a whole number between 0 and 20000") : undefined;
+    const patchPrep = prepTime !== undefined ? must(num(prepTime, { min: 0, max: 1440, int: true }), "Prep time must be a whole number of minutes between 0 and 1440") : undefined;
+    const patchTags = tags !== undefined ? must(str(tags, { max: 300 }), "Tags are too long") : undefined;
 
     const existing = await prisma.mealIdea.findFirst({
-      where: { id, userId: user.id },
+      where: { id: ideaId, userId: user.id },
     });
-
     if (!existing) {
       return NextResponse.json({ success: false, error: "Meal idea not found" }, { status: 404 });
     }
-
     const updated = await prisma.mealIdea.update({
-      where: { id },
+      where: { id: ideaId },
       data: {
-        title: title !== undefined ? title.trim() : existing.title,
-        mealType: mealType !== undefined ? mealType : existing.mealType,
-        description: description !== undefined ? description?.trim() || null : existing.description,
-        calories: calories !== undefined ? (calories ? parseInt(calories.toString(), 10) : null) : existing.calories,
-        prepTime: prepTime !== undefined ? (prepTime ? parseInt(prepTime.toString(), 10) : null) : existing.prepTime,
-        tags: tags !== undefined ? tags?.trim() || null : existing.tags,
+        title: patchTitle !== undefined ? patchTitle : existing.title,
+        mealType: patchMealType !== undefined ? patchMealType : existing.mealType,
+        description: patchDescription !== undefined ? patchDescription : existing.description,
+        calories: patchCalories !== undefined ? patchCalories : existing.calories,
+        prepTime: patchPrep !== undefined ? patchPrep : existing.prepTime,
+        tags: patchTags !== undefined ? patchTags : existing.tags,
       },
     });
 
     return NextResponse.json({ success: true, idea: updated });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating meal idea:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update meal idea" },
+      { success: false, error: "Failed to update meal idea" },
       { status: 500 }
     );
   }
@@ -229,9 +238,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting meal idea:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete meal idea" },
+      { success: false, error: "Failed to delete meal idea" },
       { status: 500 }
     );
   }

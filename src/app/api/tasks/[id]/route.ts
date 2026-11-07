@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { spawnNextRecurrence } from "@/lib/recurrence";
+import { PRIORITIES, RECURRENCES, TASK_STATUSES, ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,8 +39,9 @@ export async function GET(
 
     return NextResponse.json({ success: true, task }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch task" },
+      { success: false, error: "Failed to fetch task" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -78,7 +81,7 @@ async function handleUpdate(
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const {
       status,
       title,
@@ -96,18 +99,31 @@ async function handleUpdate(
     } = body;
 
     const dataToUpdate: any = {};
-    if (status !== undefined) dataToUpdate.status = status;
-    if (title !== undefined) dataToUpdate.title = title.trim();
-    if (description !== undefined) dataToUpdate.description = description ? description.trim() : null;
-    if (priority !== undefined) dataToUpdate.priority = priority;
-    if (estimatedMinutes !== undefined) dataToUpdate.estimatedMinutes = Number(estimatedMinutes);
-    if (actualMinutes !== undefined) dataToUpdate.actualMinutes = Number(actualMinutes);
-    if (dueDate !== undefined) dataToUpdate.dueDate = dueDate ? new Date(dueDate) : null;
-    if (projectId !== undefined) dataToUpdate.projectId = projectId ? projectId : null;
-    if (category !== undefined) dataToUpdate.category = category ? category.trim() : null;
-    if (recurrence !== undefined) dataToUpdate.recurrence = recurrence ? recurrence : null;
+    const cleanStatus = status !== undefined ? must(oneOf(status, TASK_STATUSES, { required: true }), "Invalid status") : undefined;
+    const cleanTitle = title !== undefined ? must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)") : undefined;
+    const cleanDescription = description !== undefined ? must(str(description, { max: 10000 }), "Description is too long") : undefined;
+    const cleanPriority = priority !== undefined ? must(oneOf(priority, PRIORITIES, { required: true }), "Invalid priority") : undefined;
+    if (cleanStatus !== undefined) dataToUpdate.status = cleanStatus;
+    if (cleanTitle !== undefined) dataToUpdate.title = cleanTitle;
+    if (cleanDescription !== undefined) dataToUpdate.description = cleanDescription;
+    if (cleanPriority !== undefined) dataToUpdate.priority = cleanPriority;
+    if (estimatedMinutes !== undefined) dataToUpdate.estimatedMinutes = must(num(estimatedMinutes, { min: 0, max: 100000, int: true, required: true }), "Estimated minutes is invalid");
+    if (actualMinutes !== undefined) dataToUpdate.actualMinutes = must(num(actualMinutes, { min: 0, max: 100000, int: true, required: true }), "Actual minutes is invalid");
+    if (dueDate !== undefined) dataToUpdate.dueDate = must(date(dueDate), "Due date is invalid");
+    if (projectId !== undefined) {
+      const ownedProjectId = await ownedId("project", user.id, projectId);
+      if (ownedProjectId === undefined) return notFound("Project not found", noCacheHeaders);
+      dataToUpdate.projectId = ownedProjectId;
+    }
+    if (category !== undefined) dataToUpdate.category = must(str(category, { max: 80 }), "Category is too long");
+    if (recurrence !== undefined) dataToUpdate.recurrence = must(oneOf(recurrence, RECURRENCES), "Invalid recurrence");
     if (isAcademic !== undefined) dataToUpdate.isAcademic = Boolean(isAcademic);
-    if (courseId !== undefined) dataToUpdate.courseId = courseId;
+    if (courseId !== undefined) {
+      const ownedCourseId = await ownedId("universityCourse", user.id, courseId);
+      if (ownedCourseId === undefined) return notFound("Course not found", noCacheHeaders);
+      dataToUpdate.courseId = ownedCourseId;
+    }
+    if (subtasks !== undefined && !Array.isArray(subtasks)) throw new ValidationError("Subtasks must be a list");
 
     const task = await prisma.task.update({
       where: { id },
@@ -119,26 +135,35 @@ async function handleUpdate(
       },
     });
 
+    // Recurring task finished: line up the next one
+    if (cleanStatus === "DONE" && existing.status !== "DONE") {
+      await spawnNextRecurrence(existing);
+    }
+
     // If subtasks array is provided, sync subtasks / todos
     if (Array.isArray(subtasks)) {
-      for (const item of subtasks) {
-        if (item.id && !item.id.startsWith("temp_") && !item.id.startsWith("new_")) {
+      for (const item of subtasks.slice(0, 200)) {
+        if (!item || typeof item !== "object") continue;
+        const itemTitle = typeof item.title === "string" ? str(item.title, { max: 300 }) : null;
+        if (itemTitle === undefined) continue;
+        if (typeof item.id === "string" && item.id && !item.id.startsWith("temp_") && !item.id.startsWith("new_")) {
+          // Scoped to this task so another user's subtask id can never be touched.
           if (item._deleted) {
-            await prisma.subtask.delete({ where: { id: item.id } }).catch(() => {});
+            await prisma.subtask.deleteMany({ where: { id: item.id, taskId: id } }).catch(() => {});
           } else {
-            await prisma.subtask.update({
-              where: { id: item.id },
+            await prisma.subtask.updateMany({
+              where: { id: item.id, taskId: id },
               data: {
-                title: item.title ? item.title.trim() : undefined,
+                title: itemTitle || undefined,
                 isDone: item.isDone !== undefined ? Boolean(item.isDone) : undefined,
               },
             }).catch(() => {});
           }
-        } else if (!item._deleted && item.title && item.title.trim()) {
+        } else if (!item._deleted && itemTitle) {
           await prisma.subtask.create({
             data: {
               taskId: id,
-              title: item.title.trim(),
+              title: itemTitle,
               isDone: Boolean(item.isDone),
             },
           }).catch(() => {});
@@ -150,10 +175,10 @@ async function handleUpdate(
       await prisma.entity.update({
         where: { id: task.entityId },
         data: {
-          title: title !== undefined ? title.trim() : undefined,
-          content: description !== undefined ? (description ? description.trim() : null) : undefined,
-          priority: priority !== undefined ? priority : undefined,
-          status: status ? (status === "DONE" ? "COMPLETED" : "ACTIVE") : undefined,
+          title: cleanTitle,
+          content: cleanDescription,
+          priority: cleanPriority,
+          status: cleanStatus ? (cleanStatus === "DONE" ? "COMPLETED" : "ACTIVE") : undefined,
         },
       }).catch(() => {});
     }
@@ -170,9 +195,10 @@ async function handleUpdate(
 
     return NextResponse.json({ success: true, task: freshTask || task }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating task:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update task" },
+      { success: false, error: "Failed to update task" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -212,9 +238,10 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, message: "Task deleted successfully" }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting task:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete task" },
+      { success: false, error: "Failed to delete task" },
       { status: 500, headers: noCacheHeaders }
     );
   }

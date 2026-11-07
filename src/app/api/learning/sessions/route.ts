@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, idOf, must, num, readBody, str } from "@/lib/validate";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,22 +10,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { topicId, durationMinutes, notes, markCompleted } = body;
 
-    if (!topicId || !durationMinutes) {
-      return NextResponse.json(
-        { success: false, error: "topicId and durationMinutes are required" },
-        { status: 400 }
-      );
-    }
-
-    const duration = parseInt(durationMinutes, 10);
+    const cleanTopicId = must(idOf(topicId), "topicId is required");
+    const duration = must(num(durationMinutes, { min: 1, max: 1440, int: true, required: true }), "durationMinutes must be a whole number between 1 and 1440");
+    const cleanNotes = must(str(notes, { max: 50000 }), "Notes are too long");
 
     // 1. Fetch topic and parent subject (verify belongs to user)
     const topic = await prisma.learningTopic.findFirst({
       where: {
-        id: topicId,
+        id: cleanTopicId,
         subject: { userId: user.id },
       },
       include: { subject: true },
@@ -37,27 +33,27 @@ export async function POST(req: NextRequest) {
     // 2. Create StudySession record
     const session = await prisma.studySession.create({
       data: {
-        topicId,
+        topicId: cleanTopicId,
         durationMinutes: duration,
-        notes,
+        notes: cleanNotes,
       },
     });
 
     // 3. Update topic status
     const newStatus = markCompleted ? "COMPLETED" : "IN_PROGRESS";
     await prisma.learningTopic.update({
-      where: { id: topicId },
+      where: { id: cleanTopicId },
       data: { status: newStatus },
     });
 
     // 4. If notes provided, automatically link to Knowledge Base!
-    if (notes && notes.trim()) {
+    if (cleanNotes) {
       const entity = await prisma.entity.create({
         data: {
           userId: user.id,
           type: "NOTE",
           title: `Study Notes: ${topic.title}`,
-          content: notes,
+          content: cleanNotes,
           status: "ACTIVE",
         },
       });
@@ -67,7 +63,7 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           entityId: entity.id,
           title: `Study Notes: ${topic.title}`,
-          content: notes,
+          content: cleanNotes,
           category: topic.subject.name,
           tags: `study, ${topic.title.toLowerCase()}, ${topic.subject.name.toLowerCase()}`,
         },
@@ -84,9 +80,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, session });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error logging study session:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to log study session" },
+      { success: false, error: "Failed to log study session" },
       { status: 500 }
     );
   }

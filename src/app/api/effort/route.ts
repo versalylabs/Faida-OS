@@ -1,232 +1,206 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, readBody, safeInt, must, idOf, num, notFound } from "@/lib/validate";
+import { byPriorityThenNewest } from "@/lib/priority";
+import { zonedNow } from "@/lib/tz";
+import { spawnNextRecurrence } from "@/lib/recurrence";
+import { estimateEnergy, evaluateTasks, pickLowEnergyBatch, type RawEffortTask } from "@/lib/effort";
 
-export interface EvaluatedEffortTask {
-  id: string;
-  title: string;
-  projectName?: string | null;
-  estimatedMinutes: number;
-  priority: string;
-  energyCost: number; // 1 to 10
-  action: "SKIP" | "AUTOMATE" | "OPTIMIZE" | "JUST_DO_IT";
-  actionReason: string;
+export const dynamic = "force-dynamic";
+const noStore = { "Cache-Control": "no-store" };
+
+/** Average energy you reported for each hour of the day over the last three weeks (needs 2+ check-ins). */
+async function learnedEnergyByHour(userId: string): Promise<Record<number, number>> {
+  const since = new Date(Date.now() - 21 * 86400000);
+  const rows = await prisma.energyCheckin.findMany({
+    where: { userId, createdAt: { gte: since } },
+    select: { hour: true, level: true },
+  });
+  const sums: Record<number, { total: number; n: number }> = {};
+  for (const r of rows) {
+    sums[r.hour] = sums[r.hour] || { total: 0, n: 0 };
+    sums[r.hour].total += r.level;
+    sums[r.hour].n += 1;
+  }
+  const out: Record<number, number> = {};
+  for (const [h, v] of Object.entries(sums)) if (v.n >= 2) out[Number(h)] = Math.round(v.total / v.n);
+  return out;
 }
 
-function calculateEnergyCost(title: string, durationMinutes: number): number {
-  const lower = title.toLowerCase();
-  let baseCost = 4;
-
-  if (
-    lower.includes("architecture") ||
-    lower.includes("design") ||
-    lower.includes("debug") ||
-    lower.includes("complex") ||
-    lower.includes("security") ||
-    lower.includes("deploy")
-  ) {
-    baseCost = 8;
-  } else if (
-    lower.includes("study") ||
-    lower.includes("learn") ||
-    lower.includes("test") ||
-    lower.includes("refactor") ||
-    lower.includes("implement")
-  ) {
-    baseCost = 6;
-  } else if (
-    lower.includes("doc") ||
-    lower.includes("update") ||
-    lower.includes("setup") ||
-    lower.includes("configure") ||
-    lower.includes("format")
-  ) {
-    baseCost = 3;
-  } else if (
-    lower.includes("check") ||
-    lower.includes("reply") ||
-    lower.includes("clean") ||
-    lower.includes("review") ||
-    lower.includes("organize") ||
-    lower.includes("shopping") ||
-    lower.includes("buy")
-  ) {
-    baseCost = 1;
+/** Real totals from what Lazy Mode actually did for you, this week and overall. */
+async function effortSavedSummary(userId: string, weekStart: Date) {
+  const events = await prisma.effortEvent.findMany({
+    where: { userId },
+    select: { type: true, minutes: true, createdAt: true },
+  });
+  const blank = () => ({ deferred: 0, dropped: 0, batches: 0, sprints: 0, minutesFreed: 0 });
+  const week = blank();
+  const total = blank();
+  for (const e of events) {
+    for (const bucket of e.createdAt >= weekStart ? [week, total] : [total]) {
+      if (e.type === "DEFER") bucket.deferred++;
+      else if (e.type === "DROP") bucket.dropped++;
+      else if (e.type === "BATCH") bucket.batches++;
+      else if (e.type === "SPRINT") bucket.sprints++;
+      if (e.type === "DEFER" || e.type === "DROP") bucket.minutesFreed += e.minutes;
+    }
   }
-
-  // Duration modifier
-  if (durationMinutes >= 90) baseCost += 2;
-  else if (durationMinutes >= 60) baseCost += 1;
-  else if (durationMinutes <= 15) baseCost = Math.max(1, baseCost - 1);
-
-  return Math.min(10, Math.max(1, baseCost));
+  return { week, total };
 }
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noStore });
     }
 
     const { searchParams } = new URL(req.url);
-    const hour = new Date().getHours();
+    const local = zonedNow();
+    const hourParam = safeInt(searchParams.get("hour"), -1, -1, 23);
+    const hour = hourParam >= 0 ? hourParam : local.hour;
 
-    // Default time-of-day energy estimation
-    let estimatedEnergy = 75;
-    if (hour >= 6 && hour < 12) estimatedEnergy = 85;
-    else if (hour >= 12 && hour < 15) estimatedEnergy = 65;
-    else if (hour >= 15 && hour < 19) estimatedEnergy = 45;
-    else if (hour >= 19 && hour < 23) estimatedEnergy = 30;
-    else estimatedEnergy = 15;
+    const [dbTasks, learned, effortSaved] = await Promise.all([
+      prisma.task.findMany({
+        where: { userId: user.id, status: { notIn: ["DONE", "ARCHIVED"] } },
+        include: { project: true, course: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      learnedEnergyByHour(user.id),
+      effortSavedSummary(user.id, new Date(local.startOfDay.getTime() - ((local.dayOfWeek + 6) % 7) * 86400000)),
+    ]);
+    dbTasks.sort(byPriorityThenNewest);
 
-    // Manual override if passed
+    const suggestedEnergy = learned[hour] ?? estimateEnergy(hour);
     const energyParam = searchParams.get("energy");
-    const currentEnergy = energyParam ? parseInt(energyParam, 10) : estimatedEnergy;
+    const currentEnergy = energyParam ? safeInt(energyParam, suggestedEnergy, 0, 100) : suggestedEnergy;
     const isLazyMode = searchParams.get("lazy") === "true" || currentEnergy <= 30;
 
-    const rawTasks = await prisma.task.findMany({
-      where: {
-        userId: user.id,
-        status: { not: "DONE" },
-      },
-      include: { project: true, course: true },
-      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-    });
+    const rawTasks: RawEffortTask[] = dbTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      projectName: t.course ? `${t.course.code}` : t.project?.name,
+      estimatedMinutes: t.estimatedMinutes || 30,
+      priority: t.priority,
+      isAcademic: Boolean(t.isAcademic),
+      dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+    }));
 
-    const evaluatedTasks: EvaluatedEffortTask[] = rawTasks.map((t) => {
-      const duration = t.estimatedMinutes || 30;
-      const energyCost = calculateEnergyCost(t.title, duration);
-      const lower = t.title.toLowerCase();
+    const tasks = evaluateTasks(rawTasks, currentEnergy, isLazyMode, local.endOfDay.getTime());
 
-      let action: "SKIP" | "AUTOMATE" | "OPTIMIZE" | "JUST_DO_IT" = "JUST_DO_IT";
-      let actionReason = "Requires direct focus and personal context.";
-
-      // Evaluation Rules
-      if (t.isAcademic && (isLazyMode || currentEnergy <= 30) && duration >= 40) {
-        action = "OPTIMIZE";
-        actionReason = "Mandatory academic coursework. Break down into a 20m sprint rather than skipping.";
-      } else if (
-        (isLazyMode || currentEnergy <= 30) &&
-        t.priority === "LOW" &&
-        duration >= 40
-      ) {
-        action = "SKIP";
-        actionReason = "Low priority item during a low energy state. Safely defer or eliminate.";
-      } else if (
-        lower.includes("format") ||
-        lower.includes("clean") ||
-        lower.includes("schedule") ||
-        lower.includes("sync") ||
-        lower.includes("deploy")
-      ) {
-        action = "AUTOMATE";
-        actionReason = "Repetitive operational task. Faida rule or script can run this automatically.";
-      } else if (energyCost <= 3 || duration <= 20) {
-        action = "OPTIMIZE";
-        actionReason = "Can be batched with other low-energy tasks or finished in one 15m sprint.";
-      } else {
-        action = "JUST_DO_IT";
-        actionReason = "High-leverage core work. Tackle during peak energy or split into subtasks.";
-      }
-
-      return {
-        id: t.id,
-        title: t.title,
-        projectName: t.course ? `${t.course.code}` : t.project?.name,
-        estimatedMinutes: duration,
-        priority: t.priority,
-        energyCost,
-        action,
-        actionReason,
-      };
-    });
-
-    // Generate Low Energy Batch (up to 4 quick items <= 25 mins each)
-    const batchTasks = evaluatedTasks
-      .filter((t) => t.energyCost <= 3 && t.estimatedMinutes <= 30)
-      .slice(0, 4);
-
-    const batchTotalMinutes = batchTasks.reduce((acc, t) => acc + t.estimatedMinutes, 0);
-
-    const isTed = user.email === "khalwaleted@gmail.com";
-    const effortSaved = isTed ? {
-      tasksAutomated: 17,
-      tasksEliminated: 8,
-      tasksOptimized: 12,
-      batchesCompleted: 6,
-      savedTimeFormatted: "4h 37m",
-      savedMinutes: 277,
-    } : {
-      tasksAutomated: 0,
-      tasksEliminated: 0,
-      tasksOptimized: 0,
-      batchesCompleted: 0,
-      savedTimeFormatted: "0m",
-      savedMinutes: 0,
-    };
-
-    return NextResponse.json({
-      success: true,
-      currentEnergy,
-      isLazyMode,
-      tasks: evaluatedTasks,
-      lowEnergyBatch: {
-        tasks: batchTasks,
-        totalMinutes: batchTotalMinutes,
-        count: batchTasks.length,
-      },
-      effortSaved,
-    });
-  } catch (error: any) {
-    console.error("Error in effort engine:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Effort engine failure" },
-      { status: 500 }
+      {
+        success: true,
+        currentEnergy,
+        suggestedEnergy,
+        learnedEnergyByHour: learned,
+        isLazyMode,
+        tasks,
+        rawTasks,
+        endOfDay: local.endOfDay.toISOString(),
+        lowEnergyBatch: pickLowEnergyBatch(tasks),
+        effortSaved,
+      },
+      { headers: noStore }
     );
+  } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
+    console.error("Error in effort engine:", error);
+    return NextResponse.json({ success: false, error: "Effort engine failure" }, { status: 500, headers: noStore });
   }
 }
 
+/**
+ * Actions that make Lazy Mode actually do something:
+ *  CHECKIN  { level }                 remember how much energy you have (teaches it your daily curve)
+ *  DEFER    { taskId, days? }         push a task out (default: tomorrow morning) and log the time kept free
+ *  DROP     { taskId }                archive a task you will never do, and log it
+ *  COMPLETE { taskId, kind? }         mark done; kind "BATCH" or "SPRINT" is counted as effort saved
+ *  SPRINT   { taskId }                a 15-minute sprint was finished on a heavy task (task stays open)
+ *  RESTORE  { taskId, status, dueDate, eventId? }  undo a defer or drop
+ */
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
     if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noStore });
     }
 
-    const body = await req.json();
-    const { action, taskIds } = body;
+    const body = await readBody(req);
+    const action = body.action;
 
-    if (action === "DO_BATCH" && Array.isArray(taskIds) && taskIds.length > 0) {
-      // Complete batch tasks belonging to this user in SQLite
-      await prisma.task.updateMany({
-        where: {
-          id: { in: taskIds },
-          userId: user.id,
-        },
-        data: { status: "DONE" },
-      });
-
-      await prisma.activityLog.create({
-        data: {
-          action: "BATCH_COMPLETED",
-          details: `Completed low-energy batch of ${taskIds.length} tasks in one go!`,
-        },
-      });
-
-      return NextResponse.json({
-        success: true,
-        completedCount: taskIds.length,
-        message: `Awesome! ${taskIds.length} low-energy tasks knocked out together.`,
-      });
+    if (action === "CHECKIN") {
+      const level = must(num(body.level, { min: 0, max: 100, int: true, required: true }), "level must be 0 to 100");
+      const hour = body.hour !== undefined ? must(num(body.hour, { min: 0, max: 23, int: true, required: true }), "hour must be 0 to 23") : zonedNow().hour;
+      await prisma.energyCheckin.create({ data: { userId: user.id, level, hour } });
+      return NextResponse.json({ success: true }, { headers: noStore });
     }
 
-    return NextResponse.json({ success: false, error: "Invalid action" }, { status: 400 });
+    const taskId = must(idOf(body.taskId), "taskId is required");
+    const task = await prisma.task.findFirst({ where: { id: taskId, userId: user.id } });
+    if (!task) return notFound("Task not found", noStore);
+
+    if (action === "DEFER") {
+      const days = must(num(body.days ?? 1, { min: 1, max: 60, int: true, required: true }), "days must be 1 to 60");
+      const local = zonedNow();
+      // Nine in the morning, local time, that many days from today
+      const dueDate = new Date(local.startOfDay.getTime() + days * 86400000 + 9 * 3600000);
+      await prisma.task.update({ where: { id: task.id }, data: { dueDate } });
+      const event = await prisma.effortEvent.create({
+        data: { userId: user.id, type: "DEFER", taskId: task.id, minutes: task.estimatedMinutes || 0 },
+      });
+      return NextResponse.json(
+        { success: true, dueDate: dueDate.toISOString(), eventId: event.id, previous: { status: task.status, dueDate: task.dueDate } },
+        { headers: noStore }
+      );
+    }
+
+    if (action === "DROP") {
+      await prisma.task.update({ where: { id: task.id }, data: { status: "ARCHIVED" } });
+      const event = await prisma.effortEvent.create({
+        data: { userId: user.id, type: "DROP", taskId: task.id, minutes: task.estimatedMinutes || 0 },
+      });
+      return NextResponse.json(
+        { success: true, eventId: event.id, previous: { status: task.status, dueDate: task.dueDate } },
+        { headers: noStore }
+      );
+    }
+
+    if (action === "COMPLETE") {
+      await prisma.task.update({ where: { id: task.id }, data: { status: "DONE" } });
+      if (task.status !== "DONE") await spawnNextRecurrence(task);
+      if (task.entityId) {
+        await prisma.entity.update({ where: { id: task.entityId }, data: { status: "COMPLETED" } }).catch(() => {});
+      }
+      if (body.kind === "BATCH" || body.kind === "SPRINT") {
+        await prisma.effortEvent.create({
+          data: { userId: user.id, type: body.kind, taskId: task.id, minutes: task.estimatedMinutes || 0 },
+        });
+      }
+      return NextResponse.json({ success: true }, { headers: noStore });
+    }
+
+    if (action === "SPRINT") {
+      await prisma.effortEvent.create({ data: { userId: user.id, type: "SPRINT", taskId: task.id, minutes: 15 } });
+      return NextResponse.json({ success: true }, { headers: noStore });
+    }
+
+    if (action === "RESTORE") {
+      const status = typeof body.status === "string" && body.status.length <= 20 ? body.status : "TODO";
+      const dueDate = body.dueDate ? new Date(body.dueDate) : null;
+      if (dueDate && Number.isNaN(dueDate.getTime())) throw new ValidationError("dueDate is invalid");
+      await prisma.task.update({ where: { id: task.id }, data: { status, dueDate } });
+      if (typeof body.eventId === "string") {
+        await prisma.effortEvent.deleteMany({ where: { id: body.eventId, userId: user.id } });
+      }
+      return NextResponse.json({ success: true }, { headers: noStore });
+    }
+
+    throw new ValidationError("Unknown action");
   } catch (error: any) {
-    console.error("Error executing batch:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to execute batch" },
-      { status: 500 }
-    );
+    if (error instanceof ValidationError) return badRequest(error.message);
+    console.error("Error executing effort action:", error);
+    return NextResponse.json({ success: false, error: "Effort action failed" }, { status: 500, headers: noStore });
   }
 }

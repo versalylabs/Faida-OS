@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, httpUrl, idOf, must, num, readBody, str } from "@/lib/validate";
 
 // GET /api/university/materials - Fetch course materials
 export async function GET(req: NextRequest) {
@@ -26,9 +27,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, materials });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching academic materials:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch materials" },
+      { success: false, error: "Failed to fetch materials" },
       { status: 500 }
     );
   }
@@ -42,18 +44,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { courseId, title, type, content, fileUrl, weekNumber, summary, createSecondBrainNote } = body;
 
-    if (!courseId || !title) {
-      return NextResponse.json(
-        { success: false, error: "Course and title are required" },
-        { status: 400 }
-      );
-    }
+    const linkedCourseId = must(idOf(courseId), "Course is required");
+    const cleanTitle = must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)");
+    const cleanType = must(str(type, { max: 40 }), "Invalid type") ?? "NOTES";
+    const cleanContent = must(str(content, { max: 200000 }), "Content is too long");
+    const cleanFileUrl = must(httpUrl(fileUrl), "File URL must start with http:// or https://");
+    const cleanWeek = must(num(weekNumber, { min: 0, max: 60, int: true }), "Week number must be between 0 and 60");
+    const cleanSummary = must(str(summary, { max: 20000 }), "Summary is too long");
 
     const course = await prisma.universityCourse.findFirst({
-      where: { id: courseId, userId: user.id },
+      where: { id: linkedCourseId, userId: user.id },
     });
     if (!course) {
       return NextResponse.json({ success: false, error: "Course not found" }, { status: 404 });
@@ -62,13 +65,13 @@ export async function POST(req: NextRequest) {
     const material = await prisma.academicMaterial.create({
       data: {
         userId: user.id,
-        courseId,
-        title: title.trim(),
-        type: type || "NOTES",
-        content: content || null,
-        fileUrl: fileUrl || null,
-        weekNumber: weekNumber ? parseInt(weekNumber, 10) : null,
-        summary: summary || null,
+        courseId: linkedCourseId,
+        title: cleanTitle,
+        type: cleanType,
+        content: cleanContent,
+        fileUrl: cleanFileUrl,
+        weekNumber: cleanWeek,
+        summary: cleanSummary,
       },
       include: {
         course: { select: { id: true, code: true, name: true, color: true } },
@@ -76,13 +79,13 @@ export async function POST(req: NextRequest) {
     });
 
     // Optionally create a connected Note in Second Brain
-    if (createSecondBrainNote && content) {
+    if (createSecondBrainNote && cleanContent) {
       const entity = await prisma.entity.create({
         data: {
           userId: user.id,
           type: "NOTE",
           title: `${course.code}: ${material.title}`,
-          content: content,
+          content: cleanContent,
           status: "ACTIVE",
         },
       });
@@ -93,18 +96,19 @@ export async function POST(req: NextRequest) {
           entityId: entity.id,
           courseId: course.id,
           title: `${course.code}: ${material.title}`,
-          content: content,
+          content: cleanContent,
           category: "University",
-          tags: `${course.code}, academic, week-${weekNumber || 1}`,
+          tags: `${course.code}, academic, week-${cleanWeek || 1}`,
         },
       });
     }
 
     return NextResponse.json({ success: true, material });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating academic material:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create material" },
+      { success: false, error: "Failed to create material" },
       { status: 500 }
     );
   }
@@ -136,9 +140,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Material deleted" });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting academic material:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete material" },
+      { success: false, error: "Failed to delete material" },
       { status: 500 }
     );
   }

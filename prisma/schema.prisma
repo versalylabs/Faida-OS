@@ -49,6 +49,8 @@ model User {
   businessDeliverables  BusinessDeliverable[]
   mealPlanItems         MealPlanItem[]
   mealIdeas             MealIdea[]
+  energyCheckins        EnergyCheckin[]
+  effortEvents          EffortEvent[]
 }
 
 model Session {
@@ -534,6 +536,33 @@ model JournalEntry {
   updatedAt           DateTime @updatedAt
 
   user                User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+// Lazy Mode: how much energy you said you had, and when
+model EnergyCheckin {
+  id        String   @id @default(uuid())
+  userId    String
+  level     Int      // 0-100
+  hour      Int      // 0-23, in the user's own time zone
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// Lazy Mode: things it helped you avoid or finish (deferred, dropped, batch, sprint)
+model EffortEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  type      String   // DEFER, DROP, BATCH, SPRINT
+  taskId    String?
+  minutes   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
 }
 
 model ActivityLog {

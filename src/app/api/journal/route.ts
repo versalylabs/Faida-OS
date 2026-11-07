@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, must, num, readBody, str } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -94,9 +95,10 @@ export async function GET(req: NextRequest) {
       history: historicalEntries,
     });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error generating journal:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate journal" },
+      { success: false, error: "Failed to generate journal" },
       { status: 500 }
     );
   }
@@ -109,10 +111,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { date, summary, focusMinutes, learningMinutes, completedTasksCount } = body;
-    const targetDate = date || new Date().toISOString().split("T")[0];
+    const body = await readBody(req);
+    const { date, summary: summaryIn, focusMinutes: focusIn, learningMinutes: learningIn, completedTasksCount: completedIn } = body;
 
+    const targetDate = must(str(date, { max: 10 }), "date must be YYYY-MM-DD") ?? new Date().toISOString().split("T")[0];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || Number.isNaN(Date.parse(targetDate))) {
+      throw new ValidationError("date must be YYYY-MM-DD");
+    }
+    const summary = must(str(summaryIn, { max: 20000 }), "Summary is too long");
+    const focusMinutes = must(num(focusIn, { min: 0, max: 100000, int: true }), "focusMinutes is invalid") ?? 0;
+    const learningMinutes = must(num(learningIn, { min: 0, max: 100000, int: true }), "learningMinutes is invalid") ?? 0;
+    const completedTasksCount = must(num(completedIn, { min: 0, max: 100000, int: true }), "completedTasksCount is invalid") ?? 0;
     const existing = await prisma.journalEntry.findFirst({
       where: { date: targetDate, userId: user.id },
     });
@@ -123,9 +132,9 @@ export async function POST(req: NextRequest) {
         where: { id: existing.id },
         data: {
           summary,
-          focusMinutes: focusMinutes || 0,
-          learningMinutes: learningMinutes || 0,
-          completedTasksCount: completedTasksCount || 0,
+          focusMinutes,
+          learningMinutes,
+          completedTasksCount,
         },
       });
     } else {
@@ -134,18 +143,19 @@ export async function POST(req: NextRequest) {
           userId: user.id,
           date: targetDate,
           summary,
-          focusMinutes: focusMinutes || 0,
-          learningMinutes: learningMinutes || 0,
-          completedTasksCount: completedTasksCount || 0,
+          focusMinutes,
+          learningMinutes,
+          completedTasksCount,
         },
       });
     }
 
     return NextResponse.json({ success: true, entry });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error saving journal entry:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to save journal" },
+      { success: false, error: "Failed to save journal" },
       { status: 500 }
     );
   }

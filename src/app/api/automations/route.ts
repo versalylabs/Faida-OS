@@ -72,7 +72,7 @@ async function loadRulesForUser(userId: string) {
         description: payload.description ?? "",
         action: row.actionType,
         isActive: row.isActive,
-        timesTriggered: payload.timesTriggered ?? 0,
+        timesTriggered: 0, // nothing runs these rules yet, so never show an invented count
       };
     });
 }

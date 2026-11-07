@@ -33,8 +33,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# sqlite
+# legacy sqlite files (the app now uses PostgreSQL)
+prisma/*.db
 prisma/*.db-journal
 prisma/*.db-shm
 prisma/*.db-wal
 prisma/*.tmp*
+
+# local Claude tooling
+.claude/

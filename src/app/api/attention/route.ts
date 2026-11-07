@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { zonedNow } from "@/lib/tz";
+import { ValidationError, badRequest } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,11 +26,11 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const todayEnd = new Date(todayStart.getTime() + 86400000);
+    const { startOfDay: todayStart, endOfDay: todayEnd } = zonedNow(now);
 
     // 1. Urgent Count: Overdue reminders + Urgent priority uncompleted tasks + Overdue tasks
-    const [overdueReminders, urgentTasks, overdueTasks] = await Promise.all([
+    // All eight counts are independent, so start them together: one database round trip, not three.
+    const group1 = Promise.all([
       prisma.reminder.count({
         where: {
           userId: user.id,
@@ -52,10 +54,8 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    const urgentCount = overdueReminders + urgentTasks + overdueTasks;
-
     // 2. Due Today Count: Reminders due today + tasks due today + CATs today
-    const [dueTodayReminders, dueTodayTasks, dueTodayAssessments] = await Promise.all([
+    const group2 = Promise.all([
       prisma.reminder.count({
         where: {
           userId: user.id,
@@ -79,10 +79,8 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    const dueTodayCount = dueTodayReminders + dueTodayTasks + dueTodayAssessments;
-
     // 3. Informational count: Active projects + unchecked shopping items
-    const [activeProjects, shoppingItems] = await Promise.all([
+    const group3 = Promise.all([
       prisma.project.count({
         where: {
           userId: user.id,
@@ -97,6 +95,10 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const [[overdueReminders, urgentTasks, overdueTasks], [dueTodayReminders, dueTodayTasks, dueTodayAssessments], [activeProjects, shoppingItems]] =
+      await Promise.all([group1, group2, group3]);
+    const urgentCount = overdueReminders + urgentTasks + overdueTasks;
+    const dueTodayCount = dueTodayReminders + dueTodayTasks + dueTodayAssessments;
     const informationalCount = activeProjects + shoppingItems;
 
     return NextResponse.json(
@@ -109,6 +111,7 @@ export async function GET(req: NextRequest) {
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error calculating attention counts:", error);
     return NextResponse.json(
       { success: false, urgentCount: 0, dueTodayCount: 0, informationalCount: 0 },

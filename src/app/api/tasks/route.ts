@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { byPriorityThenNewest } from "@/lib/priority";
+import { purgeOldCompleted } from "@/lib/cleanup";
+import { PRIORITIES, RECURRENCES, ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,6 +20,9 @@ export async function GET(req: NextRequest) {
     if (!user) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
+
+    // Housekeeping: finished tasks are cleared 48 hours after they were completed
+    await purgeOldCompleted(user.id);
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status");
@@ -40,16 +46,18 @@ export async function GET(req: NextRequest) {
       },
       orderBy: [
         { status: "asc" },
-        { priority: "desc" },
         { createdAt: "desc" },
       ],
     });
+    // Priority is ranked here, not in SQL (alphabetical order would put HIGH last)
+    tasks.sort((a, b) => a.status.localeCompare(b.status) || byPriorityThenNewest(a, b));
 
     return NextResponse.json({ success: true, tasks }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching tasks:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch tasks" },
+      { success: false, error: "Failed to fetch tasks" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -62,11 +70,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { title, description, priority, estimatedMinutes, dueDate, projectId, category, subtasks } = body;
+    const body = await readBody(req);
+    const { title, description, priority, estimatedMinutes, dueDate, projectId, category, subtasks, recurrence } = body;
 
-    if (!title || typeof title !== "string" || !title.trim()) {
-      return NextResponse.json({ success: false, error: "Task title is required" }, { status: 400 });
+    const cleanTitle = must(str(title, { max: 300, required: true }), "Task title is required (max 300 characters)");
+    const cleanDescription = must(str(description, { max: 10000 }), "Description is too long");
+    const cleanPriority = must(oneOf(priority, PRIORITIES), "Invalid priority") ?? "MEDIUM";
+    const minutes = must(num(estimatedMinutes, { min: 0, max: 100000, int: true }), "Estimated minutes must be a whole number between 0 and 100000") ?? 30;
+    const cleanDue = must(date(dueDate), "Due date is invalid");
+    const cleanCategory = must(str(category, { max: 80 }), "Category is too long") ?? "Execution";
+    const cleanRecurrence = must(oneOf(recurrence, RECURRENCES), "Invalid repeat option");
+    const ownedProjectId = await ownedId("project", user.id, projectId);
+    if (ownedProjectId === undefined) return notFound("Project not found");
+    const cleanSubtasks: { title: string; isDone: boolean }[] = [];
+    if (subtasks !== undefined && !Array.isArray(subtasks)) throw new ValidationError("Subtasks must be a list");
+    for (const sub of (subtasks ?? []).slice(0, 100)) {
+      const t = str(typeof sub === "string" ? sub : sub?.title, { max: 300 });
+      if (t === undefined) throw new ValidationError("Subtask title is invalid (max 300 characters)");
+      if (t) cleanSubtasks.push({ title: t, isDone: typeof sub === "object" ? Boolean(sub.isDone) : false });
     }
 
     // 1. Create unified Entity
@@ -74,9 +95,9 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         type: "TASK",
-        title: title.trim(),
-        content: description,
-        priority: priority || "MEDIUM",
+        title: cleanTitle,
+        content: cleanDescription,
+        priority: cleanPriority,
         status: "ACTIVE",
       },
     });
@@ -86,24 +107,16 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         entityId: entity.id,
-        title: title.trim(),
-        description,
-        priority: priority || "MEDIUM",
+        title: cleanTitle,
+        description: cleanDescription,
+        priority: cleanPriority,
         status: "TODO",
-        estimatedMinutes: estimatedMinutes ? parseInt(estimatedMinutes, 10) : 30,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        projectId: projectId || null,
-        category: category || "Execution",
-        subtasks: Array.isArray(subtasks) && subtasks.length > 0
-          ? {
-              create: subtasks
-                .filter((s: any) => (typeof s === "string" ? s.trim() : s?.title?.trim()))
-                .map((s: any) => ({
-                  title: typeof s === "string" ? s.trim() : s.title.trim(),
-                  isDone: typeof s === "object" ? Boolean(s.isDone) : false,
-                })),
-            }
-          : undefined,
+        estimatedMinutes: minutes,
+        dueDate: cleanDue,
+        projectId: ownedProjectId,
+        category: cleanCategory,
+        recurrence: cleanRecurrence,
+        subtasks: cleanSubtasks.length > 0 ? { create: cleanSubtasks } : undefined,
       },
       include: {
         project: true,
@@ -124,9 +137,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, task }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating task:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create task" },
+      { success: false, error: "Failed to create task" },
       { status: 500 }
     );
   }
@@ -139,7 +153,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, status, actualMinutes, priority, title } = body;
 
     if (!id) {
@@ -189,9 +203,10 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, task });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating task:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update task" },
+      { success: false, error: "Failed to update task" },
       { status: 500 }
     );
   }
@@ -234,9 +249,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Task deleted successfully" }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting task:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete task" },
+      { success: false, error: "Failed to delete task" },
       { status: 500, headers: noCacheHeaders }
     );
   }

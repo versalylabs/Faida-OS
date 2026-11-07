@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -12,38 +13,50 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const oneWeekAgo = new Date(now.getTime() - 7 * 86400000);
 
-    // 1. Tasks completed this week vs previous
-    const completedTasksWeek = await prisma.task.count({
-      where: {
-        userId: user.id,
-        status: "DONE",
-        updatedAt: { gte: oneWeekAgo },
-      },
-    });
-
-    const activeTasksCount = await prisma.task.count({
-      where: {
-        userId: user.id,
-        status: { not: "DONE" },
-      },
-    });
-
-    // 2. Study sessions & learning breakdown (scoped to user's subjects)
-    const studySessions = await prisma.studySession.findMany({
-      where: {
-        topic: {
-          subject: {
-            userId: user.id,
-          },
+    // All five reads are independent, so run them together (one database round trip, not five).
+    const twoWeeksAgo = new Date(now.getTime() - 14 * 86400000);
+    const [completedTasksWeek, activeTasksCount, studySessions, projects, transactions, completedPrevWeek, workedMinutes] = await Promise.all([
+      prisma.task.count({
+        where: { userId: user.id, status: "DONE", updatedAt: { gte: oneWeekAgo } },
+      }),
+      prisma.task.count({
+        where: { userId: user.id, status: { not: "DONE" } },
+      }),
+      prisma.studySession.findMany({
+        where: { topic: { subject: { userId: user.id } } },
+        include: { topic: { include: { subject: true } } },
+      }),
+      prisma.project.findMany({
+        where: { userId: user.id },
+        include: {
+          tasks: { where: { userId: user.id } },
+          milestones: true,
         },
-      },
-      include: {
-        topic: {
-          include: { subject: true },
-        },
-      },
-    });
+      }),
+      prisma.financeTransaction.findMany({
+        where: { userId: user.id },
+        select: { amount: true },
+      }),
+      prisma.task.count({
+        where: { userId: user.id, status: "DONE", updatedAt: { gte: twoWeeksAgo, lt: oneWeekAgo } },
+      }),
+      prisma.task.aggregate({
+        _sum: { actualMinutes: true },
+        where: { userId: user.id, status: "DONE", updatedAt: { gte: oneWeekAgo } },
+      }),
+    ]);
 
+    // Real week-on-week change and time actually logged on finished tasks (nothing invented)
+    const weekChange =
+      completedPrevWeek > 0
+        ? `${completedTasksWeek >= completedPrevWeek ? "+" : ""}${Math.round(((completedTasksWeek - completedPrevWeek) / completedPrevWeek) * 100)}%`
+        : completedTasksWeek > 0
+        ? "New"
+        : "0%";
+    const workedTotal = workedMinutes._sum.actualMinutes ?? 0;
+    const deepWork = `${Math.floor(workedTotal / 60)}h ${workedTotal % 60}m`;
+
+    // Study sessions & learning breakdown
     const subjectHours: Record<string, number> = {};
     let totalLearningMinutes = 0;
 
@@ -53,15 +66,7 @@ export async function GET(req: NextRequest) {
       totalLearningMinutes += s.durationMinutes;
     });
 
-    // 3. Projects progress
-    const projects = await prisma.project.findMany({
-      where: { userId: user.id },
-      include: {
-        tasks: { where: { userId: user.id } },
-        milestones: true,
-      },
-    });
-
+    // Projects progress
     const projectVelocity = projects.map((p) => {
       const doneMilestones = p.milestones.filter((m) => m.isDone).length;
       const doneTasks = p.tasks.filter((t) => t.status === "DONE").length;
@@ -76,10 +81,7 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // 4. Financial totals in KES
-    const transactions = await prisma.financeTransaction.findMany({
-      where: { userId: user.id },
-    });
+    // Financial totals in KES
     let totalSpentKES = 0;
     let totalEarnedKES = 0;
     transactions.forEach((tx) => {
@@ -87,15 +89,13 @@ export async function GET(req: NextRequest) {
       else totalEarnedKES += tx.amount;
     });
 
-    const isTed = user.email === "khalwaleted@gmail.com";
-
     return NextResponse.json({
       success: true,
       analytics: {
-        tasksCompletedWeek: isTed ? Math.max(completedTasksWeek, 18) : completedTasksWeek,
-        tasksWeekChange: completedTasksWeek > 0 ? "+14%" : "0%",
+        tasksCompletedWeek: completedTasksWeek,
+        tasksWeekChange: weekChange,
         activeTasksCount,
-        deepWorkHours: isTed ? "18h 40m" : "0h 0m",
+        deepWorkHours: deepWork,
         totalLearningHours: `${Math.floor(totalLearningMinutes / 60)}h ${totalLearningMinutes % 60}m`,
         subjectHours,
         totalSpentKES,
@@ -104,9 +104,10 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error generating analytics:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate analytics" },
+      { success: false, error: "Failed to generate analytics" },
       { status: 500 }
     );
   }

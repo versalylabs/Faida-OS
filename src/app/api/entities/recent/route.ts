@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, safeInt } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const limit = safeInt(searchParams.get("limit") || "20", 20, 1, 100);
 
     const entities = await prisma.entity.findMany({
       where: { userId: user.id },
@@ -29,9 +30,10 @@ export async function GET(req: NextRequest) {
       entities,
     });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching recent entities:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch entities" },
+      { success: false, error: "Failed to fetch entities" },
       { status: 500 }
     );
   }
@@ -64,9 +66,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting entity:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete entity" },
+      { success: false, error: "Failed to delete entity" },
       { status: 500 }
     );
   }

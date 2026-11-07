@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { zonedNow } from "@/lib/tz";
+import { ValidationError, badRequest } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,9 +23,10 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     // JavaScript getDay(): 0 is Sunday, 1 is Monday.
     // Convert to ISO 1 (Monday) to 7 (Sunday):
-    const currentDayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
-    const currentHours = now.getHours();
-    const currentMinutes = now.getMinutes();
+    const local = zonedNow(now);
+    const currentDayOfWeek = local.dayOfWeek === 0 ? 7 : local.dayOfWeek;
+    const currentHours = local.hour;
+    const currentMinutes = local.minute;
     const currentTimeMinutes = currentHours * 60 + currentMinutes;
 
     const [courses, allWeeklyClasses, assignments, assessments, announcements] =
@@ -230,9 +233,10 @@ export async function GET(req: NextRequest) {
       announcements,
     });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching academic dashboard:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch academic dashboard" },
+      { success: false, error: "Failed to fetch academic dashboard" },
       { status: 500 }
     );
   }

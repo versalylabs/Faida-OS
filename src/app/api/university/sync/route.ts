@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, readBody } from "@/lib/validate";
+import { assertPublicHttpsUrl, fetchPublicText } from "@/lib/safeFetch";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +11,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { mode, moodleUrl, moodleToken, iCalUrl, importData } = body;
 
     let importedCount = 0;
@@ -161,11 +163,10 @@ export async function POST(req: NextRequest) {
     // -------------------------------------------------------------------------
     if (mode === "ICAL_SYNC" && iCalUrl) {
       try {
-        const res = await fetch(iCalUrl);
-        const icsText = await res.text();
+        const icsText = await fetchPublicText(iCalUrl, { label: "Calendar URL" });
 
         // Simple iCal VEVENT parser
-        const events = icsText.split("BEGIN:VEVENT");
+        const events = icsText.split("BEGIN:VEVENT").slice(0, 2001); // cap work per sync
         for (let i = 1; i < events.length; i++) {
           const evChunk = events[i].split("END:VEVENT")[0];
           const summaryMatch = evChunk.match(/SUMMARY:(.+)/);
@@ -223,8 +224,9 @@ export async function POST(req: NextRequest) {
           updatedCount,
         });
       } catch (err: any) {
+        if (err instanceof ValidationError) return badRequest(err.message);
         return NextResponse.json(
-          { success: false, error: `Failed to fetch or parse iCal feed: ${err.message}` },
+          { success: false, error: "Failed to fetch or parse the iCal feed" },
           { status: 500 }
         );
       }
@@ -234,14 +236,18 @@ export async function POST(req: NextRequest) {
     // Mode 3: Official Moodle Web Services API
     // -------------------------------------------------------------------------
     if (mode === "MOODLE_API" && moodleUrl && moodleToken) {
-      const cleanUrl = moodleUrl.replace(/\/+$/, "");
+      const parsedMoodle = await assertPublicHttpsUrl(moodleUrl, "Moodle URL");
+      if (typeof moodleToken !== "string" || moodleToken.length > 200) {
+        throw new ValidationError("Moodle token is invalid");
+      }
+      const cleanUrl = (parsedMoodle.origin + parsedMoodle.pathname).replace(/\/+$/, "");
       const wsEndpoint = `${cleanUrl}/webservice/rest/server.php`;
+      const tokenParam = encodeURIComponent(moodleToken);
 
       try {
         // 1. Test token & get user site info
-        const infoUrl = `${wsEndpoint}?wstoken=${moodleToken}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`;
-        const infoRes = await fetch(infoUrl);
-        const infoData = await infoRes.json();
+        const infoUrl = `${wsEndpoint}?wstoken=${tokenParam}&wsfunction=core_webservice_get_site_info&moodlewsrestformat=json`;
+        const infoData = JSON.parse(await fetchPublicText(infoUrl, { label: "Moodle URL" }));
 
         if (infoData.exception || infoData.errorcode) {
           return NextResponse.json(
@@ -256,9 +262,8 @@ export async function POST(req: NextRequest) {
         const moodleUserId = infoData.userid;
 
         // 2. Fetch Enrolled Courses
-        const coursesUrl = `${wsEndpoint}?wstoken=${moodleToken}&wsfunction=core_enrol_get_users_courses&userid=${moodleUserId}&moodlewsrestformat=json`;
-        const coursesRes = await fetch(coursesUrl);
-        const enrolledCourses = await coursesRes.json();
+        const coursesUrl = `${wsEndpoint}?wstoken=${tokenParam}&wsfunction=core_enrol_get_users_courses&userid=${encodeURIComponent(String(moodleUserId))}&moodlewsrestformat=json`;
+        const enrolledCourses = JSON.parse(await fetchPublicText(coursesUrl, { label: "Moodle URL" }));
 
         if (Array.isArray(enrolledCourses)) {
           for (const mc of enrolledCourses) {
@@ -331,8 +336,9 @@ export async function POST(req: NextRequest) {
           studentName: infoData.fullname,
         });
       } catch (err: any) {
+        if (err instanceof ValidationError) return badRequest(err.message);
         return NextResponse.json(
-          { success: false, error: `Moodle connection error: ${err.message}` },
+          { success: false, error: "Could not connect to Moodle" },
           { status: 500 }
         );
       }
@@ -343,9 +349,10 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error synchronizing academic data:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to synchronize academic data" },
+      { success: false, error: "Failed to synchronize academic data" },
       { status: 500 }
     );
   }

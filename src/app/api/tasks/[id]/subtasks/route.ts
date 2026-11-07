@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, must, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -37,8 +38,9 @@ export async function GET(
 
     return NextResponse.json({ success: true, subtasks }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch subtasks" },
+      { success: false, error: "Failed to fetch subtasks" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -63,8 +65,9 @@ export async function POST(
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { title } = body;
+    const cleanTitle = must(str(title, { max: 300, required: true }), "Subtask title is required (max 300 characters)");
 
     if (!title || !title.trim()) {
       return NextResponse.json({ success: false, error: "Title is required" }, { status: 400, headers: noCacheHeaders });
@@ -73,15 +76,16 @@ export async function POST(
     const subtask = await prisma.subtask.create({
       data: {
         taskId: id,
-        title: title.trim(),
+        title: cleanTitle,
         isDone: false,
       },
     });
 
     return NextResponse.json({ success: true, subtask }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create subtask" },
+      { success: false, error: "Failed to create subtask" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -106,7 +110,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Task not found" }, { status: 404, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { subtaskId, title, isDone } = body;
 
     if (!subtaskId) {
@@ -122,7 +126,7 @@ export async function PATCH(
     }
 
     const dataToUpdate: any = {};
-    if (title !== undefined) dataToUpdate.title = title.trim();
+    if (title !== undefined) dataToUpdate.title = must(str(title, { max: 300, required: true }), "Subtask title is required (max 300 characters)");
     if (isDone !== undefined) dataToUpdate.isDone = Boolean(isDone);
 
     const updatedSubtask = await prisma.subtask.update({
@@ -132,8 +136,9 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, subtask: updatedSubtask }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update subtask" },
+      { success: false, error: "Failed to update subtask" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -163,7 +168,7 @@ export async function DELETE(
 
     if (!subtaskId) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         subtaskId = body.subtaskId;
       } catch {}
     }
@@ -186,8 +191,9 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, message: "Subtask deleted" }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete subtask" },
+      { success: false, error: "Failed to delete subtask" },
       { status: 500, headers: noCacheHeaders }
     );
   }

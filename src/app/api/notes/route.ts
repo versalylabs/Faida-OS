@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, idOf, must, notFound, ownedId, readBody, str, tagsOf } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const q = searchParams.get("q")?.toLowerCase() || "";
+    const q = (searchParams.get("q") || "").slice(0, 200).toLowerCase();
     const projectId = searchParams.get("projectId");
     const category = searchParams.get("category");
 
@@ -61,9 +62,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, notes: filtered });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching notes:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch notes" },
+      { success: false, error: "Failed to fetch notes" },
       { status: 500 }
     );
   }
@@ -77,29 +79,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { title, content, projectId, category, tags } = body;
 
-    if (!title || !title.trim()) {
-      return NextResponse.json({ success: false, error: "Title is required" }, { status: 400 });
-    }
+    const cleanTitle = must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)");
+    const cleanContent = must(str(content, { max: 200000 }), "Content is too long");
+    const cleanCategory = must(str(category, { max: 80 }), "Category is too long") ?? "General";
+    const cleanTags = must(tagsOf(tags), "Tags are invalid");
 
     // Verify project belongs to user if provided
-    if (projectId) {
-      const project = await prisma.project.findFirst({
-        where: { id: projectId, userId: user.id },
-      });
-      if (!project) {
-        return NextResponse.json({ success: false, error: "Linked project not found" }, { status: 404 });
-      }
+    const linkedProjectId = await ownedId("project", user.id, projectId);
+    if (linkedProjectId === undefined) {
+      return NextResponse.json({ success: false, error: "Linked project not found" }, { status: 404 });
     }
 
     const entity = await prisma.entity.create({
       data: {
         userId: user.id,
         type: "NOTE",
-        title: title.trim(),
-        content: content || "",
+        title: cleanTitle,
+        content: cleanContent ?? "",
         status: "ACTIVE",
       },
     });
@@ -108,11 +107,11 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         entityId: entity.id,
-        projectId: projectId || null,
-        title: title.trim(),
-        content: content || "",
-        category: category || "General",
-        tags: tags || null,
+        projectId: linkedProjectId,
+        title: cleanTitle,
+        content: cleanContent ?? "",
+        category: cleanCategory,
+        tags: cleanTags,
       },
       include: {
         project: {
@@ -127,9 +126,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, note });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating note:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create note" },
+      { success: false, error: "Failed to create note" },
       { status: 500 }
     );
   }
@@ -143,37 +143,38 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, title, content, projectId, category, tags } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Note ID is required" }, { status: 400 });
-    }
+    const noteId = must(idOf(id), "Note ID is required");
+    const patchTitle = title !== undefined ? must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)") : undefined;
+    const patchContent = content !== undefined ? must(str(content, { max: 200000 }), "Content is too long") ?? "" : undefined;
+    const patchCategory = category !== undefined ? must(str(category, { max: 80 }), "Category is too long") ?? "General" : undefined;
+    const patchTags = tags !== undefined ? must(tagsOf(tags), "Tags are invalid") : undefined;
 
     const existing = await prisma.note.findFirst({
-      where: { id, userId: user.id },
+      where: { id: noteId, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Note not found" }, { status: 404 });
     }
 
-    if (projectId) {
-      const project = await prisma.project.findFirst({
-        where: { id: projectId, userId: user.id },
-      });
-      if (!project) {
+    let patchProjectId: string | null | undefined;
+    if (projectId !== undefined) {
+      patchProjectId = await ownedId("project", user.id, projectId);
+      if (patchProjectId === undefined) {
         return NextResponse.json({ success: false, error: "Linked project not found" }, { status: 404 });
       }
     }
 
     const updated = await prisma.note.update({
-      where: { id },
+      where: { id: noteId },
       data: {
-        ...(title !== undefined && { title: title.trim() }),
-        ...(content !== undefined && { content }),
-        ...(projectId !== undefined && { projectId: projectId || null }),
-        ...(category !== undefined && { category }),
-        ...(tags !== undefined && { tags }),
+        ...(patchTitle !== undefined && { title: patchTitle }),
+        ...(patchContent !== undefined && { content: patchContent }),
+        ...(patchProjectId !== undefined && { projectId: patchProjectId }),
+        ...(patchCategory !== undefined && { category: patchCategory }),
+        ...(patchTags !== undefined && { tags: patchTags }),
       },
       include: {
         project: {
@@ -186,21 +187,22 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    if (existing.entityId && title !== undefined) {
+    if (existing.entityId && patchTitle !== undefined) {
       await prisma.entity.update({
         where: { id: existing.entityId },
         data: {
-          title: title.trim(),
-          content,
+          title: patchTitle,
+          content: patchContent,
         },
       }).catch(() => {});
     }
 
     return NextResponse.json({ success: true, note: updated });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating note:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update note" },
+      { success: false, error: "Failed to update note" },
       { status: 500 }
     );
   }
@@ -218,7 +220,7 @@ export async function DELETE(req: NextRequest) {
     let id = searchParams.get("id");
     if (!id) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         id = body.id;
       } catch {}
     }
@@ -246,9 +248,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Note deleted successfully" });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting note:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete note" },
+      { success: false, error: "Failed to delete note" },
       { status: 500 }
     );
   }

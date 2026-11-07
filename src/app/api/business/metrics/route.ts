@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, must, readBody, safeFloat, safeInt, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const {
       businessId,
       weekStartDate = new Date().toISOString().slice(0, 10),
@@ -34,7 +35,11 @@ export async function POST(req: NextRequest) {
       notes,
     } = body;
 
-    if (!businessId) {
+    const weekStart = must(str(weekStartDate, { max: 10, min: 10, required: true }), "weekStartDate must be YYYY-MM-DD");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart) || Number.isNaN(Date.parse(weekStart))) {
+      throw new ValidationError("weekStartDate must be YYYY-MM-DD");
+    }
+    if (typeof businessId !== "string" || !businessId) {
       return NextResponse.json({ success: false, error: "Business ID is required" }, { status: 400, headers: noCacheHeaders });
     }
 
@@ -47,24 +52,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Business not found" }, { status: 404, headers: noCacheHeaders });
     }
 
-    const parsedOutreach = parseInt(outreachSent, 10) || 0;
-    const parsedReplyWarm = parseFloat(replyRateWarm) || 0;
-    const parsedReplyCold = parseFloat(replyRateCold) || 0;
-    const parsedAudits = parseInt(auditsBooked, 10) || 0;
-    const parsedShowRate = parseFloat(showRate) || 0;
-    const parsedCloseRate = parseFloat(closeRate) || 0;
-    const parsedTimeToLive = parseFloat(avgTimeToLiveDays) || 0;
-    const parsedMrr = parseFloat(mrr) || 0;
-    const parsedChurn = parseInt(clientChurnCount, 10) || 0;
-    const parsedReferrals = parseFloat(referralsCount) || 0;
-    const parsedCac = parseFloat(cac) || 0;
-    const parsedLtv = parseFloat(ltv) || 0;
+    const parsedOutreach = safeInt(outreachSent, 0, 0);
+    const parsedReplyWarm = safeFloat(replyRateWarm, 0, 0);
+    const parsedReplyCold = safeFloat(replyRateCold, 0, 0);
+    const parsedAudits = safeInt(auditsBooked, 0, 0);
+    const parsedShowRate = safeFloat(showRate, 0, 0);
+    const parsedCloseRate = safeFloat(closeRate, 0, 0);
+    const parsedTimeToLive = safeFloat(avgTimeToLiveDays, 0, 0);
+    const parsedMrr = safeFloat(mrr, 0, 0);
+    const parsedChurn = safeInt(clientChurnCount, 0, 0);
+    const parsedReferrals = safeFloat(referralsCount, 0, 0);
+    const parsedCac = safeFloat(cac, 0, 0);
+    const parsedLtv = safeFloat(ltv, 0, 0);
 
     const metric = await prisma.businessWeeklyMetric.create({
       data: {
         userId: user.id,
         businessId,
-        weekStartDate,
+        weekStartDate: weekStart,
         outreachSent: parsedOutreach,
         replyRateWarm: parsedReplyWarm,
         replyRateCold: parsedReplyCold,
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
         referralsCount: parsedReferrals,
         cac: parsedCac,
         ltv: parsedLtv,
-        notes: notes?.trim() || null,
+        notes: must(str(notes, { max: 5000 }), "Notes are too long"),
       },
     });
 
@@ -91,9 +96,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, metric }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error logging weekly metric:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to log weekly metric" },
+      { success: false, error: "Failed to log weekly metric" },
       { status: 500, headers: noCacheHeaders }
     );
   }

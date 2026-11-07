@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { buildDailySchedule, replanRemainingSchedule, SchedulableTask, ScheduleSlot } from "@/lib/planner/scheduler";
+import { byPriorityThenNewest } from "@/lib/priority";
+import { calculateEnergyCost } from "@/lib/effort";
+import { buildDayPlan, type BusyBlock, type PlanTask } from "@/lib/planner/scheduler";
+import { zonedNow } from "@/lib/tz";
+import { ValidationError, badRequest, safeFloat, safeInt } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,6 +16,18 @@ const noCacheHeaders = {
   Expires: "0",
 };
 
+function clockToMinutes(value: string | null | undefined): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(value || "");
+  if (!m) return null;
+  const mins = Number(m[1]) * 60 + Number(m[2]);
+  return mins >= 0 && mins <= 24 * 60 ? mins : null;
+}
+
+/**
+ * GET /api/planner?hours=4.5
+ * The plan is rebuilt from the live data on every request (it is cheap), so it is always accurate: it
+ * starts from the current time in the user's time zone and works around today's events and classes.
+ */
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
@@ -20,144 +36,90 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const availableHours = parseFloat(searchParams.get("hours") || "4.5");
-    const availableMinutes = Math.round(availableHours * 60);
+    const budgetMinutes = Math.round(safeFloat(searchParams.get("hours") || "4.5", 4.5, 0.25, 12) * 60);
+    const startParam = clockToMinutes(searchParams.get("start"));
+    const endHour = safeInt(searchParams.get("endHour"), 20, 12, 23);
 
-    const rawTasks = await prisma.task.findMany({
-      where: {
-        userId: user.id,
-        status: { not: "DONE" },
-      },
-      include: {
-        project: true,
-      },
-      orderBy: [
-        { priority: "desc" },
-        { createdAt: "desc" },
-      ],
-    });
+    const local = zonedNow();
+    const nowMin = local.hour * 60 + local.minute;
+    const isoDow = local.dayOfWeek === 0 ? 7 : local.dayOfWeek;
 
-    const schedulableTasks: SchedulableTask[] = rawTasks.map((t) => ({
+    const [dbTasks, events, classes] = await Promise.all([
+      prisma.task.findMany({
+        where: { userId: user.id, status: { notIn: ["DONE", "ARCHIVED"] } },
+        include: { project: true, course: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.calendarEvent.findMany({
+        where: { userId: user.id, startTime: { lt: local.endOfDay }, endTime: { gt: local.startOfDay } },
+        orderBy: { startTime: "asc" },
+      }),
+      prisma.academicClass.findMany({
+        where: { userId: user.id, dayOfWeek: isoDow },
+        include: { course: { select: { code: true, name: true } } },
+      }),
+    ]);
+    dbTasks.sort(byPriorityThenNewest);
+
+    const tasks: PlanTask[] = dbTasks.map((t) => ({
       id: t.id,
       title: t.title,
-      priority: (t.priority as any) || "MEDIUM",
+      priority: t.priority,
       estimatedMinutes: t.estimatedMinutes || 30,
-      actualMinutes: t.actualMinutes || 0,
-      status: (t.status as any) || "TODO",
-      projectName: t.project?.name,
+      energyCost: calculateEnergyCost(t.title, t.estimatedMinutes || 30),
+      dueDate: t.dueDate ? t.dueDate.toISOString() : null,
+      projectName: t.course ? t.course.code : t.project?.name,
     }));
 
-    const plan = buildDailySchedule(schedulableTasks, {
-      availableMinutes,
-      startHour: 9,
-      startMinute: 0,
-      bufferMinutes: 15,
-    });
-
-    return NextResponse.json({ success: true, plan }, { headers: noCacheHeaders });
-  } catch (error: any) {
-    console.error("Error building daily plan:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate plan" },
-      { status: 500, headers: noCacheHeaders }
-    );
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    const user = await getCurrentUser(req);
-    if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { availableMinutes = 270, startHour = 9, startMinute = 0 } = body;
-
-    const rawTasks = await prisma.task.findMany({
-      where: {
-        userId: user.id,
-        status: { not: "DONE" },
-      },
-      include: {
-        project: true,
-      },
-      orderBy: [
-        { priority: "desc" },
-        { createdAt: "desc" },
-      ],
-    });
-
-    const schedulableTasks: SchedulableTask[] = rawTasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      priority: (t.priority as any) || "MEDIUM",
-      estimatedMinutes: t.estimatedMinutes || 30,
-      actualMinutes: t.actualMinutes || 0,
-      status: (t.status as any) || "TODO",
-      projectName: t.project?.name,
-    }));
-
-    const plan = buildDailySchedule(schedulableTasks, {
-      availableMinutes,
-      startHour,
-      startMinute,
-      bufferMinutes: 15,
-    });
-
-    return NextResponse.json({ success: true, plan });
-  } catch (error: any) {
-    console.error("Error generating custom daily plan:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to generate plan" },
-      { status: 500 }
-    );
-  }
-}
-
-export async function PUT(req: NextRequest) {
-  try {
-    const user = await getCurrentUser(req);
-    if (!user) {
-      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { currentSlots, completedSlotId, actualMinutesSpent } = body;
-
-    if (!Array.isArray(currentSlots)) {
-      return NextResponse.json(
-        { success: false, error: "currentSlots array is required" },
-        { status: 400 }
-      );
-    }
-
-    const replannedSlots = replanRemainingSchedule(
-      currentSlots,
-      completedSlotId,
-      actualMinutesSpent
-    );
-
-    // If a task was completed, update its status in DB (only if belongs to user)
-    if (completedSlotId) {
-      const slot = currentSlots.find((s: ScheduleSlot) => s.id === completedSlotId);
-      if (slot && slot.taskId && slot.taskId !== "break") {
-        await prisma.task.updateMany({
-          where: { id: slot.taskId, userId: user.id },
-          data: {
-            status: "DONE",
-            actualMinutes: actualMinutesSpent || slot.durationMinutes,
-          },
-        }).catch(() => {});
+    const toLocalMin = (d: Date) => Math.round((d.getTime() - local.startOfDay.getTime()) / 60000);
+    const busy: BusyBlock[] = [];
+    const allDay: string[] = [];
+    for (const e of events) {
+      if (e.isAllDay) {
+        allDay.push(e.title);
+        continue;
       }
+      busy.push({
+        title: e.title,
+        startMin: toLocalMin(e.startTime),
+        endMin: Math.min(toLocalMin(e.endTime), 24 * 60),
+        kind: "EVENT",
+        location: e.location,
+      });
+    }
+    for (const c of classes) {
+      const start = clockToMinutes(c.startTime);
+      const end = clockToMinutes(c.endTime);
+      if (start === null || end === null || end <= start) continue;
+      busy.push({
+        title: `${c.course?.code ? c.course.code + ": " : ""}${c.title || "Class"}`,
+        startMin: start,
+        endMin: end,
+        kind: "CLASS",
+        location: c.location,
+      });
     }
 
-    return NextResponse.json({ success: true, slots: replannedSlots }, { headers: noCacheHeaders });
-  } catch (error: any) {
-    console.error("Error replanning schedule:", error);
+    const plan = buildDayPlan(tasks, busy, {
+      nowMin,
+      endOfDayMs: local.endOfDay.getTime(),
+      budgetMinutes,
+      dayEndMin: endHour * 60,
+      startOverrideMin: startParam,
+    });
+    if (allDay.length > 0) plan.notes.push(`All day: ${allDay.join(", ")}.`);
+
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to replan schedule" },
-      { status: 500, headers: noCacheHeaders }
+      {
+        success: true,
+        plan,
+        now: { minutes: nowMin, dateLabel: `${local.year}-${String(local.month).padStart(2, "0")}-${String(local.day).padStart(2, "0")}` },
+      },
+      { headers: noCacheHeaders }
     );
+  } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
+    console.error("Error building daily plan:", error);
+    return NextResponse.json({ success: false, error: "Failed to generate plan" }, { status: 500, headers: noCacheHeaders });
   }
 }

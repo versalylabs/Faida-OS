@@ -120,6 +120,26 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
     };
   }
 
+  // 2a. M-PESA message pasted straight from SMS, e.g.
+  //   "UKR3H9X1AB Confirmed. Ksh500.00 sent to JOHN DOE 0712345678 on 7/11/26 at 2:15 PM. New M-PESA balance is Ksh1,234.00"
+  //   "UKR3H9X1AB Confirmed. You have received Ksh2,000.00 from JANE DOE ..."
+  const mpesaAmount = trimmed.match(/ksh\.?\s*([\d,]+(?:\.\d{1,2})?)/i);
+  if (mpesaAmount && /confirmed/i.test(trimmed) && /(sent to|paid to|received|withdraw|bought|deposit)/i.test(trimmed)) {
+    const amount = parseFloat(mpesaAmount[1].replace(/,/g, ""));
+    const isIncome = /you have received|received ksh|deposit/i.test(trimmed) && !/sent to|paid to/i.test(trimmed);
+    const party = trimmed.match(/(?:sent to|paid to|received from|from)\s+([A-Za-z][A-Za-z0-9 &.'-]{1,40}?)(?:\s+\d{9,}|\s+on\s|\.\s|$)/i)?.[1]?.trim();
+    const label = party ? party.toLowerCase().replace(/(^|\s)\w/g, (c) => c.toUpperCase()) : "M-Pesa";
+    return {
+      type: "FINANCE",
+      title: `M-Pesa: ${isIncome ? "received from" : "paid to"} ${label}`,
+      amount,
+      transactionType: isIncome ? "INCOME" : "EXPENSE",
+      category: isIncome ? "Income" : "M-Pesa",
+      confidence: 0.97,
+      engine: "heuristic",
+    };
+  }
+
   // 2. FINANCE: "spent KES 2500 on lunch", "paid KES 4,000 for electricity", "received KES 50,000"
   const financeRegex = /(?:spent|paid|received|earned|income|expense)\s*(?:kes|ksh)?\s*([\d,]+(?:\.\d{1,2})?)\s*(?:on|for|from)?\s*(.*)/i;
   const financeMatch = trimmed.match(financeRegex);

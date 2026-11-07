@@ -34,6 +34,11 @@ export async function createSession(userId: string, email?: string, name?: strin
     },
   });
 
+  // Opportunistic cleanup of this user's expired sessions.
+  await prisma.session
+    .deleteMany({ where: { userId, expiresAt: { lt: new Date() } } })
+    .catch(() => {});
+
   return { token, expiresAt: new Date(expiresAtMs) };
 }
 
@@ -44,6 +49,7 @@ export async function updatePasswordAndRotateSessions(userId: string, password: 
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    forgetSessionsFor(userId);
     await tx.session.deleteMany({ where: { userId } });
     await tx.session.create({
       data: { token: hashSessionToken(token), userId, expiresAt },
@@ -53,12 +59,36 @@ export async function updatePasswordAndRotateSessions(userId: string, password: 
   return { token, expiresAt };
 }
 
-export async function validateSessionToken(token: string) {
+// A session lookup is a database round trip on every API call. Remember a verified session for a few
+// seconds per server instance. Logout and password changes clear it, and other instances catch up
+// within the TTL, so a revoked session stops working within ~20 seconds at most.
+const SESSION_CACHE_TTL_MS = 20_000;
+const sessionCache = new Map<string, { until: number; value: { session: any; user: any } }>();
+
+function rememberSession(tokenHash: string, value: { session: any; user: any }) {
+  if (sessionCache.size > 500) sessionCache.clear();
+  sessionCache.set(tokenHash, { until: Math.min(Date.now() + SESSION_CACHE_TTL_MS, value.session.expiresAt.getTime()), value });
+}
+
+function forgetSessionsFor(userId: string) {
+  for (const [key, entry] of sessionCache) {
+    if (entry.value.user?.id === userId) sessionCache.delete(key);
+  }
+}
+
+/** Thrown (in strict mode) when the session store itself is unreachable, as opposed to the session being invalid. */
+export class AuthUnavailableError extends Error {}
+
+export async function validateSessionToken(token: string, opts: { strict?: boolean } = {}) {
   if (!token) return null;
+
+  const tokenHash = hashSessionToken(token);
+  const hit = sessionCache.get(tokenHash);
+  if (hit && hit.until > Date.now()) return hit.value;
 
   try {
     const session = await prisma.session.findUnique({
-      where: { token: hashSessionToken(token) },
+      where: { token: tokenHash },
       include: {
         user: {
           select: {
@@ -74,18 +104,22 @@ export async function validateSessionToken(token: string) {
     if (!session) return null;
 
     if (session.expiresAt.getTime() < Date.now()) {
-      await prisma.session.delete({ where: { token } }).catch(() => {});
+      // Sessions are stored by token hash, so delete by the hash (not the raw cookie value).
+      await prisma.session.deleteMany({ where: { id: session.id } }).catch(() => {});
       return null;
     }
 
-    return { session, user: session.user };
+    const value = { session, user: session.user };
+    rememberSession(tokenHash, value);
+    return value;
   } catch (error) {
     console.error("[Auth] Database session validation error:", error);
+    if (opts.strict) throw new AuthUnavailableError("Session store unavailable");
     return null;
   }
 }
 
-export async function getCurrentUser(req?: Request | NextRequest) {
+export async function getCurrentUser(req?: Request | NextRequest, opts: { strict?: boolean } = {}) {
   try {
     let token: string | undefined;
 
@@ -100,9 +134,10 @@ export async function getCurrentUser(req?: Request | NextRequest) {
 
     if (!token) return null;
 
-    const auth = await validateSessionToken(token);
+    const auth = await validateSessionToken(token, opts);
     return auth?.user ?? null;
   } catch (error) {
+    if (error instanceof AuthUnavailableError) throw error;
     console.error("[Auth] Error in getCurrentUser:", error);
     return null;
   }
@@ -117,8 +152,10 @@ export async function requireAuth(req?: Request | NextRequest) {
 }
 
 export async function deleteSession(token: string) {
+  const tokenHash = hashSessionToken(token);
+  sessionCache.delete(tokenHash);
   await prisma.session.deleteMany({
-    where: { token: hashSessionToken(token) },
+    where: { token: tokenHash },
   });
 }
 
@@ -175,4 +212,13 @@ export function getClientAddress(req: NextRequest): string {
     req.headers.get("x-real-ip") ||
     req.headers.get("x-forwarded-for");
   return address?.split(",")[0]?.trim() || "unknown";
+}
+
+/**
+ * Whether the cookie should be marked Secure. True for anything served over HTTPS (all of production),
+ * false for plain-HTTP local/LAN testing, where a Secure cookie would be silently dropped by the browser.
+ */
+export function isSecureRequest(req: NextRequest): boolean {
+  const proto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || req.nextUrl.protocol.replace(":", "");
+  return proto === "https";
 }

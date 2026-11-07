@@ -1,145 +1,242 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import {
-  Calendar,
-  RefreshCw,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Coffee,
-  Sparkles,
-  Loader2,
-  FolderGit2,
-} from "lucide-react";
-import { ScheduleSlot, DailyScheduleResult } from "@/lib/planner/scheduler";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { CalendarClock, Check, Coffee, GraduationCap, Loader2, MapPin, RefreshCw, Sparkles, Utensils, CalendarDays } from "lucide-react";
+import { formatClock, type DayPlan, type PlanSlot } from "@/lib/planner/scheduler";
+import { cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
+
+interface PlanResponse {
+  success: boolean;
+  plan: DayPlan;
+  now: { minutes: number; dateLabel: string };
+}
+
+const HOUR_CHOICES = [2, 3, 4.5, 6, 7.5];
+
+function minutesLabel(total: number) {
+  const h = Math.floor(total / 60);
+  const m = Math.round(total % 60);
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+const priorityBar: Record<string, string> = {
+  URGENT: "border-l-rose-400",
+  HIGH: "border-l-amber-400",
+  MEDIUM: "border-l-indigo-300",
+  LOW: "border-l-slate-500",
+};
 
 export default function PlannerPage() {
   const [hours, setHours] = useState(4.5);
-  const [schedule, setSchedule] = useState<DailyScheduleResult | null>(null);
+  const [data, setData] = useState<PlanResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isReplanning, setIsReplanning] = useState(false);
+  const [busyTask, setBusyTask] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
-  const fetchPlan = async (focusHours: number) => {
-    setIsLoading(true);
+  const load = useCallback(async (focusHours: number, quiet = false) => {
+    if (!quiet) setIsLoading(true);
     try {
-      const res = await fetch(`/api/planner?hours=${focusHours}`);
-      const data = await res.json();
-      if (data.success) {
-        setSchedule(data.plan);
+      const res = await fetch(`/api/planner?hours=${focusHours}`, { cache: "no-store" });
+      const json = await res.json();
+      if (json.success) {
+        setData(json);
+        cacheOfflineData(`planner_${focusHours}`, json);
       }
     } catch (e) {
       console.error("Failed to load planner:", e);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchPlan(hours);
-  }, [hours]);
+    const cached = getCachedOfflineData<PlanResponse>(`planner_${hours}`);
+    if (cached?.plan) {
+      setData(cached);
+      setIsLoading(false);
+    }
+    load(hours, Boolean(cached?.plan));
+  }, [hours, load]);
 
-  const handleReplan = async (completedSlotId?: string) => {
-    if (!schedule || isReplanning) return;
-    setIsReplanning(true);
-    setMessage(null);
-
-    try {
-      const res = await fetch("/api/planner", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentSlots: schedule.slots,
-          completedSlotId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSchedule({
-          ...schedule,
-          slots: data.slots,
-        });
-        setMessage(
-          completedSlotId
-            ? "Task completed! Schedule shifted automatically."
-            : "Remaining day successfully replanned from current time."
-        );
-        setTimeout(() => setMessage(null), 4000);
+  // The plan follows the clock: refresh once a minute while the tab is open
+  useEffect(() => {
+    const t = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        setTick((n) => n + 1);
+        load(hours, true);
       }
-    } catch (e) {
-      console.error("Failed to replan:", e);
+    }, 60000);
+    return () => clearInterval(t);
+  }, [hours, load]);
+
+  const flash = (text: string) => {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 4000);
+  };
+
+  const act = async (taskId: string, action: "COMPLETE" | "DEFER", okText: string) => {
+    setBusyTask(taskId);
+    try {
+      const res = await fetch("/api/effort", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, taskId, days: 1 }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        flash(okText);
+        await load(hours, true);
+      } else {
+        flash("That did not save. Try again.");
+      }
+    } catch {
+      flash("You seem to be offline. Try again when you're back.");
     } finally {
-      setIsReplanning(false);
+      setBusyTask(null);
     }
   };
 
-  const getPriorityBorder = (p: string) => {
-    switch (p) {
-      case "URGENT":
-        return "border-l-4 border-l-rose-500";
-      case "HIGH":
-        return "border-l-4 border-l-amber-500";
-      case "LOW":
-        return "border-l-4 border-l-slate-700";
-      default:
-        return "border-l-4 border-l-blue-500";
+  const plan = data?.plan;
+  const nowMin = data?.now.minutes ?? 0;
+
+  const nextTaskSlot = useMemo(() => plan?.slots.find((s) => s.kind === "TASK"), [plan, tick]);
+
+  const renderSlot = (slot: PlanSlot) => {
+    const range = `${formatClock(slot.startMin)} – ${formatClock(slot.endMin)}`;
+    const minutes = slot.endMin - slot.startMin;
+    const isNow = nowMin >= slot.startMin && nowMin < slot.endMin;
+
+    if (slot.kind === "BREAK") {
+      return (
+        <div key={slot.id} className="flex items-center gap-3 pl-3 py-1 text-xs text-slate-300">
+          <Coffee className="h-3.5 w-3.5 text-slate-400" />
+          <span className="tabular-nums">{range}</span>
+          <span>Break, {minutes} min</span>
+        </div>
+      );
     }
+
+    if (slot.kind === "LUNCH") {
+      return (
+        <div key={slot.id} className="flex items-center gap-3 pl-3 py-1.5 text-xs text-slate-300">
+          <Utensils className="h-3.5 w-3.5 text-amber-300" />
+          <span className="tabular-nums">{range}</span>
+          <span>Lunch, away from the screen</span>
+        </div>
+      );
+    }
+
+    if (slot.kind === "EVENT" || slot.kind === "CLASS") {
+      return (
+        <div key={slot.id} className={`p-3.5 rounded-2xl bg-slate-950/40 border border-dashed ${isNow ? "border-amber-300/60" : "border-white/20"} flex items-start gap-3`}>
+          {slot.kind === "CLASS" ? <GraduationCap className="h-4 w-4 text-sky-300 mt-0.5 shrink-0" /> : <CalendarDays className="h-4 w-4 text-violet-300 mt-0.5 shrink-0" />}
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-slate-100 truncate">{slot.title}</div>
+            <div className="text-xs text-slate-300 flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+              <span className="tabular-nums">{range}</span>
+              <span>{slot.kind === "CLASS" ? "Class" : "Fixed event"}</span>
+              {slot.location && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" /> {slot.location}
+                </span>
+              )}
+            </div>
+          </div>
+          {isNow && <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-300/20 text-amber-100 border border-amber-300/40 shrink-0">Now</span>}
+        </div>
+      );
+    }
+
+    const isNext = nextTaskSlot?.id === slot.id;
+    return (
+      <div
+        key={slot.id}
+        className={`p-4 rounded-2xl bg-slate-900/60 border border-slate-800 border-l-4 ${priorityBar[slot.priority || "MEDIUM"] || "border-l-indigo-300"} ${
+          isNow || isNext ? "ring-1 ring-amber-300/50" : ""
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs tabular-nums text-slate-300">{range}</span>
+              <span className="text-xs text-slate-400">{minutes} min</span>
+              {slot.part && <span className="text-[11px] text-slate-400">Part {slot.part.index} of {slot.part.total}</span>}
+              {(isNow || isNext) && (
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-300/20 text-amber-100 border border-amber-300/40">{isNow ? "Now" : "Up next"}</span>
+              )}
+            </div>
+            <div className="text-base font-medium text-white mt-1 break-words">{slot.title}</div>
+            <div className="text-xs text-slate-300 mt-1 flex flex-wrap gap-x-3">
+              {slot.projectName && <span>{slot.projectName}</span>}
+              {slot.why && <span className="text-amber-200">{slot.why}</span>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {slot.isLastPart !== false && slot.taskId && (
+              <button
+                onClick={() => act(slot.taskId!, "COMPLETE", `Done: ${slot.title}`)}
+                disabled={busyTask === slot.taskId}
+                title="Mark done"
+                className="press glass-orb h-9 w-9 text-emerald-200 cursor-pointer"
+              >
+                {busyTask === slot.taskId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              </button>
+            )}
+            {slot.taskId && (
+              <button
+                onClick={() => act(slot.taskId!, "DEFER", `Moved to tomorrow: ${slot.title}`)}
+                disabled={busyTask === slot.taskId}
+                title="Move to tomorrow"
+                className="press glass-orb h-9 w-9 text-slate-200 cursor-pointer"
+              >
+                <CalendarClock className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
+    <div className="max-w-4xl mx-auto space-y-5 sm:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs text-blue-400 font-mono tracking-wider uppercase mb-1">
-            <Calendar className="h-3.5 w-3.5" />
-            Dynamic Schedule Engine
+          <div className="flex items-center gap-2 text-xs text-sky-300 mb-1">
+            <CalendarClock className="h-3.5 w-3.5" />
+            Today, {data ? new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }) : "…"}
           </div>
-          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">
-            Intelligent Daily Planner
-          </h1>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Auto-allocates focus time by priority and dynamically reorganizes your day when plans drift.
+          <h1 className="text-2xl lg:text-3xl font-semibold tracking-tight text-white">Your day, planned</h1>
+          <p className="text-sm text-slate-300 mt-1 max-w-xl">
+            Built from right now, around your classes and events, with lunch and breaks protected. The heavy work goes in your morning.
           </p>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => handleReplan()}
-            disabled={isReplanning || isLoading || !schedule?.slots?.length}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-200 text-xs font-semibold shadow-md transition-all cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 text-blue-400 ${isReplanning ? "animate-spin" : ""}`}
-            />
-            <span>{isReplanning ? "Replanning..." : "Replan Remaining Day"}</span>
-          </button>
-        </div>
+        <button
+          onClick={() => load(hours)}
+          disabled={isLoading}
+          className="press flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-900/70 border border-white/15 text-slate-100 text-sm font-medium cursor-pointer disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 text-sky-300 ${isLoading ? "animate-spin" : ""}`} />
+          Rebuild from now
+        </button>
       </div>
 
-      {/* Focus Hours Selector & Metrics */}
-      <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <span className="text-xs font-semibold text-slate-200 block">
-              Available Focus Budget Today
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Faida constructs a realistic timeline with built-in 15m cognitive buffers.
-            </span>
+            <div className="text-sm font-semibold text-white">Focus time you want today</div>
+            <div className="text-xs text-slate-300">Planned work never goes beyond this. Pick less on a low-energy day.</div>
           </div>
-
-          {/* Quick hour chips */}
-          <div className="flex items-center gap-2">
-            {[3.0, 4.5, 6.0, 7.5].map((h) => (
+          <div className="flex items-center gap-2 flex-wrap">
+            {HOUR_CHOICES.map((h) => (
               <button
                 key={h}
                 onClick={() => setHours(h)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-mono transition-all cursor-pointer ${
-                  hours === h
-                    ? "bg-blue-600 text-white font-semibold shadow-sm"
-                    : "bg-slate-800 text-slate-400 hover:text-slate-200"
+                className={`press px-3.5 py-1.5 rounded-full text-xs font-medium border cursor-pointer transition-all ${
+                  hours === h ? "bg-sky-400/20 text-sky-100 border-sky-300/50" : "bg-slate-950/50 text-slate-200 border-white/10 hover:border-white/30"
                 }`}
               >
                 {h}h
@@ -147,151 +244,68 @@ export default function PlannerPage() {
             ))}
           </div>
         </div>
-
-        {schedule && (
-          <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-800/80 text-xs">
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase font-mono">Work Allocated</span>
-              <div className="font-semibold text-blue-400 mt-0.5">
-                {Math.floor(schedule.totalAllocatedMinutes / 60)}h {schedule.totalAllocatedMinutes % 60}m
+        {plan && (
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))] gap-3 text-center">
+            {[
+              { label: "Focus planned", value: minutesLabel(plan.focusMinutes) },
+              { label: "Breaks", value: minutesLabel(plan.breakMinutes) },
+              { label: "Fixed commitments", value: minutesLabel(plan.commitmentMinutes) },
+              { label: "Free time left", value: minutesLabel(plan.freeMinutesLeft) },
+            ].map((m) => (
+              <div key={m.label} className="px-2 py-3 rounded-2xl bg-slate-950/50 border border-slate-800 min-w-0">
+                <div className="text-lg font-semibold text-white tabular-nums">{m.value}</div>
+                <div className="text-[11px] text-slate-300 truncate">{m.label}</div>
               </div>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase font-mono">Buffer Breaks</span>
-              <div className="font-semibold text-amber-400 mt-0.5">
-                {schedule.totalBufferMinutes} mins
-              </div>
-            </div>
-            <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800">
-              <span className="text-[10px] text-slate-500 uppercase font-mono">Total Budget</span>
-              <div className="font-semibold text-slate-200 mt-0.5">{hours} Hours</div>
-            </div>
+            ))}
           </div>
         )}
       </div>
 
-      {message && (
-        <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 animate-in fade-in flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-blue-400 shrink-0" />
-          <span>{message}</span>
+      {message && <div className="morph-in p-3 rounded-2xl bg-emerald-400/10 border border-emerald-300/30 text-sm text-emerald-100">{message}</div>}
+
+      {plan?.notes.map((n, i) => (
+        <div key={i} className="flex items-start gap-2 text-sm text-slate-200 px-1">
+          <Sparkles className="h-4 w-4 text-amber-300 shrink-0 mt-0.5" />
+          <span>{n}</span>
         </div>
+      ))}
+
+      {isLoading && !plan ? (
+        <div className="py-16 text-center text-sm text-slate-300 flex items-center justify-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin text-sky-300" />
+          Building your day…
+        </div>
+      ) : plan && plan.slots.length === 0 ? (
+        <div className="p-8 rounded-3xl bg-slate-900/60 border border-slate-800 text-center space-y-1">
+          <div className="text-lg font-semibold text-white">{plan.dayOver ? "The working day is over" : "Nothing to plan"}</div>
+          <p className="text-sm text-slate-300">
+            {plan.dayOver ? "Rest. Tomorrow's plan builds itself from what is still open." : "Add a task with a time estimate and it will appear here."}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2.5 morph-in">{plan?.slots.map(renderSlot)}</div>
       )}
 
-      {/* Timeline Slots */}
-      <div className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-          Today&apos;s Time-Blocked Schedule
-        </h2>
-
-        {isLoading ? (
-          <div className="py-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-            <span>Computing optimal schedule...</span>
-          </div>
-        ) : !schedule || schedule.slots.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500 p-6 rounded-2xl bg-slate-900/40 border border-slate-800">
-            No pending tasks to schedule. Capture new tasks via `Ctrl + K` or `/tasks`!
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {schedule.slots.map((slot) => {
-              const isDone = slot.status === "DONE";
-
-              if (slot.isBreak) {
-                return (
-                  <div
-                    key={slot.id}
-                    className="p-3 rounded-xl bg-slate-950/50 border border-dashed border-slate-800 flex items-center justify-between text-xs text-slate-500 font-mono"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Coffee className="h-3.5 w-3.5 text-amber-500/70" />
-                      <span>{slot.title} ({slot.durationMinutes}m)</span>
-                    </div>
-                    <span>{slot.startTime} - {slot.endTime}</span>
-                  </div>
-                );
-              }
-
-              return (
-                <div
-                  key={slot.id}
-                  className={`p-4 rounded-xl border flex items-center justify-between gap-4 transition-all ${
-                    isDone
-                      ? "bg-slate-950/40 border-slate-800/60 opacity-60"
-                      : `bg-slate-900/70 border-slate-800 hover:border-slate-700 ${getPriorityBorder(
-                          slot.priority
-                        )}`
-                  }`}
-                >
-                  <div className="flex items-center gap-4 flex-1 min-w-0">
-                    <div className="font-mono text-xs font-semibold text-blue-400 w-28 shrink-0">
-                      {slot.startTime} - {slot.endTime}
-                    </div>
-                    <div className="min-w-0">
-                      <div
-                        className={`text-xs font-semibold truncate ${
-                          isDone ? "line-through text-slate-500" : "text-slate-100"
-                        }`}
-                      >
-                        {slot.title}
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
-                        {slot.projectName && (
-                          <span className="text-blue-400 flex items-center gap-1">
-                            <FolderGit2 className="h-2.5 w-2.5" />
-                            {slot.projectName}
-                          </span>
-                        )}
-                        <span>•</span>
-                        <span>{slot.durationMinutes}m duration</span>
-                        <span>•</span>
-                        <span className="text-amber-400">{slot.priority}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    {!isDone ? (
-                      <button
-                        onClick={() => handleReplan(slot.id)}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-600 hover:text-white text-xs font-medium text-slate-300 border border-slate-700 transition-all cursor-pointer flex items-center gap-1.5"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        <span>Done & Replan</span>
-                      </button>
-                    ) : (
-                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        Completed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Overflow Tasks */}
-        {schedule && schedule.overflowTasks && schedule.overflowTasks.length > 0 && (
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-            <div className="flex items-center gap-2 text-amber-400 font-medium">
-              <AlertCircle className="h-3.5 w-3.5" />
-              <span>Overflow Queue ({schedule.overflowTasks.length} tasks deferred to tomorrow)</span>
+      {plan && plan.overflow.length > 0 && (
+        <div className="space-y-2.5">
+          <h2 className="text-sm font-semibold text-slate-100">Did not fit today ({plan.overflow.length})</h2>
+          {plan.overflow.map(({ task, reason }) => (
+            <div key={task.id} className="p-3.5 rounded-2xl bg-slate-950/40 border border-white/10 flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-sm text-slate-100 truncate">{task.title}</div>
+                <div className="text-xs text-slate-300">{reason}</div>
+              </div>
+              <button
+                onClick={() => act(task.id, "DEFER", `Moved to tomorrow: ${task.title}`)}
+                disabled={busyTask === task.id}
+                className="press px-3.5 py-1.5 rounded-full bg-slate-800 border border-white/15 text-xs text-slate-100 cursor-pointer shrink-0"
+              >
+                Tomorrow
+              </button>
             </div>
-            <p className="text-[11px] text-slate-500">
-              These tasks exceeded today&apos;s {hours}h focus capacity to protect you from burnout.
-            </p>
-            <ul className="space-y-1 text-slate-400 pt-1">
-              {schedule.overflowTasks.map((t) => (
-                <li key={t.id} className="flex items-center justify-between text-[11px]">
-                  <span>• {t.title}</span>
-                  <span className="font-mono text-slate-500">{t.estimatedMinutes}m</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

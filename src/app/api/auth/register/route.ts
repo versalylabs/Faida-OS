@@ -7,8 +7,7 @@ import {
   isRegistrationRateLimited,
   recordRegistrationAttempt,
   SESSION_COOKIE_NAME,
-  SESSION_MAX_AGE,
-} from "@/lib/auth";
+  SESSION_MAX_AGE, isSecureRequest } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -83,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     response.cookies.set(SESSION_COOKIE_NAME, session.token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isSecureRequest(req),
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_MAX_AGE,

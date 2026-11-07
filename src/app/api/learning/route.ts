@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, must, readBody, str } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -54,9 +55,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, subjects: enrichedSubjects });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching learning subjects:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch learning subjects" },
+      { success: false, error: "Failed to fetch learning subjects" },
       { status: 500 }
     );
   }
@@ -69,25 +71,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { name, description, icon, topicTitles } = body;
 
-    if (!name || !name.trim()) {
-      return NextResponse.json({ success: false, error: "Subject name is required" }, { status: 400 });
-    }
+    const cleanName = must(str(name, { max: 200, required: true }), "Subject name is required (max 200 characters)");
+    const cleanDescription = must(str(description, { max: 5000 }), "Description is too long");
+    const cleanIcon = must(str(icon, { max: 60 }), "Icon is invalid") ?? "GraduationCap";
+    if (topicTitles !== undefined && !Array.isArray(topicTitles)) throw new ValidationError("topicTitles must be a list");
 
     const subject = await prisma.learningSubject.create({
       data: {
         userId: user.id,
-        name: name.trim(),
-        description: description?.trim() || null,
-        icon: icon || "GraduationCap",
+        name: cleanName,
+        description: cleanDescription,
+        icon: cleanIcon,
       },
     });
 
     if (Array.isArray(topicTitles) && topicTitles.length > 0) {
-      for (const t of topicTitles) {
-        if (typeof t === "string" && t.trim()) {
+      for (const t of topicTitles.slice(0, 100)) {
+        if (typeof t === "string" && t.trim() && t.trim().length <= 300) {
           await prisma.learningTopic.create({
             data: {
               subjectId: subject.id,
@@ -100,9 +103,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, subject });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating learning subject:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create subject" },
+      { success: false, error: "Failed to create subject" },
       { status: 500 }
     );
   }
@@ -115,7 +119,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, name, description, icon } = body;
 
     if (!id) {
@@ -141,9 +145,10 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, subject: updated });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating learning subject:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update subject" },
+      { success: false, error: "Failed to update subject" },
       { status: 500 }
     );
   }
@@ -161,7 +166,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         id = body.id;
       } catch {}
     }
@@ -184,9 +189,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Subject deleted successfully" });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting learning subject:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete subject" },
+      { success: false, error: "Failed to delete subject" },
       { status: 500 }
     );
   }

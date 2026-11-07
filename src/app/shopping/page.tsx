@@ -126,6 +126,15 @@ export default function ShoppingPage() {
   };
 
   useEffect(() => {
+    // Show what we had last time straight away, then refresh it in the background
+    const cachedItems = getCachedOfflineData<any>("shopping_items");
+    if (cachedItems?.items) {
+      setItems(cachedItems.items);
+      setIsLoading(false);
+    }
+    const cachedCategories = getCachedOfflineData<any>("shopping_categories");
+    if (cachedCategories?.categories) setCategories(cachedCategories.categories);
+
     fetchItems();
     fetchCategories();
 

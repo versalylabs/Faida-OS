@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
 
 export interface ToolActionPayload {
@@ -293,10 +294,10 @@ export async function executeMorningBriefing(userId: string): Promise<{ message:
   const [tasks, allTxs, todayClasses, upcomingAssignments, upcomingAssessments, userBudget] = await Promise.all([
     prisma.task.findMany({
       where: { userId, status: { not: "DONE" } },
-      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+      orderBy: { createdAt: "desc" },
       include: { project: true, course: true },
-      take: 4,
-    }),
+      take: 60,
+    }).then((rows) => rows.sort(byPriorityThenNewest).slice(0, 4)),
     prisma.financeTransaction.findMany({
       where: { userId },
     }),

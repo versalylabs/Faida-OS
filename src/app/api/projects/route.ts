@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, color, date, must, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -54,9 +55,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, projects: enrichedProjects }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching projects:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch projects" },
+      { success: false, error: "Failed to fetch projects" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -69,11 +71,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { name, description, color, targetDate, milestones } = body;
+    const body = await readBody(req);
+    const { name, description, color: color_, targetDate, milestones } = body;
 
-    if (!name || !name.trim()) {
-      return NextResponse.json({ success: false, error: "Project name is required" }, { status: 400 });
+    const cleanName = must(str(name, { max: 200, required: true }), "Project name is required (max 200 characters)");
+    const cleanDescription = must(str(description, { max: 10000 }), "Description is too long");
+    const cleanColor = must(color(color_), "Color must be a hex value like #3b82f6") ?? "#3b82f6";
+    const cleanTarget = must(date(targetDate), "Target date is invalid");
+    if (milestones !== undefined && !Array.isArray(milestones)) throw new ValidationError("Milestones must be a list");
+    const cleanMilestones: string[] = [];
+    for (const m of (milestones ?? []).slice(0, 50)) {
+      const t = str(typeof m === "string" ? m : m?.title, { max: 300 });
+      if (t === undefined) throw new ValidationError("Milestone title is invalid (max 300 characters)");
+      if (t) cleanMilestones.push(t);
     }
 
     // 1. Create Entity node
@@ -81,8 +91,8 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         type: "PROJECT",
-        title: name.trim(),
-        content: description,
+        title: cleanName,
+        content: cleanDescription,
         status: "ACTIVE",
       },
     });
@@ -92,27 +102,18 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         entityId: entity.id,
-        name: name.trim(),
-        description,
-        color: color || "#3b82f6",
-        targetDate: targetDate ? new Date(targetDate) : null,
+        name: cleanName,
+        description: cleanDescription,
+        color: cleanColor,
+        targetDate: cleanTarget,
       },
     });
 
     // 3. Create initial milestones if provided
-    if (Array.isArray(milestones) && milestones.length > 0) {
-      for (let i = 0; i < milestones.length; i++) {
-        const mTitle = typeof milestones[i] === "string" ? milestones[i] : milestones[i].title;
-        if (mTitle && mTitle.trim()) {
-          await prisma.milestone.create({
-            data: {
-              projectId: project.id,
-              title: mTitle.trim(),
-              order: i,
-            },
-          });
-        }
-      }
+    for (let i = 0; i < cleanMilestones.length; i++) {
+      await prisma.milestone.create({
+        data: { projectId: project.id, title: cleanMilestones[i], order: i },
+      });
     }
 
     // 4. Log activity
@@ -126,9 +127,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, project });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating project:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create project" },
+      { success: false, error: "Failed to create project" },
       { status: 500 }
     );
   }

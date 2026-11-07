@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, must, notFound, num, ownedId, readBody, str } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,9 +56,10 @@ export async function GET(req: NextRequest) {
       portAllocations,
     });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching developer credentials:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch credentials" },
+      { success: false, error: "Failed to fetch credentials" },
       { status: 500 }
     );
   }
@@ -70,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const {
       serviceName,
       keyName,
@@ -83,25 +85,28 @@ export async function POST(req: NextRequest) {
       projectId,
     } = body;
 
-    if (!serviceName || !keyName || !keyValue) {
-      return NextResponse.json(
-        { success: false, error: "Service name, key name, and value are required" },
-        { status: 400 }
-      );
-    }
+    const cleanService = must(str(serviceName, { max: 120, required: true }), "Service name is required (max 120 characters)");
+    const cleanKeyName = must(str(keyName, { max: 120, required: true }), "Key name is required (max 120 characters)");
+    const cleanKeyValue = must(str(keyValue, { max: 10000, required: true }), "Value is required (max 10000 characters)");
+    const cleanEnv = must(str(environment, { max: 40 }), "Environment is invalid") ?? "development";
+    const cleanPort = must(num(port, { min: 1, max: 65535, int: true }), "Port must be a whole number between 1 and 65535");
+    const cleanUrl = must(str(url, { max: 2000 }), "URL is too long");
+    const cleanNotes = must(str(notes, { max: 5000 }), "Notes are too long");
+    const linkedProjectId = await ownedId("project", user.id, projectId);
+    if (linkedProjectId === undefined) return notFound("Project not found");
 
     const created = await prisma.devCredential.create({
       data: {
         userId: user.id,
-        serviceName: serviceName.trim(),
-        keyName: keyName.trim().toUpperCase(),
-        keyValue: keyValue.trim(),
-        environment: environment.toLowerCase(),
+        serviceName: cleanService,
+        keyName: cleanKeyName.toUpperCase(),
+        keyValue: cleanKeyValue,
+        environment: cleanEnv.toLowerCase(),
         isSecret: Boolean(isSecret),
-        port: port ? parseInt(port.toString(), 10) : null,
-        url: url ? url.trim() : null,
-        notes: notes ? notes.trim() : null,
-        projectId: projectId || null,
+        port: cleanPort,
+        url: cleanUrl,
+        notes: cleanNotes,
+        projectId: linkedProjectId,
       },
       include: {
         project: {
@@ -112,9 +117,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, credential: created });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating developer credential:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create credential" },
+      { success: false, error: "Failed to create credential" },
       { status: 500 }
     );
   }
@@ -150,9 +156,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting developer credential:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete credential" },
+      { success: false, error: "Failed to delete credential" },
       { status: 500 }
     );
   }

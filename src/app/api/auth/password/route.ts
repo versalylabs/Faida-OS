@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCurrentUser, SESSION_COOKIE_NAME, SESSION_MAX_AGE, updatePasswordAndRotateSessions, verifyPassword } from "@/lib/auth";
+import { getCurrentUser, SESSION_COOKIE_NAME, SESSION_MAX_AGE, updatePasswordAndRotateSessions, verifyPassword, isSecureRequest } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
 export async function PATCH(req: NextRequest) {
@@ -39,7 +39,7 @@ export async function PATCH(req: NextRequest) {
     const response = NextResponse.json({ success: true, message: "Password changed successfully." });
     response.cookies.set(SESSION_COOKIE_NAME, session.token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: isSecureRequest(req),
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_MAX_AGE,

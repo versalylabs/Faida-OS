@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
 import {
   ToolActionPayload,
@@ -256,9 +257,9 @@ export async function askFaidaAssistant(
     prisma.task.findMany({
       where: { userId, status: { not: "DONE" } },
       include: { project: true },
-      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-      take: 6,
-    }),
+      orderBy: { createdAt: "desc" },
+      take: 60,
+    }).then((rows) => rows.sort(byPriorityThenNewest).slice(0, 6)),
     prisma.project.findMany({
       where: { userId },
       include: { milestones: true, tasks: { where: { userId } } },

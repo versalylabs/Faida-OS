@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { zonedNow } from "@/lib/tz";
+import { ValidationError, badRequest, must, num, oneOf, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,11 +20,34 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    const transactions = await prisma.financeTransaction.findMany({
+    // The four reads are independent: start them together so the page pays for one database
+    // round trip instead of four in a row.
+    const accountsQuery = prisma.financeAccount.findMany({
       where: { userId: user.id },
-      orderBy: { date: "desc" },
-      take: 100,
+      orderBy: { createdAt: "asc" },
     });
+    const budgetsQuery = prisma.budget.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: "desc" },
+    });
+    const categoriesQuery = prisma.financeCategory.findMany({
+      where: { userId: user.id },
+      orderBy: { name: "asc" },
+    });
+    // Budgets are monthly, so spending is measured over *this calendar month* (in the user's time zone) and
+    // over every transaction in it, not just the latest 100. The list shown on the page is still the latest 100.
+    const monthStart = zonedNow().startOfMonth;
+    const [transactions, monthTransactions] = await Promise.all([
+      prisma.financeTransaction.findMany({
+        where: { userId: user.id },
+        orderBy: { date: "desc" },
+        take: 100,
+      }),
+      prisma.financeTransaction.findMany({
+        where: { userId: user.id, date: { gte: monthStart } },
+        select: { amount: true, category: true },
+      }),
+    ]);
 
     let totalIncome = 0;
     let totalExpense = 0;
@@ -55,7 +80,7 @@ export async function GET(req: NextRequest) {
       return keywords.some((k) => lower.includes(k));
     };
 
-    transactions.forEach((tx) => {
+    monthTransactions.forEach((tx) => {
       const cat = tx.category || "General";
       if (tx.amount > 0) {
         totalIncome += tx.amount;
@@ -74,22 +99,17 @@ export async function GET(req: NextRequest) {
     });
 
     // Accounts (with default fallback auto-seed)
-    let accounts = await prisma.financeAccount.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "asc" },
-    });
+    let accounts = await accountsQuery;
 
     if (accounts.length === 0) {
       const defaults = [
-        { name: "Card", type: "CARD", balance: user.email === "khalwaleted@gmail.com" ? 75000 : 0, color: "#3b82f6" },
-        { name: "Cash", type: "CASH", balance: user.email === "khalwaleted@gmail.com" ? 15000 : 0, color: "#10b981" },
-        { name: "Savings", type: "SAVINGS", balance: user.email === "khalwaleted@gmail.com" ? 220000 : 0, color: "#8b5cf6" },
+        { name: "Card", type: "CARD", balance: 0, color: "#3b82f6" },
+        { name: "Cash", type: "CASH", balance: 0, color: "#10b981" },
+        { name: "Savings", type: "SAVINGS", balance: 0, color: "#8b5cf6" },
       ];
-      for (const d of defaults) {
-        await prisma.financeAccount.create({
-          data: { userId: user.id, ...d },
-        });
-      }
+      await prisma.financeAccount.createMany({
+        data: defaults.map((d) => ({ userId: user.id, ...d })),
+      });
       accounts = await prisma.financeAccount.findMany({
         where: { userId: user.id },
         orderBy: { createdAt: "asc" },
@@ -97,10 +117,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Check user's budgets or fallback
-    const userBudgets = await prisma.budget.findMany({
-      where: { userId: user.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const userBudgets = await budgetsQuery;
 
     const overallBudgetRec = userBudgets.find((b) => b.category === "Overall");
     const personalBudgetRec = userBudgets.find((b) => b.category === "Personal");
@@ -110,32 +127,24 @@ export async function GET(req: NextRequest) {
     // Limits
     const personalBudget = personalBudgetRec
       ? personalBudgetRec.monthlyLimit
-      : user.email === "khalwaleted@gmail.com"
-      ? 120000
       : overallBudgetRec
       ? Math.round(overallBudgetRec.monthlyLimit * 0.6)
       : 0;
 
     const businessBudget = businessBudgetRec
       ? businessBudgetRec.monthlyLimit
-      : user.email === "khalwaleted@gmail.com"
-      ? 80000
       : overallBudgetRec
       ? Math.round(overallBudgetRec.monthlyLimit * 0.4)
       : 0;
 
     const savingsTarget = savingsBudgetRec
       ? savingsBudgetRec.monthlyLimit
-      : user.email === "khalwaleted@gmail.com"
-      ? 100000
-      : 50000;
+      : 0;
 
     const monthlyBudget = overallBudgetRec
       ? overallBudgetRec.monthlyLimit
       : personalBudget + businessBudget > 0
       ? personalBudget + businessBudget
-      : user.email === "khalwaleted@gmail.com"
-      ? 200000
       : 0;
 
     // Remaining & percentages
@@ -163,10 +172,7 @@ export async function GET(req: NextRequest) {
     const netCashFlow = totalIncome - totalExpense;
 
     // Categories (with default fallback auto-seed)
-    let categories = await prisma.financeCategory.findMany({
-      where: { userId: user.id },
-      orderBy: { name: "asc" },
-    });
+    let categories = await categoriesQuery;
 
     if (categories.length === 0) {
       const defaultExpenses = [
@@ -181,16 +187,12 @@ export async function GET(req: NextRequest) {
       ];
       const defaultIncome = ["Salary", "Freelance", "Investments", "Business", "Gifts"];
 
-      for (const d of defaultExpenses) {
-        await prisma.financeCategory.create({
-          data: { userId: user.id, name: d.name, type: "EXPENSE", color: d.color },
-        });
-      }
-      for (const name of defaultIncome) {
-        await prisma.financeCategory.create({
-          data: { userId: user.id, name, type: "INCOME", color: "#10b981" },
-        });
-      }
+      await prisma.financeCategory.createMany({
+        data: [
+          ...defaultExpenses.map((d) => ({ userId: user.id, name: d.name, type: "EXPENSE", color: d.color })),
+          ...defaultIncome.map((name) => ({ userId: user.id, name, type: "INCOME", color: "#10b981" })),
+        ],
+      });
 
       categories = await prisma.financeCategory.findMany({
         where: { userId: user.id },
@@ -231,9 +233,10 @@ export async function GET(req: NextRequest) {
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching finance data:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch finance" },
+      { success: false, error: "Failed to fetch finance" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -246,27 +249,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { description, amount, type, category, isRecurring } = body;
 
-    if (!description || amount === undefined || !type) {
-      return NextResponse.json(
-        { success: false, error: "Description, amount, and type are required" },
-        { status: 400 }
-      );
-    }
+    const cleanDescription = must(str(description, { max: 300, required: true }), "Description is required (max 300 characters)");
+    const cleanType = must(oneOf(type, ["INCOME", "EXPENSE"] as const, { required: true }), "Type must be INCOME or EXPENSE");
+    const parsedAmount = must(num(amount, { min: -1e12, max: 1e12, required: true }), "Amount must be a valid number");
+    const cleanCategory = must(str(category, { max: 80 }), "Category is too long") ?? "General";
 
-    const parsedAmount = parseFloat(amount);
-    const finalAmount = type === "EXPENSE" ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
+    const finalAmount = cleanType === "EXPENSE" ? -Math.abs(parsedAmount) : Math.abs(parsedAmount);
 
     const transaction = await prisma.financeTransaction.create({
       data: {
         userId: user.id,
-        description: description.trim(),
+        description: cleanDescription,
         amount: finalAmount,
-        type,
-        category: category || "General",
-        isRecurring: isRecurring || false,
+        type: cleanType,
+        category: cleanCategory,
+        isRecurring: isRecurring === true,
       },
     });
 
@@ -274,15 +274,16 @@ export async function POST(req: NextRequest) {
     await prisma.activityLog.create({
       data: {
         action: "FINANCE_LOGGED",
-        details: `Logged ${type}: ${description} (${finalAmount > 0 ? "+" : ""}${finalAmount} KES)`,
+        details: `Logged ${cleanType}: ${cleanDescription} (${finalAmount > 0 ? "+" : ""}${finalAmount} KES)`,
       },
     });
 
     return NextResponse.json({ success: true, transaction });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error logging transaction:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to log transaction" },
+      { success: false, error: "Failed to log transaction" },
       { status: 500 }
     );
   }
@@ -296,7 +297,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { monthlyBudget, personalBudget, businessBudget, savingsTarget, category, amount } = body;
 
     const upsertBudget = async (cat: string, limitVal: number) => {
@@ -323,28 +324,28 @@ export async function PATCH(req: NextRequest) {
 
     let updated = false;
 
-    if (personalBudget !== undefined && !isNaN(parseFloat(personalBudget))) {
-      await upsertBudget("Personal", parseFloat(personalBudget));
+    if (personalBudget !== undefined && num(personalBudget, { min: 0, max: 1e12 }) != null) {
+      await upsertBudget("Personal", Number(personalBudget));
       updated = true;
     }
 
-    if (businessBudget !== undefined && !isNaN(parseFloat(businessBudget))) {
-      await upsertBudget("Business", parseFloat(businessBudget));
+    if (businessBudget !== undefined && num(businessBudget, { min: 0, max: 1e12 }) != null) {
+      await upsertBudget("Business", Number(businessBudget));
       updated = true;
     }
 
-    if (savingsTarget !== undefined && !isNaN(parseFloat(savingsTarget))) {
-      await upsertBudget("Savings", parseFloat(savingsTarget));
+    if (savingsTarget !== undefined && num(savingsTarget, { min: 0, max: 1e12 }) != null) {
+      await upsertBudget("Savings", Number(savingsTarget));
       updated = true;
     }
 
-    if (monthlyBudget !== undefined && !isNaN(parseFloat(monthlyBudget))) {
-      await upsertBudget("Overall", parseFloat(monthlyBudget));
+    if (monthlyBudget !== undefined && num(monthlyBudget, { min: 0, max: 1e12 }) != null) {
+      await upsertBudget("Overall", Number(monthlyBudget));
       updated = true;
     }
 
-    if (category && amount !== undefined && !isNaN(parseFloat(amount))) {
-      await upsertBudget(category, parseFloat(amount));
+    if (typeof category === "string" && category.trim() && category.length <= 80 && amount !== undefined && num(amount, { min: 0, max: 1e12 }) != null) {
+      await upsertBudget(category, Number(amount));
       updated = true;
     }
 
@@ -357,9 +358,10 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating budget:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update budget" },
+      { success: false, error: "Failed to update budget" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -392,9 +394,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting transaction:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete transaction" },
+      { success: false, error: "Failed to delete transaction" },
       { status: 500 }
     );
   }

@@ -6,7 +6,11 @@ import { syncPendingMutations, isOnline } from "@/lib/offlineSync";
 export function ServiceWorkerRegister() {
   useEffect(() => {
     // 1. Register Service Worker
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+    if (typeof window !== "undefined" && "serviceWorker" in navigator && process.env.NODE_ENV !== "production") {
+      // In development the worker's cache-first handling of /_next/static serves stale chunks, so keep it off.
+      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+      if (typeof caches !== "undefined") caches.keys().then((names) => names.forEach((n) => caches.delete(n)));
+    } else if (typeof window !== "undefined" && "serviceWorker" in navigator) {
       navigator.serviceWorker
         .register("/sw.js")
         .then((reg) => {

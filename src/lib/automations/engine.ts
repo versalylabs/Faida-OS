@@ -16,7 +16,7 @@ export const DEFAULT_AUTOMATIONS: AutomationRuleDef[] = [
     description: "When a study session includes notes, automatically publish them to the connected Knowledge Base under the subject's category.",
     action: "CREATE_KNOWLEDGE_NOTE",
     isActive: true,
-    timesTriggered: 14,
+    timesTriggered: 0,
   },
   {
     id: "rule-2",
@@ -25,7 +25,7 @@ export const DEFAULT_AUTOMATIONS: AutomationRuleDef[] = [
     description: "When a reminder passes its due date without completion, escalate state to OVERDUE and increment top header urgent badge.",
     action: "ESCALATE_ATTENTION",
     isActive: true,
-    timesTriggered: 9,
+    timesTriggered: 0,
   },
   {
     id: "rule-3",
@@ -34,7 +34,7 @@ export const DEFAULT_AUTOMATIONS: AutomationRuleDef[] = [
     description: "When a hygiene task is checked off, advance the next due date by its cadence interval automatically.",
     action: "RESET_CADENCE_TIMER",
     isActive: true,
-    timesTriggered: 22,
+    timesTriggered: 0,
   },
   {
     id: "rule-4",
@@ -43,15 +43,15 @@ export const DEFAULT_AUTOMATIONS: AutomationRuleDef[] = [
     description: "At the end of each day, compile completed tasks, logged study hours, and project updates into a daily work retrospective.",
     action: "GENERATE_JOURNAL_ENTRY",
     isActive: true,
-    timesTriggered: 31,
+    timesTriggered: 0,
   },
   {
     id: "rule-5",
     name: "Budget Capacity Alert (KES)",
     trigger: "FINANCE_EXPENSE_LOGGED",
-    description: "When monthly expenses exceed 80% of the KES 310,000 budget, trigger an informational budget warning.",
+    description: "When monthly expenses exceed 80% of your monthly budget, trigger an informational budget warning.",
     action: "ALERT_FINANCIAL_THRESHOLD",
     isActive: true,
-    timesTriggered: 3,
+    timesTriggered: 0,
   },
 ];

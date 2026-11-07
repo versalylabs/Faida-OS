@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, color, date, must, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -72,9 +73,10 @@ export async function GET(
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching project workspace:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch project workspace" },
+      { success: false, error: "Failed to fetch project workspace" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -99,7 +101,7 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: "Project not found" }, { status: 404 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const {
       milestoneId,
       milestoneDone,
@@ -107,20 +109,32 @@ export async function PATCH(
       name,
       description,
       status,
-      color,
+      color: color_,
       targetDate,
     } = body;
 
-    // 1. Toggle milestone completion
+    // Validate everything before changing anything.
+    const updateData: any = {};
+    if (name !== undefined) updateData.name = must(str(name, { max: 200, required: true }), "Project name is required (max 200 characters)");
+    if (description !== undefined) updateData.description = must(str(description, { max: 10000 }), "Description is too long");
+    if (status !== undefined) updateData.status = must(str(status, { max: 40, required: true }), "Invalid status");
+    if (color_ !== undefined) updateData.color = must(color(color_), "Color must be a hex value like #3b82f6") ?? "#3b82f6";
+    if (targetDate !== undefined) updateData.targetDate = must(date(targetDate), "Target date is invalid");
+    const cleanMilestoneTitle = newMilestoneTitle !== undefined ? must(str(newMilestoneTitle, { max: 300 }), "Milestone title is invalid (max 300 characters)") : null;
+    if (milestoneId !== undefined && (typeof milestoneId !== "string" || milestoneId.length > 100)) {
+      throw new ValidationError("Milestone ID is invalid");
+    }
+
+    // 1. Toggle milestone completion (scoped to this project)
     if (milestoneId) {
-      await prisma.milestone.update({
-        where: { id: milestoneId },
-        data: { isDone: milestoneDone },
+      await prisma.milestone.updateMany({
+        where: { id: milestoneId, projectId: id },
+        data: { isDone: Boolean(milestoneDone) },
       });
     }
 
     // 2. Add new milestone
-    if (newMilestoneTitle && newMilestoneTitle.trim()) {
+    if (cleanMilestoneTitle) {
       const highestOrder = await prisma.milestone.findFirst({
         where: { projectId: id },
         orderBy: { order: "desc" },
@@ -128,36 +142,13 @@ export async function PATCH(
       await prisma.milestone.create({
         data: {
           projectId: id,
-          title: newMilestoneTitle.trim(),
+          title: cleanMilestoneTitle,
           order: (highestOrder?.order ?? -1) + 1,
         },
       });
     }
 
     // 3. Update project details if provided
-    const updateData: any = {};
-    if (name !== undefined) {
-      if (!name.trim()) {
-        return NextResponse.json(
-          { success: false, error: "Project name cannot be empty" },
-          { status: 400 }
-        );
-      }
-      updateData.name = name.trim();
-    }
-    if (description !== undefined) {
-      updateData.description = description ? description.trim() : null;
-    }
-    if (status !== undefined) {
-      updateData.status = status;
-    }
-    if (color !== undefined) {
-      updateData.color = color;
-    }
-    if (targetDate !== undefined) {
-      updateData.targetDate = targetDate ? new Date(targetDate) : null;
-    }
-
     if (Object.keys(updateData).length > 0) {
       await prisma.project.update({
         where: { id },
@@ -193,9 +184,10 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, project: updated }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating project workspace:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update project" },
+      { success: false, error: "Failed to update project" },
       { status: 500 }
     );
   }
@@ -237,9 +229,10 @@ export async function DELETE(
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting project:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete project" },
+      { success: false, error: "Failed to delete project" },
       { status: 500 }
     );
   }

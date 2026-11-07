@@ -1,8 +1,10 @@
 // Faida OS Service Worker - Offline Caching & PWA Support
-const CACHE_NAME = "faida-os-v1";
-const STATIC_CACHE = "faida-static-v1";
-const PAGES_CACHE = "faida-pages-v1";
-const API_CACHE = "faida-api-v1";
+// Only the app shell and static assets are cached here. API responses contain private,
+// per-account data and are never stored by the service worker; the app keeps its own
+// per-user offline cache instead (see src/lib/offlineSync.ts). Bumping these names makes
+// the activate handler delete the old caches, including the former "faida-api-v1".
+const STATIC_CACHE = "faida-static-v3";
+const PAGES_CACHE = "faida-pages-v3";
 
 const PRECACHE_ASSETS = [
   "/",
@@ -29,7 +31,7 @@ self.addEventListener("activate", (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (![CACHE_NAME, STATIC_CACHE, PAGES_CACHE, API_CACHE].includes(key)) {
+          if (![STATIC_CACHE, PAGES_CACHE].includes(key)) {
             return caches.delete(key);
           }
         })
@@ -52,7 +54,8 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.status === 200) {
+          // Skip redirects (e.g. signed-out "/" -> /login) so they are not cached under the wrong URL.
+          if (response.status === 200 && !response.redirected) {
             const copy = response.clone();
             caches.open(PAGES_CACHE).then((cache) => cache.put(request, copy));
           }
@@ -78,6 +81,7 @@ self.addEventListener("fetch", (event) => {
     url.pathname.endsWith(".svg") ||
     url.pathname.endsWith(".ico") ||
     url.pathname.endsWith(".png") ||
+    url.pathname.endsWith(".webp") ||
     url.pathname.endsWith(".woff2")
   ) {
     event.respondWith(
@@ -97,24 +101,17 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3. API GET requests (Network-first with cache fallback)
+  // 3. API GET requests: network only. (Mutations are left alone so failures still throw and get queued.) Never cached here (private data); when the network is
+  // down answer 503 so the app falls back to its own per-user offline cache.
   if (url.pathname.startsWith("/api/") && request.method === "GET") {
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          if (response.status === 200) {
-            const copy = response.clone();
-            caches.open(API_CACHE).then((cache) => cache.put(request, copy));
-          }
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          if (cached) return cached;
-          return new Response(JSON.stringify({ success: false, offline: true, error: "Offline" }), {
-            headers: { "Content-Type": "application/json" },
-          });
-        })
+      fetch(request).catch(
+        () =>
+          new Response(JSON.stringify({ success: false, offline: true, error: "Offline" }), {
+            status: 503,
+            headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+          })
+      )
     );
     return;
   }

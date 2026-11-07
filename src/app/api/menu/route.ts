@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { zonedNow } from "@/lib/tz";
+import { ValidationError, badRequest, idOf, must, num, readBody, str, tagsOf } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -227,7 +229,7 @@ const DEFAULT_WEEKLY_MEALS = [
 ];
 
 function getDayOfWeekName(): string {
-  const dayIndex = new Date().getDay();
+  const dayIndex = zonedNow().dayOfWeek;
   // JS getDay(): 0 = Sunday, 1 = Monday, 2 = Tuesday, ...
   const map = [
     "SUNDAY",
@@ -261,21 +263,20 @@ export async function GET(req: NextRequest) {
 
     // Auto-seed default healthy menu if user has 0 meals
     if (meals.length === 0) {
-      for (const item of DEFAULT_WEEKLY_MEALS) {
-        await prisma.mealPlanItem.create({
-          data: {
-            userId: user.id,
-            dayOfWeek: item.dayOfWeek,
-            mealType: item.mealType,
-            title: item.title,
-            description: item.description,
-            calories: item.calories,
-            prepTime: item.prepTime,
-            tags: item.tags,
-            isCompleted: false,
-          },
-        });
-      }
+      await prisma.mealPlanItem.createMany({
+        data: DEFAULT_WEEKLY_MEALS.map((item) => ({
+          userId: user.id,
+          dayOfWeek: item.dayOfWeek,
+          mealType: item.mealType,
+          title: item.title,
+          description: item.description,
+          calories: item.calories,
+          prepTime: item.prepTime,
+          tags: item.tags,
+          isCompleted: false,
+        })),
+        skipDuplicates: true,
+      });
 
       meals = await prisma.mealPlanItem.findMany({
         where: { userId: user.id },
@@ -340,9 +341,10 @@ export async function GET(req: NextRequest) {
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error in GET /api/menu:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to load meal plan" },
+      { success: false, error: "Failed to load meal plan" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -358,7 +360,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { action, dayOfWeek, mealType, title, description, calories, prepTime, tags } = body;
 
     // Reset action
@@ -367,21 +369,19 @@ export async function POST(req: NextRequest) {
         where: { userId: user.id },
       });
 
-      for (const item of DEFAULT_WEEKLY_MEALS) {
-        await prisma.mealPlanItem.create({
-          data: {
-            userId: user.id,
-            dayOfWeek: item.dayOfWeek,
-            mealType: item.mealType,
-            title: item.title,
-            description: item.description,
-            calories: item.calories,
-            prepTime: item.prepTime,
-            tags: item.tags,
-            isCompleted: false,
-          },
-        });
-      }
+      await prisma.mealPlanItem.createMany({
+        data: DEFAULT_WEEKLY_MEALS.map((item) => ({
+          userId: user.id,
+          dayOfWeek: item.dayOfWeek,
+          mealType: item.mealType,
+          title: item.title,
+          description: item.description,
+          calories: item.calories,
+          prepTime: item.prepTime,
+          tags: item.tags,
+          isCompleted: false,
+        })),
+      });
 
       const freshMeals = await prisma.mealPlanItem.findMany({
         where: { userId: user.id },
@@ -394,15 +394,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!dayOfWeek || !mealType || !title) {
-      return NextResponse.json(
-        { success: false, error: "dayOfWeek, mealType, and title are required" },
-        { status: 400, headers: noCacheHeaders }
-      );
-    }
-
-    const upperDay = dayOfWeek.toUpperCase();
-    const upperMeal = mealType.toUpperCase();
+    const upperDay = must(str(dayOfWeek, { max: 20, required: true }), "dayOfWeek is required").toUpperCase();
+    const upperMeal = must(str(mealType, { max: 20, required: true }), "mealType is required").toUpperCase();
+    const cleanTitle = must(str(title, { max: 200, required: true }), "Meal title is required (max 200 characters)");
+    const cleanDescription = must(str(description, { max: 2000 }), "Description is too long");
+    const cleanCalories = must(num(calories, { min: 0, max: 20000, int: true }), "Calories must be a whole number between 0 and 20000");
+    const cleanPrep = must(num(prepTime, { min: 0, max: 1440, int: true }), "Prep time must be a whole number of minutes between 0 and 1440");
+    const cleanTags = must(str(tags, { max: 300 }), "Tags are too long");
 
     if (!DAYS_OF_WEEK.includes(upperDay)) {
       return NextResponse.json(
@@ -431,27 +429,28 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         dayOfWeek: upperDay,
         mealType: upperMeal,
-        title: title.trim(),
-        description: description?.trim() || null,
-        calories: calories ? parseInt(calories, 10) : null,
-        prepTime: prepTime ? parseInt(prepTime, 10) : null,
-        tags: tags?.trim() || null,
+        title: cleanTitle,
+        description: cleanDescription,
+        calories: cleanCalories,
+        prepTime: cleanPrep,
+        tags: cleanTags,
         isCompleted: false,
       },
       update: {
-        title: title.trim(),
-        description: description?.trim() || null,
-        calories: calories ? parseInt(calories, 10) : null,
-        prepTime: prepTime ? parseInt(prepTime, 10) : null,
-        tags: tags?.trim() || null,
+        title: cleanTitle,
+        description: cleanDescription,
+        calories: cleanCalories,
+        prepTime: cleanPrep,
+        tags: cleanTags,
       },
     });
 
     return NextResponse.json({ success: true, meal }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error in POST /api/menu:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to save meal" },
+      { success: false, error: "Failed to save meal" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -467,18 +466,13 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, title, description, calories, prepTime, tags, isCompleted } = body;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: "Meal ID is required" },
-        { status: 400, headers: noCacheHeaders }
-      );
-    }
+    const mealId = must(idOf(id), "Meal ID is required");
 
     const existing = await prisma.mealPlanItem.findFirst({
-      where: { id, userId: user.id },
+      where: { id: mealId, userId: user.id },
     });
 
     if (!existing) {
@@ -489,25 +483,24 @@ export async function PATCH(req: NextRequest) {
     }
 
     const updateData: any = {};
-    if (title !== undefined) updateData.title = title.trim();
-    if (description !== undefined) updateData.description = description?.trim() || null;
-    if (calories !== undefined)
-      updateData.calories = calories ? parseInt(calories, 10) : null;
-    if (prepTime !== undefined)
-      updateData.prepTime = prepTime ? parseInt(prepTime, 10) : null;
-    if (tags !== undefined) updateData.tags = tags?.trim() || null;
+    if (title !== undefined) updateData.title = must(str(title, { max: 200, required: true }), "Meal title is required (max 200 characters)");
+    if (description !== undefined) updateData.description = must(str(description, { max: 2000 }), "Description is too long");
+    if (calories !== undefined) updateData.calories = must(num(calories, { min: 0, max: 20000, int: true }), "Calories must be a whole number between 0 and 20000");
+    if (prepTime !== undefined) updateData.prepTime = must(num(prepTime, { min: 0, max: 1440, int: true }), "Prep time must be a whole number of minutes between 0 and 1440");
+    if (tags !== undefined) updateData.tags = must(str(tags, { max: 300 }), "Tags are too long");
     if (isCompleted !== undefined) updateData.isCompleted = Boolean(isCompleted);
 
     const updated = await prisma.mealPlanItem.update({
-      where: { id },
+      where: { id: mealId },
       data: updateData,
     });
 
     return NextResponse.json({ success: true, meal: updated }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error in PATCH /api/menu:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update meal" },
+      { success: false, error: "Failed to update meal" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -553,9 +546,10 @@ export async function DELETE(req: NextRequest) {
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error in DELETE /api/menu:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete meal" },
+      { success: false, error: "Failed to delete meal" },
       { status: 500, headers: noCacheHeaders }
     );
   }

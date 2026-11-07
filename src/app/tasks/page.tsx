@@ -67,6 +67,7 @@ export default function TasksPage() {
   const [estimatedMinutes, setEstimatedMinutes] = useState("30");
   const [projectId, setProjectId] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [recurrence, setRecurrence] = useState("");
   const [quickSubtasks, setQuickSubtasks] = useState<string[]>([]);
   const [quickSubtaskInput, setQuickSubtaskInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,6 +126,15 @@ export default function TasksPage() {
   };
 
   useEffect(() => {
+    // Show what we had last time straight away, then refresh it in the background
+    const cachedTasks = getCachedOfflineData<any>("tasks");
+    if (cachedTasks?.tasks) {
+      setTasks(cachedTasks.tasks);
+      setIsLoading(false);
+    }
+    const cachedProjects = getCachedOfflineData<any>("projects");
+    if (cachedProjects?.projects) setProjects(cachedProjects.projects);
+
     fetchTasks();
     fetchProjects();
 
@@ -371,6 +381,7 @@ export default function TasksPage() {
         estimatedMinutes: parseInt(estimatedMinutes, 10) || 30,
         projectId: projectId || undefined,
         dueDate: dueDate ? new Date(dueDate).toISOString() : undefined,
+        recurrence: recurrence || undefined,
         subtasks: quickSubtasks.map((t) => ({ title: t, isDone: false })),
       };
 
@@ -573,6 +584,19 @@ export default function TasksPage() {
                 onChange={(e) => setDueDate(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none"
               />
+              <select
+                value={recurrence}
+                onChange={(e) => setRecurrence(e.target.value)}
+                aria-label="Repeat"
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none"
+              >
+                <option value="">Does not repeat</option>
+                <option value="DAILY">Repeats daily</option>
+                <option value="WEEKDAYS">Repeats on weekdays</option>
+                <option value="WEEKLY">Repeats weekly</option>
+                <option value="MONTHLY">Repeats monthly</option>
+                <option value="YEARLY">Repeats yearly</option>
+              </select>
             </div>
           </div>
 
@@ -661,10 +685,13 @@ export default function TasksPage() {
             </button>
           ))}
         </div>
-        <span className="text-[11px] text-slate-500 font-mono">
+        <span className="text-[11px] text-slate-400">
           {tasks.filter((t) => t.status !== "DONE").length} pending
         </span>
       </div>
+      <p className="text-[11px] text-slate-400 -mt-2">
+        Finished tasks clear themselves 48 hours after you complete them.
+      </p>
 
       {/* Task List */}
       {isLoading ? (

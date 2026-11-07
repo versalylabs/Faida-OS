@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { RECURRENCES, ValidationError, badRequest, idOf, must, notFound, oneOf, ownedId, readBody, str } from "@/lib/validate";
+import { date as parseDate } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +28,9 @@ export async function GET(req: NextRequest) {
     let reminderDateFilter: any = {};
 
     if (month) {
+      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+        return NextResponse.json({ success: false, error: "month must look like 2026-09" }, { status: 400, headers: noCacheHeaders });
+      }
       const [yearStr, monthStr] = month.split("-");
       const year = parseInt(yearStr, 10);
       const m = parseInt(monthStr, 10) - 1;
@@ -97,9 +102,10 @@ export async function GET(req: NextRequest) {
       availableNotes: notes,
     }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching calendar data:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch calendar data" },
+      { success: false, error: "Failed to fetch calendar data" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -113,7 +119,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const {
       itemType, // "EVENT" or "REMINDER"
       title,
@@ -128,39 +134,36 @@ export async function POST(req: NextRequest) {
       noteId,
     } = body;
 
-    if (!title || !title.trim()) {
-      return NextResponse.json({ success: false, error: "Title is required" }, { status: 400 });
+    const cleanTitle = must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)");
+    const cleanDescription = must(str(description, { max: 10000 }), "Description is too long");
+    const cleanLocation = must(str(location, { max: 300 }), "Location is too long");
+    const cleanRecurrence = must(oneOf(recurrence, RECURRENCES), "Invalid recurrence");
+    if (itemType !== undefined && itemType !== "EVENT" && itemType !== "REMINDER") {
+      throw new ValidationError("itemType must be EVENT or REMINDER");
     }
+    const cleanDate = must(parseDate(date), "Date is invalid");
+    const cleanStart = must(parseDate(startTime), "Start time is invalid");
+    const cleanEnd = must(parseDate(endTime), "End time is invalid");
 
-    // Verify task belongs to user if provided
-    if (taskId) {
-      const task = await prisma.task.findFirst({
-        where: { id: taskId, userId: user.id },
-      });
-      if (!task) {
-        return NextResponse.json({ success: false, error: "Linked task not found" }, { status: 404 });
-      }
+    // Linked records must belong to the signed-in user.
+    const linkedTaskId = await ownedId("task", user.id, taskId);
+    if (linkedTaskId === undefined) {
+      return NextResponse.json({ success: false, error: "Linked task not found" }, { status: 404 });
     }
-
-    // Verify note belongs to user if provided
-    if (noteId) {
-      const note = await prisma.note.findFirst({
-        where: { id: noteId, userId: user.id },
-      });
-      if (!note) {
-        return NextResponse.json({ success: false, error: "Linked note not found" }, { status: 404 });
-      }
+    const linkedNoteId = await ownedId("note", user.id, noteId);
+    if (linkedNoteId === undefined) {
+      return NextResponse.json({ success: false, error: "Linked note not found" }, { status: 404 });
     }
 
     if (itemType === "REMINDER") {
-      const dueAtDate = new Date(date || Date.now());
+      const dueAtDate = cleanDate ?? new Date();
 
       const entity = await prisma.entity.create({
         data: {
           userId: user.id,
           type: "REMINDER",
-          title: title.trim(),
-          content: description || null,
+          title: cleanTitle,
+          content: cleanDescription,
           status: "ACTIVE",
         },
       });
@@ -169,12 +172,12 @@ export async function POST(req: NextRequest) {
         data: {
           userId: user.id,
           entityId: entity.id,
-          title: title.trim(),
-          description: description || null,
+          title: cleanTitle,
+          description: cleanDescription,
           dueAt: dueAtDate,
-          recurrence: recurrence || null,
-          taskId: taskId || null,
-          noteId: noteId || null,
+          recurrence: cleanRecurrence,
+          taskId: linkedTaskId,
+          noteId: linkedNoteId,
         },
         include: {
           task: { select: { id: true, title: true, status: true, priority: true } },
@@ -185,20 +188,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, item: reminder, itemType: "REMINDER" });
     } else {
       // Default: EVENT
-      const start = new Date(startTime || date || Date.now());
-      const end = new Date(endTime || new Date(start.getTime() + 60 * 60 * 1000));
+      const start = cleanStart ?? cleanDate ?? new Date();
+      const end = cleanEnd ?? new Date(start.getTime() + 60 * 60 * 1000);
+      if (end < start) throw new ValidationError("End time must be after start time");
 
       const event = await prisma.calendarEvent.create({
         data: {
           userId: user.id,
-          title: title.trim(),
-          description: description || null,
+          title: cleanTitle,
+          description: cleanDescription,
           startTime: start,
           endTime: end,
-          location: location || null,
-          isAllDay: isAllDay || false,
-          taskId: taskId || null,
-          noteId: noteId || null,
+          location: cleanLocation,
+          isAllDay: isAllDay === true,
+          taskId: linkedTaskId,
+          noteId: linkedNoteId,
         },
         include: {
           task: { select: { id: true, title: true, status: true, priority: true } },
@@ -209,9 +213,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, item: event, itemType: "EVENT" });
     }
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating calendar item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create calendar item" },
+      { success: false, error: "Failed to create calendar item" },
       { status: 500 }
     );
   }
@@ -225,7 +230,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const {
       id,
       itemType, // "EVENT" or "REMINDER"
@@ -241,30 +246,46 @@ export async function PATCH(req: NextRequest) {
       noteId,
     } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Item ID is required" }, { status: 400 });
+    const itemId = must(idOf(id), "Item ID is required");
+    const patchTitle = title !== undefined ? must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)") : undefined;
+    const patchDescription = description !== undefined ? must(str(description, { max: 10000 }), "Description is too long") : undefined;
+    const patchLocation = location !== undefined ? must(str(location, { max: 300 }), "Location is too long") : undefined;
+    const patchStart = startTime !== undefined ? must(parseDate(startTime, { required: true }), "Start time is invalid") : undefined;
+    const patchEnd = endTime !== undefined ? must(parseDate(endTime, { required: true }), "End time is invalid") : undefined;
+    const patchDue = dueAt !== undefined ? must(parseDate(dueAt, { required: true }), "Due date is invalid") : undefined;
+    if (isCompleted !== undefined && typeof isCompleted !== "boolean") throw new ValidationError("isCompleted must be true or false");
+    if (isAllDay !== undefined && typeof isAllDay !== "boolean") throw new ValidationError("isAllDay must be true or false");
+    let patchTaskId: string | null | undefined;
+    if (taskId !== undefined) {
+      patchTaskId = await ownedId("task", user.id, taskId);
+      if (patchTaskId === undefined) return NextResponse.json({ success: false, error: "Linked task not found" }, { status: 404 });
+    }
+    let patchNoteId: string | null | undefined;
+    if (noteId !== undefined) {
+      patchNoteId = await ownedId("note", user.id, noteId);
+      if (patchNoteId === undefined) return NextResponse.json({ success: false, error: "Linked note not found" }, { status: 404 });
     }
 
     if (itemType === "REMINDER") {
       const existing = await prisma.reminder.findFirst({
-        where: { id, userId: user.id },
+        where: { id: itemId, userId: user.id },
       });
       if (!existing) {
         return NextResponse.json({ success: false, error: "Reminder not found" }, { status: 404 });
       }
 
       const updated = await prisma.reminder.update({
-        where: { id },
+        where: { id: itemId },
         data: {
-          ...(title !== undefined && { title: title.trim() }),
-          ...(description !== undefined && { description }),
-          ...(dueAt !== undefined && { dueAt: new Date(dueAt) }),
+          ...(patchTitle !== undefined && { title: patchTitle }),
+          ...(patchDescription !== undefined && { description: patchDescription }),
+          ...(patchDue !== undefined && { dueAt: patchDue }),
           ...(isCompleted !== undefined && {
             isCompleted,
             escalationState: isCompleted ? "COMPLETED" : "UPCOMING",
           }),
-          ...(taskId !== undefined && { taskId: taskId || null }),
-          ...(noteId !== undefined && { noteId: noteId || null }),
+          ...(patchTaskId !== undefined && { taskId: patchTaskId }),
+          ...(patchNoteId !== undefined && { noteId: patchNoteId }),
         },
         include: {
           task: { select: { id: true, title: true, status: true, priority: true } },
@@ -275,23 +296,23 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true, item: updated, itemType: "REMINDER" });
     } else {
       const existing = await prisma.calendarEvent.findFirst({
-        where: { id, userId: user.id },
+        where: { id: itemId, userId: user.id },
       });
       if (!existing) {
         return NextResponse.json({ success: false, error: "Event not found" }, { status: 404 });
       }
 
       const updated = await prisma.calendarEvent.update({
-        where: { id },
+        where: { id: itemId },
         data: {
-          ...(title !== undefined && { title: title.trim() }),
-          ...(description !== undefined && { description }),
-          ...(startTime !== undefined && { startTime: new Date(startTime) }),
-          ...(endTime !== undefined && { endTime: new Date(endTime) }),
-          ...(location !== undefined && { location }),
+          ...(patchTitle !== undefined && { title: patchTitle }),
+          ...(patchDescription !== undefined && { description: patchDescription }),
+          ...(patchStart !== undefined && { startTime: patchStart }),
+          ...(patchEnd !== undefined && { endTime: patchEnd }),
+          ...(patchLocation !== undefined && { location: patchLocation }),
           ...(isAllDay !== undefined && { isAllDay }),
-          ...(taskId !== undefined && { taskId: taskId || null }),
-          ...(noteId !== undefined && { noteId: noteId || null }),
+          ...(patchTaskId !== undefined && { taskId: patchTaskId }),
+          ...(patchNoteId !== undefined && { noteId: patchNoteId }),
         },
         include: {
           task: { select: { id: true, title: true, status: true, priority: true } },
@@ -302,9 +323,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: true, item: updated, itemType: "EVENT" });
     }
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating calendar item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update calendar item" },
+      { success: false, error: "Failed to update calendar item" },
       { status: 500 }
     );
   }
@@ -349,9 +371,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Deleted successfully" });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting calendar item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete calendar item" },
+      { success: false, error: "Failed to delete calendar item" },
       { status: 500 }
     );
   }

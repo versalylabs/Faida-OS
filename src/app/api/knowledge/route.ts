@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, idOf, must, readBody, str, tagsOf } from "@/lib/validate";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
-    const q = searchParams.get("q");
+    const q = searchParams.get("q")?.slice(0, 200) ?? null;
     const category = searchParams.get("category");
 
     const where: any = { userId: user.id };
@@ -38,9 +39,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, notes });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching knowledge notes:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch notes" },
+      { success: false, error: "Failed to fetch notes" },
       { status: 500 }
     );
   }
@@ -53,20 +55,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { title, content, category, tags } = body;
 
-    if (!title || !title.trim()) {
-      return NextResponse.json({ success: false, error: "Title is required" }, { status: 400 });
-    }
+    const cleanTitle = must(str(title, { max: 300, required: true }), "Title is required (max 300 characters)");
+    const cleanContent = must(str(content, { max: 200000 }), "Content is too long") ?? "";
+    const cleanCategory = must(str(category, { max: 80 }), "Category is too long") ?? "General";
+    const cleanTags = must(tagsOf(tags), "Tags are invalid") ?? "";
 
     // 1. Create Entity node
     const entity = await prisma.entity.create({
       data: {
         userId: user.id,
         type: "NOTE",
-        title: title.trim(),
-        content: content || "",
+        title: cleanTitle,
+        content: cleanContent,
         status: "ACTIVE",
       },
     });
@@ -76,10 +79,10 @@ export async function POST(req: NextRequest) {
       data: {
         userId: user.id,
         entityId: entity.id,
-        title: title.trim(),
-        content: content || "",
-        category: category || "General",
-        tags: Array.isArray(tags) ? tags.join(", ") : tags || "",
+        title: cleanTitle,
+        content: cleanContent,
+        category: cleanCategory,
+        tags: cleanTags,
       },
     });
 
@@ -94,9 +97,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, note });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating note:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create note" },
+      { success: false, error: "Failed to create note" },
       { status: 500 }
     );
   }
@@ -130,9 +134,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting note:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete note" },
+      { success: false, error: "Failed to delete note" },
       { status: 500 }
     );
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { classifyUniversalInput } from "@/lib/ai/classifier";
+import { ValidationError, badRequest, readBody } from "@/lib/validate";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,12 +11,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { input } = body;
 
     if (!input || typeof input !== "string" || input.trim() === "") {
       return NextResponse.json(
         { success: false, error: "Input text is required" },
+        { status: 400 }
+      );
+    }
+    if (input.length > 5000) {
+      return NextResponse.json(
+        { success: false, error: "Input is too long (max 5000 characters)" },
         { status: 400 }
       );
     }
@@ -149,9 +156,10 @@ export async function POST(req: NextRequest) {
       entityId: entity.id,
     });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error processing universal capture:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Internal server error" },
+      { success: false, error: "Internal server error" },
       { status: 500 }
     );
   }

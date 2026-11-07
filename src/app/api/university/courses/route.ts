@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, color, email, idOf, must, num, readBody, str } from "@/lib/validate";
 
 // GET /api/university/courses - List all university courses
 export async function GET(req: NextRequest) {
@@ -36,9 +37,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, courses });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching university courses:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch courses" },
+      { success: false, error: "Failed to fetch courses" },
       { status: 500 }
     );
   }
@@ -52,26 +54,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { code, name, lecturer, lecturerEmail, semester, color, credits } = body;
+    const body = await readBody(req);
+    const { code, name, lecturer, lecturerEmail, semester, color: colorIn, credits } = body;
 
-    if (!code || !name) {
-      return NextResponse.json(
-        { success: false, error: "Course code and course name are required" },
-        { status: 400 }
-      );
-    }
+    const cleanCode = must(str(code, { max: 30, required: true }), "Course code is required (max 30 characters)").toUpperCase();
+    const cleanName = must(str(name, { max: 200, required: true }), "Course name is required (max 200 characters)");
+    const cleanLecturer = must(str(lecturer, { max: 120 }), "Lecturer name is too long");
+    const cleanLecturerEmail = must(email(lecturerEmail), "Lecturer email is invalid");
+    const cleanSemester = must(str(semester, { max: 80 }), "Semester is too long") ?? "Year 2 Sem 1";
+    const cleanColor = must(color(colorIn), "Color must be a hex value like #3b82f6") ?? "#3b82f6";
+    const cleanCredits = must(num(credits, { min: 0, max: 60, int: true }), "Credits must be a whole number between 0 and 60") ?? 3;
 
     const course = await prisma.universityCourse.create({
       data: {
         userId: user.id,
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        lecturer: lecturer?.trim() || null,
-        lecturerEmail: lecturerEmail?.trim() || null,
-        semester: semester?.trim() || "Year 2 Sem 1",
-        color: color || "#3b82f6",
-        credits: parseInt(credits, 10) || 3,
+        code: cleanCode,
+        name: cleanName,
+        lecturer: cleanLecturer,
+        lecturerEmail: cleanLecturerEmail,
+        semester: cleanSemester,
+        color: cleanColor,
+        credits: cleanCredits,
         status: "ACTIVE",
         sourceSystem: "MANUAL",
       },
@@ -79,9 +82,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, course });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating university course:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create course" },
+      { success: false, error: "Failed to create course" },
       { status: 500 }
     );
   }
@@ -95,39 +99,46 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { id, code, name, lecturer, lecturerEmail, semester, color, credits, status } = body;
+    const body = await readBody(req);
+    const { id, code, name, lecturer, lecturerEmail, semester, color: colorIn, credits, status } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Course ID is required" }, { status: 400 });
-    }
+    const courseId = must(idOf(id), "Course ID is required");
+    const pCode = code !== undefined ? must(str(code, { max: 30, required: true }), "Course code is required (max 30 characters)").toUpperCase() : undefined;
+    const pName = name !== undefined ? must(str(name, { max: 200, required: true }), "Course name is required (max 200 characters)") : undefined;
+    const pLecturer = lecturer !== undefined ? must(str(lecturer, { max: 120 }), "Lecturer name is too long") : undefined;
+    const pLecturerEmail = lecturerEmail !== undefined ? must(email(lecturerEmail), "Lecturer email is invalid") : undefined;
+    const pSemester = semester !== undefined ? must(str(semester, { max: 80 }), "Semester is too long") : undefined;
+    const pColor = colorIn !== undefined ? must(color(colorIn), "Color must be a hex value like #3b82f6") : undefined;
+    const pCredits = credits !== undefined ? must(num(credits, { min: 0, max: 60, int: true, required: true }), "Credits must be a whole number between 0 and 60") : undefined;
+    const pStatus = status !== undefined ? must(str(status, { max: 40, required: true }), "Invalid status") : undefined;
 
     const existing = await prisma.universityCourse.findFirst({
-      where: { id, userId: user.id },
+      where: { id: courseId, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Course not found" }, { status: 404 });
     }
 
     const updated = await prisma.universityCourse.update({
-      where: { id },
+      where: { id: courseId },
       data: {
-        ...(code !== undefined && { code: code.trim().toUpperCase() }),
-        ...(name !== undefined && { name: name.trim() }),
-        ...(lecturer !== undefined && { lecturer: lecturer?.trim() || null }),
-        ...(lecturerEmail !== undefined && { lecturerEmail: lecturerEmail?.trim() || null }),
-        ...(semester !== undefined && { semester: semester?.trim() || null }),
-        ...(color !== undefined && { color }),
-        ...(credits !== undefined && { credits: parseInt(credits, 10) }),
-        ...(status !== undefined && { status }),
+        ...(pCode !== undefined && { code: pCode }),
+        ...(pName !== undefined && { name: pName }),
+        ...(pLecturer !== undefined && { lecturer: pLecturer }),
+        ...(pLecturerEmail !== undefined && { lecturerEmail: pLecturerEmail }),
+        ...(pSemester !== undefined && { semester: pSemester }),
+        ...(pColor && { color: pColor }),
+        ...(pCredits !== undefined && { credits: pCredits }),
+        ...(pStatus !== undefined && { status: pStatus }),
       },
     });
 
     return NextResponse.json({ success: true, course: updated });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating university course:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update course" },
+      { success: false, error: "Failed to update course" },
       { status: 500 }
     );
   }
@@ -161,9 +172,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Course deleted successfully" });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting university course:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete course" },
+      { success: false, error: "Failed to delete course" },
       { status: 500 }
     );
   }

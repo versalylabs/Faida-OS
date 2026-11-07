@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatKES } from "@/lib/utils";
-import { offlineFetch } from "@/lib/offlineSync";
+import { getCachedOfflineData, offlineFetch } from "@/lib/offlineSync";
 
 interface TaskItem {
   id: string;
@@ -197,49 +197,7 @@ export default function DashboardPage() {
     month: "short",
     day: "numeric",
   });
-
-  const loadData = async () => {
-    try {
-      const [
-        tasksData,
-        attentionData,
-        financeData,
-        projectsData,
-        calendarData,
-        shoppingData,
-        universityData,
-        notesData,
-        menuData,
-      ] = await Promise.all([
-        offlineFetch("/api/tasks?status=TODO", { cache: "no-store", cacheKey: "dashboard_tasks" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/attention", { cache: "no-store", cacheKey: "dashboard_attention" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/finance", { cache: "no-store", cacheKey: "dashboard_finance" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/projects", { cache: "no-store", cacheKey: "dashboard_projects" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/calendar", { cache: "no-store", cacheKey: "dashboard_calendar" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/shopping", { cache: "no-store", cacheKey: "dashboard_shopping" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/university/dashboard", { cache: "no-store", cacheKey: "dashboard_university" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/notes", { cache: "no-store", cacheKey: "dashboard_notes" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-        offlineFetch("/api/menu?day=TODAY", { cache: "no-store", cacheKey: "dashboard_menu" })
-          .then((r: any) => r.json())
-          .catch(() => ({ success: false })),
-      ]);
-
+  const processAll = (tasksData: any, attentionData: any, financeData: any, projectsData: any, calendarData: any, shoppingData: any, universityData: any, notesData: any, menuData: any) => {
       // 1. Tasks
       if (tasksData.success && tasksData.tasks) {
         setTasks(tasksData.tasks);
@@ -394,6 +352,52 @@ export default function DashboardPage() {
           hasMeals: Boolean(b || l || s),
         });
       }
+  };
+
+
+  const loadData = async () => {
+    try {
+      const [
+        tasksData,
+        attentionData,
+        financeData,
+        projectsData,
+        calendarData,
+        shoppingData,
+        universityData,
+        notesData,
+        menuData,
+      ] = await Promise.all([
+        offlineFetch("/api/tasks?status=TODO", { cache: "no-store", cacheKey: "dashboard_tasks" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/attention", { cache: "no-store", cacheKey: "dashboard_attention" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/finance", { cache: "no-store", cacheKey: "dashboard_finance" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/projects", { cache: "no-store", cacheKey: "dashboard_projects" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/calendar", { cache: "no-store", cacheKey: "dashboard_calendar" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/shopping", { cache: "no-store", cacheKey: "dashboard_shopping" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/university/dashboard", { cache: "no-store", cacheKey: "dashboard_university" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/notes", { cache: "no-store", cacheKey: "dashboard_notes" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+        offlineFetch("/api/menu?day=TODAY", { cache: "no-store", cacheKey: "dashboard_menu" })
+          .then((r: any) => r.json())
+          .catch(() => ({ success: false })),
+      ]);
+
+      processAll(tasksData, attentionData, financeData, projectsData, calendarData, shoppingData, universityData, notesData, menuData);
     } catch (e) {
       console.error("Dashboard data load error:", e);
     } finally {
@@ -402,6 +406,16 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // Paint the last-known dashboard immediately, then refresh it in the background
+    const c = (key: string) => getCachedOfflineData<any>(key) || { success: false };
+    const cachedTasks = c("dashboard_tasks");
+    if (cachedTasks.success) {
+      processAll(
+        cachedTasks, c("dashboard_attention"), c("dashboard_finance"), c("dashboard_projects"),
+        c("dashboard_calendar"), c("dashboard_shopping"), c("dashboard_university"), c("dashboard_notes"), c("dashboard_menu")
+      );
+      setIsLoading(false);
+    }
     loadData();
 
     const handleSync = () => {

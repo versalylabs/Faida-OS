@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, color, idOf, must, oneOf, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -57,9 +58,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, categories });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching categories:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch categories" },
+      { success: false, error: "Failed to fetch categories" },
       { status: 500 }
     );
   }
@@ -73,30 +75,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { name, type, color } = body;
+    const body = await readBody(req);
+    const { name, type, color: colorIn } = body;
 
-    if (!name || !name.trim() || !type) {
-      return NextResponse.json(
-        { success: false, error: "Name and type (INCOME/EXPENSE) are required" },
-        { status: 400 }
-      );
-    }
+    const cleanName = must(str(name, { max: 80, required: true }), "Name is required (max 80 characters)");
+    const cleanType = must(oneOf(type, ["INCOME", "EXPENSE"] as const, { required: true }), "Type must be INCOME or EXPENSE");
+    const cleanColor = must(color(colorIn), "Color must be a hex value like #10b981");
 
     const category = await prisma.financeCategory.create({
       data: {
         userId: user.id,
-        name: name.trim(),
-        type: type === "INCOME" ? "INCOME" : "EXPENSE",
-        color: color || (type === "INCOME" ? "#10b981" : "#f43f5e"),
+        name: cleanName,
+        type: cleanType,
+        color: cleanColor || (cleanType === "INCOME" ? "#10b981" : "#f43f5e"),
       },
     });
 
     return NextResponse.json({ success: true, category });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating category:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create category" },
+      { success: false, error: "Failed to create category" },
       { status: 500 }
     );
   }
@@ -110,34 +110,36 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { id, name, type, color } = body;
+    const body = await readBody(req);
+    const { id, name, type, color: colorIn } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Category ID required" }, { status: 400 });
-    }
+    const categoryId = must(idOf(id), "Category ID required");
+    const patchName = name !== undefined ? must(str(name, { max: 80, required: true }), "Name is required (max 80 characters)") : undefined;
+    const patchType = type !== undefined ? must(oneOf(type, ["INCOME", "EXPENSE"] as const, { required: true }), "Type must be INCOME or EXPENSE") : undefined;
+    const patchColor = colorIn !== undefined ? must(color(colorIn), "Color must be a hex value like #10b981") : undefined;
 
     const existing = await prisma.financeCategory.findFirst({
-      where: { id, userId: user.id },
+      where: { id: categoryId, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Category not found" }, { status: 404 });
     }
 
     const updated = await prisma.financeCategory.update({
-      where: { id },
+      where: { id: categoryId },
       data: {
-        ...(name !== undefined && { name: name.trim() }),
-        ...(type !== undefined && { type }),
-        ...(color !== undefined && { color }),
+        ...(patchName !== undefined && { name: patchName }),
+        ...(patchType !== undefined && { type: patchType }),
+        ...(patchColor && { color: patchColor }),
       },
     });
 
     return NextResponse.json({ success: true, category: updated });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating category:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update category" },
+      { success: false, error: "Failed to update category" },
       { status: 500 }
     );
   }
@@ -155,7 +157,7 @@ export async function DELETE(req: NextRequest) {
     let id = searchParams.get("id");
     if (!id) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         id = body.id;
       } catch {}
     }
@@ -177,9 +179,10 @@ export async function DELETE(req: NextRequest) {
 
     return NextResponse.json({ success: true, message: "Category deleted" });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting category:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete category" },
+      { success: false, error: "Failed to delete category" },
       { status: 500 }
     );
   }

@@ -158,6 +158,16 @@ export default function NotesPage() {
   }, []);
 
   useEffect(() => {
+    // Show what we had last time straight away (first load only), then refresh it in the background
+    if (selectedProjectId === "ALL" && selectedCategory === "ALL" && !searchQuery.trim()) {
+      const cachedNotes = getCachedOfflineData<any>("notes_list");
+      if (cachedNotes?.notes) {
+        setNotes(cachedNotes.notes);
+        setIsLoading(false);
+      }
+      const cachedProjects = getCachedOfflineData<any>("notes_projects");
+      if (cachedProjects?.projects) setProjects(cachedProjects.projects);
+    }
     fetchProjects();
     fetchNotes();
   }, [selectedProjectId, selectedCategory]);

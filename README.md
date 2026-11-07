@@ -11,8 +11,8 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 ### 1. 🚀 Execution & Planning
 - **Personal Mission Control (`/`)**: Real-time dashboard tracking urgent deadlines, due-today commitments, active queues, KES cashflow, and project completion velocities.
 - **Universal Capture Engine (`/capture` or `Cmd/Ctrl+K`)**: Instant intake interface with AI heuristic classification into Tasks, Reminders, Calendar Events, Notes, Shopping Items, or KES Expenses.
-- **Daily Timeboxing Planner (`/planner`)**: Algorithmic day planner that slots priorities into focus blocks with 15-minute buffers and real-time schedule drift re-planning.
-- **Task & Execution Queue (`/tasks`)**: Priority-ranked execution board (`URGENT`, `HIGH`, `MEDIUM`, `LOW`) with subtasks, duration estimates, and status filtering (`TODO`, `IN_PROGRESS`, `DONE`).
+- **Daily Planner (`/planner`)**: A day you can actually follow. It starts from *now* (in your time zone), works around today's calendar events and university classes, protects lunch, puts overdue and due-today work first, schedules heavy work in your morning, cuts long tasks into focused blocks with breaks, and never plans beyond the focus time you choose. Tasks that do not fit are listed with the reason and a one-tap "move to tomorrow".
+- **Task & Execution Queue (`/tasks`)**: Priority-ranked board (`URGENT`, `HIGH`, `MEDIUM`, `LOW`) with subtasks, duration estimates, repeating tasks (daily, weekdays, weekly, monthly, yearly: finishing one lines up the next), and status filtering. **Finished tasks and finished work deliverables clear themselves 48 hours after completion.**
 
 ### 2. 🧠 Second Brain & Projects
 - **Project Hub & Workspaces (`/projects` & `/projects/[id]`)**: Deep-focus workspaces with milestone roadmaps, automated velocity tracking, and centralized access to linked tasks, notes, credentials, and files.
@@ -24,14 +24,15 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 - **Smart Shopping List (`/shopping`)**: Store-organized shopping inventory with estimated prices, quantity counters, and one-click purchase completion.
 - **Recurring Maintenance Engine (`/maintenance`)**: Preventative upkeep scheduler for computers, home, development environments, and personal admin with automated next-due date rollforward.
 
-### 4. 🛋️ Faida Effort Engine (Lazy Mode — `/lazy`)
-- Built specifically for fatigue and low-energy windows.
-- **Real-Time Energy Slider (0–100%)**: Dynamically recommends actions based on physical/mental bandwidth.
-- **The 4-Action Matrix**:
-  - 🗑️ **SKIP**: Defer or eliminate low-priority tasks during low-energy states.
-  - 🤖 **AUTOMATE**: Identifies repetitive operational tasks suitable for automation.
-  - ⚡ **OPTIMIZE**: Low-Energy Batching — knocks out up to 4 quick micro-tasks (≤20 mins) simultaneously with one click.
-  - 🫡 **JUST DO IT**: Protects high-cognitive deep work for peak focus windows.
+### 4. 🛋️ Lazy Mode (`/lazy`): spend as little energy as possible
+Built for tired days. You tell it how much energy you have; it protects the rest.
+- **Energy check-ins**: one tap (Drained, Tired, Okay, Sharp) or a slider. Faida learns your real rhythm by hour of day and starts from it, falling back to a sensible curve at first.
+- **Do this now**: one task only, chosen to fit your energy. Essentials (urgent, due today, overdue) come first; if one is too heavy for your energy you get a **15-minute sprint** instead of the whole thing. "Not this one" gives you the next.
+- **Focus timer**: start the task or sprint with a countdown, then finish it, or stop knowing 15 minutes was enough.
+- **Can't wait vs can wait**: only what has to happen today is shown first. Everything else sits behind "Can wait", with a one-tap **defer to tomorrow** or **drop** (both with undo).
+- **Quick wins**: up to four light tasks as a tick-off checklist that clears them with almost no thinking.
+- **Real "energy kept" numbers**: time freed by deferring and dropping, plus quick wins and sprints, counted from what you actually did.
+- The slider and every action respond instantly: the logic runs on your device.
 
 ### 5. 🤖 Faida AI Assistant (Slide-Out Chat Drawer)
 - **Morning Mission Briefing**: Delivers executive briefings of active queues, top priorities, and KES budget balance.
@@ -40,7 +41,7 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 
 ### 6. 🛠️ Developer Hub & Smart Asset Organizer
 - **Developer Credential Hub (`/developer`)**: Secure vault for API keys, database URLs, and webhook secrets across development, staging, production, and local environments, with an automatic **Local Port Conflict Detector** (flags colliding ports like 3000, 5432, 8080).
-- **Smart File Organizer (`/files`)**: Categorized digital filing cabinet for deliverables, invoices, code snippets, and PDFs.
+- **Smart File Organizer (`/files`)**: Upload files from your device (up to 4 MB each; big phone photos are shrunk automatically), then open or download them whenever you need. Files are stored privately in your database and only you can open them.
 
 ---
 
@@ -48,6 +49,7 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 
 - **Strict Multi-Tenant Isolation**: Every user account has its own isolated data sandbox. No user can view or modify another user's tasks, notes, or finances.
 - **Clean Slate for New Users**: Any newly registered user begins with an entirely empty, clean state (0 tasks, 0 projects, 0 transactions).
+- **Your data, your copy**: **Settings → Download my data** exports everything in your account as one JSON file.
 - **Security**: Passwords are hashed with `bcryptjs`; opaque database-backed sessions are revocable on logout; login and registration attempts are throttled.
 
 ---
@@ -56,7 +58,8 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 
 ### Prerequisites
 - Node.js 18.18+ or 20+
-- npm or yarn
+- npm
+- A **PostgreSQL** database. [Neon](https://neon.tech) (free tier) is what production uses; any PostgreSQL works.
 
 ### Installation
 ```bash
@@ -64,33 +67,62 @@ Faida OS is a production-grade personal operating system, second brain, and exec
 git clone https://github.com/versalylabs/Faida-OS.git
 cd Faida-OS
 
-# 2. Install dependencies
+# 2. Install dependencies (also generates the Prisma client)
 npm install
 
 # 3. Configure environment variables
 cp .env.example .env
-# Set DATABASE_URL="file:./faida.db" (or your PostgreSQL / Supabase connection string)
+# Edit .env and set DATABASE_URL to a PostgreSQL connection string.
 
-# 4. Sync Prisma database schema
+# 4. Create the tables in that database
 npx prisma db push
 
-# 5. Start development server
+# 5. Start the development server
 npm run dev
 ```
 
-Visit `http://localhost:3000` in your browser.
+Visit `http://localhost:3000` and create your account on the sign-in screen.
+
+> **Use a separate database for development.** `prisma db push` and everything you do in the app writes to
+> whatever `DATABASE_URL` points at. With Neon, create a **branch** of your project (Branches → New branch) and use
+> that branch's connection string locally, so testing never touches production data.
+
+### Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string (Neon pooled string recommended). |
+| `APP_TIME_ZONE` | No | IANA time zone used for "today", due dates and the energy curve. Defaults to `Africa/Nairobi`. |
+| `GEMINI_API_KEY` | No | Google Gemini key for smarter capture classification and chat. The app runs without it. |
+
+Sessions are random server-side tokens stored (hashed) in the database, so no signing secret is needed.
 
 ---
 
 ## 📦 Deployment to Vercel
 
-1. Push your code to GitHub.
-2. Import the repository into **[Vercel](https://vercel.com)**.
-3. Configure the `DATABASE_URL` environment variable (e.g. Supabase, Neon, or Turso connection string).
-4. Apply the Prisma schema to the configured database with `npx prisma db push` before deploying schema changes.
-5. Deploy! Build command `prisma generate && next build` runs automatically.
+1. Push your code to GitHub and import the repository into **[Vercel](https://vercel.com)**.
+2. Add the `DATABASE_URL` environment variable (Production; add to Preview only if it points at a non-production database).
+3. Apply schema changes to the production database **before** deploying code that needs them:
+   ```bash
+   npx prisma db push
+   ```
+   (Run it locally with `DATABASE_URL` set to the production string. Vercel does not run it for you. Prefer additive changes so the previous deployment keeps working during the rollout.)
+4. Deploy. The build command (`prisma generate && next build`) runs automatically.
 
-If an existing account used the previously published default password, sign in after deployment and change it immediately in **Settings → Change Password**. Changing the password revokes that account's other sessions.
+Notes:
+- **File uploads** are stored privately in the database (limit 4 MB per file, matching Vercel's request-size cap) and are served only to the signed-in owner. Nothing is written to the server's filesystem.
+- If an account previously used the old published default password, sign in and change it right away in **Settings → Change Password**. Changing the password revokes that account's other sessions.
+
+---
+
+## 🎨 Design
+
+A liquid-glass interface over one cosy backdrop photo (`public/bg/scene.webp`, credit in `public/bg/CREDITS.md`): frosted translucent surfaces with a bright edge, soft springy press animations, a ripple from where you tap, and a light that follows the pointer across cards. Everything respects reduced-motion and reduced-transparency settings. The design system lives in `src/app/globals.css`.
+
+## 🔢 Where the numbers come from
+
+Nothing is invented. Finance totals for the month are computed over every transaction of the current calendar month (in your time zone) and the dashboard reads the same `/api/finance` figures as the Finance page. New accounts start empty: no sample balances, budgets, clients or revenue.
 
 ---
 

@@ -26,6 +26,7 @@ export function OfflineStatusIndicator() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [showSyncedSuccess, setShowSyncedSuccess] = useState<boolean>(false);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [droppedCount, setDroppedCount] = useState<number>(0);
 
   useEffect(() => {
     setOnline(isOnline());
@@ -47,6 +48,10 @@ export function OfflineStatusIndicator() {
     const handleSyncDone = (e: any) => {
       setIsSyncing(false);
       setQueuedMutations(getQueuedMutations());
+      if (e.detail?.dropped > 0) {
+        setDroppedCount(e.detail.dropped);
+        setTimeout(() => setDroppedCount(0), 12000);
+      }
       if (e.detail?.synced > 0) {
         setShowSyncedSuccess(true);
         setTimeout(() => setShowSyncedSuccess(false), 3500);
@@ -80,7 +85,7 @@ export function OfflineStatusIndicator() {
   };
 
   // If online, not syncing, no queue, and no recent sync, render nothing in the header
-  if (online && queuedMutations.length === 0 && !isSyncing && !showSyncedSuccess) {
+  if (online && queuedMutations.length === 0 && !isSyncing && !showSyncedSuccess && droppedCount === 0) {
     return null;
   }
 
@@ -88,7 +93,15 @@ export function OfflineStatusIndicator() {
     <>
       {/* HEADER PILL */}
       <div className="flex items-center">
-        {isSyncing ? (
+        {droppedCount > 0 && !isSyncing ? (
+          <div
+            className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[11px] font-mono font-medium"
+            title="The server rejected these offline changes, so they were discarded"
+          >
+            <AlertTriangle className="h-3 w-3" />
+            <span>{droppedCount} change{droppedCount === 1 ? "" : "s"} rejected</span>
+          </div>
+        ) : isSyncing ? (
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[11px] font-mono font-medium animate-pulse cursor-pointer"

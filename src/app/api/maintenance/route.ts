@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, date, idOf, must, num, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -45,9 +46,10 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, items }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching maintenance items:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch maintenance items" },
+      { success: false, error: "Failed to fetch maintenance items" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -63,44 +65,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { title, area, frequencyDays, notes, nextDueAt } = body;
 
-    if (!title || !title.trim() || !area) {
-      return NextResponse.json(
-        { success: false, error: "Title and area (COMPUTER, HOME, DEV, PERSONAL_ADMIN) are required" },
-        { status: 400, headers: noCacheHeaders }
-      );
-    }
-
-    const freq = parseInt(frequencyDays || "30", 10);
-    if (isNaN(freq) || freq < 1) {
-      return NextResponse.json(
-        { success: false, error: "Frequency cadence must be at least 1 day" },
-        { status: 400, headers: noCacheHeaders }
-      );
-    }
-
-    const nextDue = nextDueAt
-      ? new Date(nextDueAt)
-      : new Date(Date.now() + freq * 86400000);
+    const cleanTitle = must(str(title, { max: 200, required: true }), "Title is required (max 200 characters)");
+    const cleanArea = must(str(area, { max: 40, required: true }), "Area (COMPUTER, HOME, DEV, PERSONAL_ADMIN) is required");
+    const freq = must(num(frequencyDays ?? 30, { min: 1, max: 3650, int: true, required: true }), "Frequency cadence must be a whole number of days between 1 and 3650");
+    const cleanNotes = must(str(notes, { max: 5000 }), "Notes are too long");
+    const nextDue = must(date(nextDueAt), "Next due date is invalid") ?? new Date(Date.now() + freq * 86400000);
 
     const item = await prisma.maintenanceItem.create({
       data: {
         userId: user.id,
-        title: title.trim(),
-        area: area.trim(),
+        title: cleanTitle,
+        area: cleanArea,
         frequencyDays: freq,
         nextDueAt: nextDue,
-        notes: notes ? notes.trim() : null,
+        notes: cleanNotes,
       },
     });
 
     return NextResponse.json({ success: true, item }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating maintenance item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create maintenance item" },
+      { success: false, error: "Failed to create maintenance item" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -116,18 +106,13 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, action, title, area, frequencyDays, notes, nextDueAt } = body;
 
-    if (!id) {
-      return NextResponse.json(
-        { success: false, error: "Item ID is required" },
-        { status: 400, headers: noCacheHeaders }
-      );
-    }
+    const itemId = must(idOf(id), "Item ID is required");
 
     const existing = await prisma.maintenanceItem.findFirst({
-      where: { id, userId: user.id },
+      where: { id: itemId, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json(
@@ -151,7 +136,7 @@ export async function PATCH(req: NextRequest) {
       const nextDue = new Date(now.getTime() + existing.frequencyDays * 86400000);
 
       const updated = await prisma.maintenanceItem.update({
-        where: { id },
+        where: { id: itemId },
         data: {
           lastCompletedAt: now,
           nextDueAt: nextDue,
@@ -170,50 +155,27 @@ export async function PATCH(req: NextRequest) {
 
     // 2. Edit Action
     const updateData: any = {};
-
-    if (title !== undefined) {
-      if (!title.trim()) {
-        return NextResponse.json(
-          { success: false, error: "Title cannot be empty" },
-          { status: 400, headers: noCacheHeaders }
-        );
-      }
-      updateData.title = title.trim();
-    }
-
-    if (area !== undefined) {
-      updateData.area = area.trim();
-    }
-
+    if (title !== undefined) updateData.title = must(str(title, { max: 200, required: true }), "Title cannot be empty (max 200 characters)");
+    if (area !== undefined) updateData.area = must(str(area, { max: 40, required: true }), "Area is invalid");
     if (frequencyDays !== undefined) {
-      const freq = parseInt(frequencyDays, 10);
-      if (isNaN(freq) || freq < 1) {
-        return NextResponse.json(
-          { success: false, error: "Cadence must be at least 1 day" },
-          { status: 400, headers: noCacheHeaders }
-        );
-      }
-      updateData.frequencyDays = freq;
+      updateData.frequencyDays = must(num(frequencyDays, { min: 1, max: 3650, int: true, required: true }), "Cadence must be a whole number of days between 1 and 3650");
     }
-
-    if (notes !== undefined) {
-      updateData.notes = notes ? notes.trim() : null;
-    }
-
+    if (notes !== undefined) updateData.notes = must(str(notes, { max: 5000 }), "Notes are too long");
     if (nextDueAt !== undefined) {
-      updateData.nextDueAt = nextDueAt ? new Date(nextDueAt) : existing.nextDueAt;
+      updateData.nextDueAt = must(date(nextDueAt), "Next due date is invalid") ?? existing.nextDueAt;
     }
 
     const updated = await prisma.maintenanceItem.update({
-      where: { id },
+      where: { id: itemId },
       data: updateData,
     });
 
     return NextResponse.json({ success: true, item: updated }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating maintenance item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update maintenance item" },
+      { success: false, error: "Failed to update maintenance item" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -234,7 +196,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         id = body?.id;
       } catch {}
     }
@@ -266,9 +228,10 @@ export async function DELETE(req: NextRequest) {
       { headers: noCacheHeaders }
     );
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting maintenance item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete maintenance item" },
+      { success: false, error: "Failed to delete maintenance item" },
       { status: 500, headers: noCacheHeaders }
     );
   }

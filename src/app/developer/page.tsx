@@ -175,7 +175,7 @@ export default function DeveloperHubPage() {
             </h1>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Store environment variables, encrypted API credentials, and local service port maps
+            Store environment variables, API credentials, and local service port maps
           </p>
         </div>
 

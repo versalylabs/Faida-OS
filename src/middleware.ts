@@ -18,9 +18,19 @@ export function middleware(request: NextRequest) {
     pathname === "/icon.svg" ||
     pathname === "/sw.js" ||
     pathname === "/manifest.webmanifest" ||
-    pathname.startsWith("/icons")
+    pathname.startsWith("/icons") ||
+    pathname.startsWith("/bg")
   ) {
     return NextResponse.next();
+  }
+
+  // Cheap abuse guard: JSON API bodies are small. Uploads have their own, larger limit.
+  if (
+    pathname.startsWith("/api/") &&
+    pathname !== "/api/files/upload" &&
+    Number(request.headers.get("content-length") || 0) > 1_000_000
+  ) {
+    return NextResponse.json({ success: false, error: "Request body too large" }, { status: 413 });
   }
 
   const rawToken = request.cookies.get(SESSION_COOKIE)?.value;

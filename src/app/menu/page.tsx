@@ -235,6 +235,17 @@ export default function MenuPage() {
   };
 
   useEffect(() => {
+    // Show what we had last time straight away, then refresh it in the background
+    const cachedMenu = getCachedOfflineData<any>("weekly_menu");
+    if (cachedMenu) {
+      setMeals(cachedMenu.meals || []);
+      setGroupedByDay(cachedMenu.groupedByDay || {});
+      if (cachedMenu.currentDay) setCurrentDay(cachedMenu.currentDay);
+      setIsLoading(false);
+    }
+    const cachedIdeas = getCachedOfflineData<any>("meal_ideas");
+    if (cachedIdeas?.ideas) setMealIdeas(cachedIdeas.ideas);
+
     fetchMenu();
     fetchIdeas();
 

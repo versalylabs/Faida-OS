@@ -113,6 +113,14 @@ export default function FilesPage() {
   };
 
   useEffect(() => {
+    // Show what we had last time straight away, then refresh it in the background
+    const cachedFiles = getCachedOfflineData<any>("files_assets");
+    if (cachedFiles) {
+      setFiles(cachedFiles.files || []);
+      setProjects(cachedFiles.projects || []);
+      setMetrics(cachedFiles.metrics || { totalFiles: 0, totalBytes: 0, categoryCounts: {} });
+      setIsLoading(false);
+    }
     fetchFiles();
 
     const handleSync = () => fetchFiles();
@@ -140,7 +148,40 @@ export default function FilesPage() {
     }
   };
 
-  const handleDeviceFileSelect = (file: File) => {
+  const MAX_UPLOAD = 4 * 1024 * 1024;
+
+  // Big phone photos are shrunk automatically so they fit; other large files are refused with a clear message
+  const shrinkImage = async (file: File): Promise<File | null> => {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, 2400 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.85, 0.7, 0.55]) {
+        const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+        if (blob && blob.size <= MAX_UPLOAD - 100 * 1024) {
+          return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+        }
+      }
+    } catch {
+      /* fall through */
+    }
+    return null;
+  };
+
+  const handleDeviceFileSelect = async (original: File) => {
+    let file = original;
+    if (file.size > MAX_UPLOAD) {
+      const isPhoto = file.type.startsWith("image/") && !/svg|gif/.test(file.type);
+      const shrunk = isPhoto ? await shrinkImage(file) : null;
+      if (!shrunk) {
+        alert(`"${file.name}" is ${(file.size / 1048576).toFixed(1)} MB. Files can be up to 4 MB. Try compressing it first, or or index its path instead (use "Index Local Path").`);
+        return;
+      }
+      file = shrunk;
+    }
     setSelectedDeviceFile(file);
     if (!formName.trim()) {
       setFormName(file.name);
@@ -633,7 +674,7 @@ export default function FilesPage() {
                           Click or drag a file here to upload
                         </div>
                         <p className="text-[10px] text-slate-400">
-                          Documents, PDFs, Images, Code, Spreadsheets &amp; Archives (Up to 50MB)
+                          Documents, PDFs, images, code, spreadsheets and archives, up to 4 MB each. Large photos are shrunk automatically.
                         </p>
                       </div>
                     )}

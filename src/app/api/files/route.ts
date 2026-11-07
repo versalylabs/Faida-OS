@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     console.error("Error fetching file assets:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch files" },
+      { success: false, error: "Failed to fetch files" },
       { status: 500 }
     );
   }
@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("Error creating file asset:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create file asset" },
+      { success: false, error: "Failed to create file asset" },
       { status: 500 }
     );
   }
@@ -161,7 +161,7 @@ export async function DELETE(req: NextRequest) {
   } catch (error: any) {
     console.error("Error deleting file asset:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete file asset" },
+      { success: false, error: "Failed to delete file asset" },
       { status: 500 }
     );
   }

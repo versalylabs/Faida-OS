@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { ValidationError, badRequest, idOf, must, num, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,9 +45,10 @@ export async function GET(req: NextRequest) {
       completedCount,
     }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching shopping items:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to fetch shopping items" },
+      { success: false, error: "Failed to fetch shopping items" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -59,29 +61,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { name, quantity, category, preferredStore, estimatedPrice } = body;
 
-    if (!name || !name.trim()) {
-      return NextResponse.json({ success: false, error: "Item name is required" }, { status: 400, headers: noCacheHeaders });
-    }
+    const cleanName = must(str(name, { max: 200, required: true }), "Item name is required (max 200 characters)");
+    const cleanQuantity = must(str(typeof quantity === "number" ? String(quantity) : quantity, { max: 40 }), "Quantity is invalid") ?? "1";
+    const cleanCategory = must(str(category, { max: 80 }), "Category is too long") ?? "Groceries";
+    const cleanStore = must(str(preferredStore, { max: 120 }), "Store name is too long") ?? "Local Store";
+    const cleanPrice = must(num(estimatedPrice, { min: 0, max: 1e9 }), "Estimated price must be a positive number");
 
     const item = await prisma.shoppingItem.create({
       data: {
         userId: user.id,
-        name: name.trim(),
-        quantity: quantity || "1",
-        category: category || "Groceries",
-        preferredStore: preferredStore || "Local Store",
-        estimatedPrice: estimatedPrice ? parseFloat(estimatedPrice) : null,
+        name: cleanName,
+        quantity: cleanQuantity,
+        category: cleanCategory,
+        preferredStore: cleanStore,
+        estimatedPrice: cleanPrice,
       },
     });
 
     return NextResponse.json({ success: true, item }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating shopping item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to create shopping item" },
+      { success: false, error: "Failed to create shopping item" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -102,40 +107,39 @@ async function handleUpdate(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    const body = await req.json();
+    const body = await readBody(req);
     const { id, isChecked, name, quantity, category, preferredStore, estimatedPrice } = body;
 
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Item ID required" }, { status: 400, headers: noCacheHeaders });
+    const itemId = must(idOf(id), "Item ID required");
+
+    const dataToUpdate: any = {};
+    if (isChecked !== undefined) dataToUpdate.isChecked = Boolean(isChecked);
+    if (name !== undefined) dataToUpdate.name = must(str(name, { max: 200, required: true }), "Item name is required (max 200 characters)");
+    if (quantity !== undefined) dataToUpdate.quantity = must(str(typeof quantity === "number" ? String(quantity) : quantity, { max: 40 }), "Quantity is invalid") ?? "1";
+    if (category !== undefined) dataToUpdate.category = must(str(category, { max: 80 }), "Category is too long") ?? "Groceries";
+    if (preferredStore !== undefined) dataToUpdate.preferredStore = must(str(preferredStore, { max: 120 }), "Store name is too long") ?? "Local Store";
+    if (estimatedPrice !== undefined) {
+      dataToUpdate.estimatedPrice = must(num(estimatedPrice, { min: 0, max: 1e9 }), "Estimated price must be a positive number");
     }
 
     const existing = await prisma.shoppingItem.findFirst({
-      where: { id, userId: user.id },
+      where: { id: itemId, userId: user.id },
     });
     if (!existing) {
       return NextResponse.json({ success: false, error: "Item not found" }, { status: 404, headers: noCacheHeaders });
     }
 
-    const dataToUpdate: any = {};
-    if (isChecked !== undefined) dataToUpdate.isChecked = Boolean(isChecked);
-    if (name !== undefined) dataToUpdate.name = name.trim();
-    if (quantity !== undefined) dataToUpdate.quantity = quantity;
-    if (category !== undefined) dataToUpdate.category = category;
-    if (preferredStore !== undefined) dataToUpdate.preferredStore = preferredStore;
-    if (estimatedPrice !== undefined) {
-      dataToUpdate.estimatedPrice = estimatedPrice ? parseFloat(estimatedPrice) : null;
-    }
-
     const item = await prisma.shoppingItem.update({
-      where: { id },
+      where: { id: itemId },
       data: dataToUpdate,
     });
 
     return NextResponse.json({ success: true, item }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error updating shopping item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to update shopping item" },
+      { success: false, error: "Failed to update shopping item" },
       { status: 500, headers: noCacheHeaders }
     );
   }
@@ -153,7 +157,7 @@ export async function DELETE(req: NextRequest) {
 
     if (!id) {
       try {
-        const body = await req.json();
+        const body = await readBody(req);
         id = body.id;
       } catch {}
     }
@@ -172,9 +176,10 @@ export async function DELETE(req: NextRequest) {
     await prisma.shoppingItem.delete({ where: { id } });
     return NextResponse.json({ success: true }, { headers: noCacheHeaders });
   } catch (error: any) {
+    if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error deleting shopping item:", error);
     return NextResponse.json(
-      { success: false, error: error.message || "Failed to delete shopping item" },
+      { success: false, error: "Failed to delete shopping item" },
       { status: 500, headers: noCacheHeaders }
     );
   }
