@@ -292,7 +292,7 @@ export default function UniversityPage() {
   // Trigger AI Assignment Decomposition
   const handleDecomposeAssignment = async (assign: AssignmentItem) => {
     try {
-      const res = await fetch("/api/ai/chat", {
+      const res = await fetch("/api/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

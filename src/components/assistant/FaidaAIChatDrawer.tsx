@@ -34,6 +34,50 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   actionExecuted?: ActionExecuted;
+  toolsUsed?: string[];
+  notice?: string;
+}
+
+const TOOL_LABELS: Record<string, string> = {
+  get_briefing: "Briefing",
+  get_agenda: "Calendar",
+  list_tasks: "Tasks",
+  create_task: "Task added",
+  complete_task: "Task done",
+  create_event: "Event added",
+  create_reminder: "Reminder set",
+  get_university: "University",
+  break_down_assignment: "Assignment steps",
+  get_business: "Business Hub",
+  list_deliverables: "Deliverables",
+  create_deliverable: "Deliverable added",
+  update_deliverable: "Deliverable updated",
+  get_finance: "Finance",
+  log_transaction: "Money logged",
+  list_projects: "Projects",
+  break_down_goal: "Goal planned",
+  search_notes: "Notes",
+  get_maintenance: "Maintenance",
+  get_shopping: "Shopping",
+  add_shopping: "Shopping added",
+};
+
+/** Turns **bold** into bold text; everything else stays plain text (never raw HTML). */
+function Rich({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
+          <strong key={i} className="font-semibold text-white">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
 }
 
 export function FaidaAIChatDrawer() {
@@ -44,7 +88,7 @@ export function FaidaAIChatDrawer() {
       id: "init",
       role: "assistant",
       content:
-        "Hello! I am Faida, your autonomous OS Copilot. I don't just chat — I can execute actions across your second brain:\n\n• Break down big goals into project tasks\n• Log KES expenses & update budgets\n• Dispatch quick wins tailored to your energy\n• Add items to your shopping list\n• Deliver your daily morning briefing",
+        "Hi, I'm Faida. Ask me about your day, university, business or money, or tell me what to do:\n\n• \"What's due this week?\"\n• \"How are my units doing?\"\n• \"Which client deliverables are overdue?\"\n• \"Remind me tomorrow at 9am to call James\"\n• \"I spent 1,800 on lunch\"",
     },
   ]);
   const [input, setInput] = useState("");
@@ -97,6 +141,8 @@ export function FaidaAIChatDrawer() {
             role: "assistant",
             content: data.reply,
             actionExecuted: data.actionExecuted,
+            toolsUsed: Array.isArray(data.toolsUsed) ? data.toolsUsed : undefined,
+            notice: typeof data.notice === "string" ? data.notice : undefined,
           },
         ]);
         // If an OS action was executed, refresh page data smoothly
@@ -109,7 +155,7 @@ export function FaidaAIChatDrawer() {
           {
             id: (Date.now() + 1).toString(),
             role: "assistant",
-            content: "Sorry, I had trouble processing that request right now.",
+            content: data?.error || "Sorry, I had trouble processing that request right now.",
           },
         ]);
       }
@@ -128,11 +174,12 @@ export function FaidaAIChatDrawer() {
   };
 
   const quickPrompts = [
-    { label: "🌅 Morning Briefing", text: "Good morning! Give me my daily briefing." },
-    { label: "🧩 Break Down Goal", text: "Break down goal: Deploy Melio production release" },
-    { label: "💸 Log KES 1,800 Lunch", text: "I spent KES 1,800 on lunch at Java House" },
-    { label: "⚡ Low Energy (20m)", text: "I have 20 minutes and low energy, what can I do?" },
-    { label: "🛒 Add Groceries", text: "Add milk and whole grain bread to shopping list" },
+    { label: "🌅 My briefing", text: "Give me my briefing for today." },
+    { label: "📅 This week", text: "What's coming up this week across everything?" },
+    { label: "🎓 My units", text: "How are my units doing? What did I miss?" },
+    { label: "💼 Business", text: "How is my business? Anything overdue for clients?" },
+    { label: "⚡ 20 min, low energy", text: "I have 20 minutes and low energy, what can I do?" },
+    { label: "💸 Money this month", text: "How much have I spent this month and what's left in my budget?" },
   ];
 
   const renderActionCard = (action: ActionExecuted) => {
@@ -222,7 +269,7 @@ export function FaidaAIChatDrawer() {
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-400 truncate max-w-[200px] sm:max-w-none">
-                    Connected to tasks, KES budget &amp; second brain
+                    Tasks, calendar, university, business &amp; money
                   </p>
                 </div>
               </div>
@@ -260,8 +307,20 @@ export function FaidaAIChatDrawer() {
                           : "bg-slate-800/70 border border-slate-700/80 text-slate-200 rounded-tl-none whitespace-pre-line"
                       }`}
                     >
-                      <div>{m.content}</div>
+                      <div>
+                        <Rich text={m.content} />
+                      </div>
                       {m.actionExecuted && renderActionCard(m.actionExecuted)}
+                      {!isUser && m.toolsUsed && m.toolsUsed.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {m.toolsUsed.map((t) => (
+                            <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-full bg-slate-900/80 border border-slate-700 text-slate-400">
+                              {TOOL_LABELS[t] || t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {!isUser && m.notice && <p className="mt-2 text-[10px] text-amber-300 leading-snug">{m.notice}</p>}
                     </div>
                   </div>
                 );
@@ -304,7 +363,7 @@ export function FaidaAIChatDrawer() {
               <div className="relative flex items-center">
                 <input
                   type="text"
-                  placeholder="Tell Faida to log an expense, break down a goal, plan..."
+                  placeholder="Ask about your day, university, business, money…"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 focus:border-blue-500 rounded-xl py-2.5 pl-3 pr-10 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none"

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { buildBriefing, briefingToMarkdown } from "@/lib/briefing";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
+import { zonedNow } from "@/lib/tz";
 
 export interface ToolActionPayload {
   type:
@@ -29,6 +30,7 @@ export async function executeCreateTask(params: {
   projectName?: string;
   priority?: "LOW" | "MEDIUM" | "HIGH" | "URGENT";
   durationMinutes?: number;
+  dueDate?: Date;
 }): Promise<{ message: string; action: ToolActionPayload }> {
   let projectId: string | undefined;
 
@@ -65,6 +67,7 @@ export async function executeCreateTask(params: {
       title: params.title.trim(),
       priority: params.priority || "MEDIUM",
       estimatedMinutes: params.durationMinutes || 30,
+      dueDate: params.dueDate,
       projectId,
       status: "TODO",
     },
@@ -99,7 +102,7 @@ export async function executeCompleteTask(userId: string, taskTitleOrId: string)
       status: { not: "DONE" },
       OR: [
         { id: taskTitleOrId },
-        { title: { contains: taskTitleOrId } },
+        { title: { contains: taskTitleOrId, mode: "insensitive" } },
       ],
     },
     include: { project: true },
@@ -168,20 +171,16 @@ export async function executeLogFinance(params: {
     },
   });
 
-  const [allTxs, userBudget] = await Promise.all([
-    prisma.financeTransaction.findMany({
-      where: { userId: params.userId },
-    }),
-    prisma.budget.findFirst({
-      where: { userId: params.userId },
-      orderBy: { createdAt: "desc" },
-    }),
+  // Budgets are monthly, so measure this calendar month (Nairobi time), like the Finance page does.
+  const [monthTxs, budgets] = await Promise.all([
+    prisma.financeTransaction.findMany({ where: { userId: params.userId, date: { gte: zonedNow().startOfMonth }, amount: { lt: 0 } }, select: { amount: true } }),
+    prisma.budget.findMany({ where: { userId: params.userId }, orderBy: { createdAt: "desc" } }),
   ]);
-  let totalExpenses = 0;
-  allTxs.forEach((t) => {
-    if (t.amount < 0) totalExpenses += Math.abs(t.amount);
-  });
-  const budgetLimit = userBudget?.monthlyLimit ?? 310000;
+  const totalExpenses = monthTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const overall = budgets.find((x) => x.category === "Overall");
+  const budgetLimit = overall
+    ? overall.monthlyLimit
+    : (budgets.find((x) => x.category === "Personal")?.monthlyLimit ?? 0) + (budgets.find((x) => x.category === "Business")?.monthlyLimit ?? 0) || 310000;
   const remainingBudget = budgetLimit - totalExpenses;
 
   await prisma.activityLog.create({

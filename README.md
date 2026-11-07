@@ -160,3 +160,14 @@ Generate keys with `node -e "console.log(require('web-push').generateVAPIDKeys()
 Who sends: Vercel's free plan runs jobs once a day (`vercel.json`: 07:00 LMS sync + morning reminders, 20:00
 evening reminders). For the "1 hour before" message the GitHub workflow `.github/workflows/reminders.yml` calls
 `/api/cron/notify` every 15 minutes; add the same `CRON_SECRET` as a repository Actions secret.
+
+## Faida AI (free models)
+
+The chat reads normal sentences and uses tools to look at tasks, calendar, university (LMS), business hub,
+finance, projects, notes, maintenance and shopping, and to make changes (tasks, reminders, events,
+transactions, deliverables). Only the tools a message could need are sent, so free-tier token limits hold.
+
+Engines (OpenAI-compatible, tried in order, next one used if one is busy): set any of
+`GROQ_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY` (optional `GROQ_MODEL`, `CEREBRAS_MODEL`,
+`OPENROUTER_MODEL`, `AI_PROVIDER_ORDER`). With no key, or when every engine is busy, the original keyword
+assistant answers, so the chat never goes dead. Keys stay on the server.
