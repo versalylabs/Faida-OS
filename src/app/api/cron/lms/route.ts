@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { timingSafeEqual } from "crypto";
 import { prisma } from "@/lib/db";
 import { syncUser } from "@/lib/lms/sync";
+import { runNotifications } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,5 +47,7 @@ export async function GET(req: NextRequest) {
       failed++;
     }
   }
-  return NextResponse.json({ success: true, synced, skipped, failed });
+  // Morning reminders ("due today") go out right after the sync, so they reflect fresh LMS data.
+  const reminders = await runNotifications({ deadlineMs: 10_000 }).catch(() => null);
+  return NextResponse.json({ success: true, synced, skipped, failed, reminders });
 }

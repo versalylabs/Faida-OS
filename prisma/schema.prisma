@@ -46,6 +46,9 @@ model User {
   lmsConnection         LmsConnection?
   lmsItems              LmsItem[]
   lmsActivities         LmsActivity[]
+  pushSubscriptions     PushSubscription[]
+  notificationPref      NotificationPref?
+  notificationLogs      NotificationLog[]
   businesses            Business[]
   businessClients       BusinessClient[]
   businessWeeklyMetrics BusinessWeeklyMetric[]
@@ -438,6 +441,66 @@ model LmsActivity {
 
   @@unique([userId, dedupeKey])
   @@index([userId, occurredAt])
+}
+
+// -------------------------------------------------------------
+// 3.7. Push notifications (reminders on phone and laptop)
+// -------------------------------------------------------------
+
+// One row per browser/device that agreed to receive notifications.
+model PushSubscription {
+  id           String    @id @default(uuid())
+  userId       String
+  endpoint     String    @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  failureCount Int       @default(0)
+  lastSentAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// What the student wants to be reminded about, and when.
+model NotificationPref {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  enabled     Boolean  @default(true)
+  nightBefore Boolean  @default(true)
+  nightHour   Int      @default(20)  // local hour of the evening-before reminder
+  hourBefore  Boolean  @default(true)
+  leadMinutes Int      @default(60)  // how long before the start the "soon" reminder goes out
+  morningHour Int      @default(8)   // local hour for "due today" on all-day items
+  quietStart  Int      @default(23)  // no notifications from this local hour...
+  quietEnd    Int      @default(6)   // ...until this one
+  events      Boolean  @default(true)
+  academic    Boolean  @default(true)
+  business    Boolean  @default(true)
+  reminders   Boolean  @default(true)
+  tasks       Boolean  @default(true)
+  maintenance Boolean  @default(false)
+  classes     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Every reminder that was sent, so none is ever sent twice.
+model NotificationLog {
+  id       String   @id @default(uuid())
+  userId   String
+  key      String
+  title    String
+  sentAt   DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, sentAt])
 }
 
 // -------------------------------------------------------------

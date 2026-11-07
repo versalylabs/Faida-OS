@@ -215,3 +215,41 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// ---- push notifications -------------------------------------------------------------------------
+// The server sends { title, body, url, tag } when a reminder is due. Showing the notification here works
+// even when Faida OS is closed.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (e) {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Faida OS", {
+      body: data.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: data.tag || undefined,
+      data: { url: data.url || "/calendar" },
+    })
+  );
+});
+
+// Tapping a notification opens (or focuses) the app on the right page.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const w of windows) {
+        if ("focus" in w) {
+          if ("navigate" in w) w.navigate(target).catch(() => {});
+          return w.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    })
+  );
+});

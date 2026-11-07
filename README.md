@@ -146,3 +146,17 @@ How it stays current: the app checks quietly when it opens and re-syncs if the l
 only runs when `CRON_SECRET` is set in the hosting environment, and refuses requests without it.
 The access key is stored AES-256-GCM encrypted (key derived from `LMS_TOKEN_SECRET`, or the database URL
 when that is unset) and is never sent back to the browser.
+
+## Notifications
+
+Faida OS sends real push notifications to phones and laptops (Settings > Notifications): the evening before
+(default 8 pm) and shortly before (default 1 hour) a CAT, assignment deadline, calendar event or business
+deliverable, your own reminders at their set time, and a "due today" message for all-day items. Each reminder
+is logged, so it goes out once. It uses Web Push (VAPID), so there is no third-party service and no cost.
+
+Server settings: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`, `CRON_SECRET`.
+Generate keys with `node -e "console.log(require('web-push').generateVAPIDKeys())"`.
+
+Who sends: Vercel's free plan runs jobs once a day (`vercel.json`: 07:00 LMS sync + morning reminders, 20:00
+evening reminders). For the "1 hour before" message the GitHub workflow `.github/workflows/reminders.yml` calls
+`/api/cron/notify` every 15 minutes; add the same `CRON_SECRET` as a repository Actions secret.

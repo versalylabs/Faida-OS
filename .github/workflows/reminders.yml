@@ -1,0 +1,29 @@
+# Sends Faida OS reminders (CATs, assignments, meetings, your own reminders) about every 15 minutes.
+#
+# Vercel's free plan can only run a job once a day, so GitHub's free scheduler pokes the app instead.
+# One-time setup: in this repository go to Settings > Secrets and variables > Actions > New repository
+# secret, name it CRON_SECRET and paste the same value that is set in the Vercel project.
+#
+# It runs 05:00-23:59 Nairobi time (02:00-20:59 UTC); nothing is sent in quiet hours anyway.
+name: Faida OS reminders
+
+on:
+  schedule:
+    - cron: "*/15 2-20 * * *"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ask Faida OS to send any reminders that are due
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then echo "CRON_SECRET is not set in this repository's Actions secrets"; exit 1; fi
+          curl --fail --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            https://faida-os.vercel.app/api/cron/notify

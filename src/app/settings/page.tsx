@@ -2,6 +2,7 @@
 
 import { Settings, Shield, Cpu, Database, Save, KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
+import { NotificationSettings } from "@/components/settings/NotificationSettings";
 
 export default function SettingsPage() {
   const [geminiKey, setGeminiKey] = useState("");
@@ -60,6 +61,8 @@ export default function SettingsPage() {
       </div>
 
       <div className="space-y-4">
+        <NotificationSettings />
+
         <section className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-4" aria-labelledby="password-heading">
           <div className="flex items-center gap-2">
             <KeyRound className="h-4 w-4 text-emerald-400" />
