@@ -74,18 +74,19 @@ function Group({ g }: { g: BriefGroup }) {
 export function BriefingCard({ briefing, loading }: { briefing: Briefing | null; loading: boolean }) {
   return (
     <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-950/40 via-slate-900 to-slate-950 border border-blue-500/20 p-4 sm:p-6 shadow-xl">
-      <div className="flex items-start gap-3 sm:gap-4">
-        <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-300 shrink-0 shadow-inner">
-          <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
-        </div>
-
-        <div className="space-y-3 flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
+      {/* The icon sits in the header row, so the content below uses the full width and both side margins match. */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-300 shrink-0 shadow-inner">
+            <Sparkles className="h-4 w-4 sm:h-5 sm:w-5" />
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
             <h2 className="text-sm font-semibold text-blue-200">Faida Intelligence Briefing</h2>
             <span className="text-[10px] bg-blue-500/20 border border-blue-500/30 text-blue-200 px-2 py-0.5 rounded-full font-mono">
               {briefing ? `Live · ${briefing.dateLabel}` : "Live"}
             </span>
           </div>
+        </div>
 
           {!briefing ? (
             <p className="text-xs text-slate-300">{loading ? "Reading your tasks, calendar, university and business…" : "Briefing unavailable right now."}</p>
@@ -145,7 +146,6 @@ export function BriefingCard({ briefing, loading }: { briefing: Briefing | null;
               </p>
             </>
           )}
-        </div>
       </div>
     </div>
   );
