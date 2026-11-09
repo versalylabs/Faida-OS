@@ -112,6 +112,20 @@ export default function ProjectWorkspacePage({
   const [newTaskPriority, setNewTaskPriority] = useState("HIGH");
   const [isAddingTask, setIsAddingTask] = useState(false);
 
+  // Milestone edit / delete
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
+  const [editMilestoneTitle, setEditMilestoneTitle] = useState("");
+  const [isSavingMilestone, setIsSavingMilestone] = useState(false);
+  const [confirmDeleteMilestoneId, setConfirmDeleteMilestoneId] = useState<string | null>(null);
+
+  // Workspace task edit / delete
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState("");
+  const [editTaskPriority, setEditTaskPriority] = useState("MEDIUM");
+  const [editTaskDuration, setEditTaskDuration] = useState("30");
+  const [isSavingTask, setIsSavingTask] = useState(false);
+  const [confirmDeleteTaskId, setConfirmDeleteTaskId] = useState<string | null>(null);
+
   // Quick Note inputs
   const [showAddNote, setShowAddNote] = useState(false);
   const [newNoteTitle, setNewNoteTitle] = useState("");
@@ -291,6 +305,102 @@ export default function ProjectWorkspacePage({
     }
   };
 
+  const startEditMilestone = (m: MilestoneItem) => {
+    setConfirmDeleteMilestoneId(null);
+    setEditingMilestoneId(m.id);
+    setEditMilestoneTitle(m.title);
+  };
+
+  const handleSaveMilestone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = editMilestoneTitle.trim();
+    if (!editingMilestoneId || !title || isSavingMilestone) return;
+
+    setIsSavingMilestone(true);
+    try {
+      const res = await offlineFetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ milestoneId: editingMilestoneId, milestoneTitle: title }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingMilestoneId(null);
+        fetchWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to update milestone:", err);
+    } finally {
+      setIsSavingMilestone(false);
+    }
+  };
+
+  const handleDeleteMilestone = async (milestoneId: string) => {
+    try {
+      const res = await offlineFetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteMilestoneId: milestoneId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setConfirmDeleteMilestoneId(null);
+        fetchWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to delete milestone:", err);
+    }
+  };
+
+  const startEditTask = (task: TaskItem) => {
+    setConfirmDeleteTaskId(null);
+    setEditingTaskId(task.id);
+    setEditTaskTitle(task.title);
+    setEditTaskPriority(task.priority);
+    setEditTaskDuration(String(task.estimatedMinutes));
+  };
+
+  const handleSaveTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const title = editTaskTitle.trim();
+    if (!editingTaskId || !title || isSavingTask) return;
+
+    setIsSavingTask(true);
+    try {
+      const res = await offlineFetch(`/api/tasks/${editingTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          priority: editTaskPriority,
+          estimatedMinutes: Math.max(0, parseInt(editTaskDuration, 10) || 30),
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEditingTaskId(null);
+        fetchWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to update task:", err);
+    } finally {
+      setIsSavingTask(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    try {
+      const res = await offlineFetch(`/api/tasks/${taskId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setConfirmDeleteTaskId(null);
+        fetchWorkspace();
+      }
+    } catch (err) {
+      console.error("Failed to delete task:", err);
+    }
+  };
+
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTaskTitle.trim() || isAddingTask) return;
@@ -441,26 +551,120 @@ export default function ProjectWorkspacePage({
             </div>
 
             <div className="space-y-2">
-              {project.milestones.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => handleToggleMilestone(m)}
-                  className="w-full p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 flex items-center gap-3 text-left transition-all cursor-pointer group"
-                >
-                  {m.isDone ? (
-                    <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <Circle className="h-4 w-4 text-slate-600 group-hover:text-blue-400 shrink-0 transition-colors" />
-                  )}
-                  <span
-                    className={`text-xs font-medium ${
-                      m.isDone ? "line-through text-slate-500" : "text-slate-200"
-                    }`}
+              {project.milestones.length === 0 && (
+                <div className="text-xs text-slate-500 text-center py-4">
+                  No milestones yet. Add the first one below.
+                </div>
+              )}
+              {project.milestones.map((m) => {
+                if (editingMilestoneId === m.id) {
+                  return (
+                    <form
+                      key={m.id}
+                      onSubmit={handleSaveMilestone}
+                      className="p-2.5 rounded-xl bg-slate-950 border border-blue-500/30 flex items-center gap-2"
+                    >
+                      <input
+                        type="text"
+                        value={editMilestoneTitle}
+                        onChange={(e) => setEditMilestoneTitle(e.target.value)}
+                        onKeyDown={(e) => e.key === "Escape" && setEditingMilestoneId(null)}
+                        maxLength={300}
+                        autoFocus
+                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!editMilestoneTitle.trim() || isSavingMilestone}
+                        className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {isSavingMilestone && <Loader2 className="h-3 w-3 animate-spin" />}
+                        <span>Save</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingMilestoneId(null)}
+                        className="px-2 py-1.5 rounded-lg text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </form>
+                  );
+                }
+
+                if (confirmDeleteMilestoneId === m.id) {
+                  return (
+                    <div
+                      key={m.id}
+                      className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between gap-3"
+                    >
+                      <span className="text-xs text-rose-300 truncate">
+                        Delete &quot;{m.title}&quot;?
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={() => setConfirmDeleteMilestoneId(null)}
+                          className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMilestone(m.id)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={m.id}
+                    className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 flex items-center gap-3 transition-all group"
                   >
-                    {m.title}
-                  </span>
-                </button>
-              ))}
+                    <button
+                      onClick={() => handleToggleMilestone(m)}
+                      className="flex-1 min-w-0 flex items-center gap-3 text-left cursor-pointer"
+                    >
+                      {m.isDone ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-slate-600 group-hover:text-blue-400 shrink-0 transition-colors" />
+                      )}
+                      <span
+                        className={`text-xs font-medium break-words min-w-0 ${
+                          m.isDone ? "line-through text-slate-500" : "text-slate-200"
+                        }`}
+                      >
+                        {m.title}
+                      </span>
+                    </button>
+                    <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => startEditMilestone(m)}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-800 cursor-pointer"
+                        title="Edit milestone"
+                        aria-label={`Edit milestone ${m.title}`}
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingMilestoneId(null);
+                          setConfirmDeleteMilestoneId(m.id);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                        title="Delete milestone"
+                        aria-label={`Delete milestone ${m.title}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Add Milestone Form */}
@@ -498,15 +702,105 @@ export default function ProjectWorkspacePage({
               ) : (
                 project.tasks.map((task) => {
                   const isDone = task.status === "DONE";
+
+                  if (editingTaskId === task.id) {
+                    return (
+                      <form
+                        key={task.id}
+                        onSubmit={handleSaveTask}
+                        className="p-3 rounded-xl bg-slate-950 border border-blue-500/30 space-y-2.5"
+                      >
+                        <input
+                          type="text"
+                          value={editTaskTitle}
+                          onChange={(e) => setEditTaskTitle(e.target.value)}
+                          onKeyDown={(e) => e.key === "Escape" && setEditingTaskId(null)}
+                          maxLength={300}
+                          autoFocus
+                          placeholder="Task title..."
+                          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                        />
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={editTaskPriority}
+                            onChange={(e) => setEditTaskPriority(e.target.value)}
+                            className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="URGENT">Urgent</option>
+                            <option value="HIGH">High</option>
+                            <option value="MEDIUM">Medium</option>
+                            <option value="LOW">Low</option>
+                          </select>
+                          <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            <Clock className="h-3 w-3" />
+                            <input
+                              type="number"
+                              min={0}
+                              max={100000}
+                              value={editTaskDuration}
+                              onChange={(e) => setEditTaskDuration(e.target.value)}
+                              className="w-16 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                            />
+                            <span>min</span>
+                          </label>
+                          <div className="flex items-center gap-2 ml-auto">
+                            <button
+                              type="button"
+                              onClick={() => setEditingTaskId(null)}
+                              className="px-3 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200 hover:bg-slate-900 cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              disabled={!editTaskTitle.trim() || isSavingTask}
+                              className="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                            >
+                              {isSavingTask && <Loader2 className="h-3 w-3 animate-spin" />}
+                              <span>Save</span>
+                            </button>
+                          </div>
+                        </div>
+                      </form>
+                    );
+                  }
+
+                  if (confirmDeleteTaskId === task.id) {
+                    return (
+                      <div
+                        key={task.id}
+                        className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-between gap-3"
+                      >
+                        <span className="text-xs text-rose-300 truncate">
+                          Delete &quot;{task.title}&quot;?
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            onClick={() => setConfirmDeleteTaskId(null)}
+                            className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleDeleteTask(task.id)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={task.id}
-                      className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 flex items-center justify-between gap-3"
+                      className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-3 transition-all group"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <button
                           onClick={() => handleToggleTaskDone(task)}
-                          className="text-slate-500 hover:text-blue-400 cursor-pointer"
+                          className="text-slate-500 hover:text-blue-400 cursor-pointer shrink-0"
                         >
                           {isDone ? (
                             <CheckCircle2 className="h-4 w-4 text-emerald-400" />
@@ -515,16 +809,39 @@ export default function ProjectWorkspacePage({
                           )}
                         </button>
                         <span
-                          className={`text-xs ${
+                          className={`text-xs break-words min-w-0 ${
                             isDone ? "line-through text-slate-500" : "text-slate-200 font-medium"
                           }`}
                         >
                           {task.title}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500">
-                        <span>{task.estimatedMinutes}m</span>
-                        <span className="text-amber-400">[{task.priority}]</span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500">
+                          <span>{task.estimatedMinutes}m</span>
+                          <span className="text-amber-400">[{task.priority}]</span>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => startEditTask(task)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-800 cursor-pointer"
+                            title="Edit task"
+                            aria-label={`Edit task ${task.title}`}
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingTaskId(null);
+                              setConfirmDeleteTaskId(task.id);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                            title="Delete task"
+                            aria-label={`Delete task ${task.title}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -548,6 +865,7 @@ export default function ProjectWorkspacePage({
               >
                 <option value="HIGH">High</option>
                 <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
                 <option value="URGENT">Urgent</option>
               </select>
               <button

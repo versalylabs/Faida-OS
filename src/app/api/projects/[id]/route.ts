@@ -106,6 +106,8 @@ export async function PATCH(
       milestoneId,
       milestoneDone,
       newMilestoneTitle,
+      milestoneTitle,
+      deleteMilestoneId,
       name,
       description,
       status,
@@ -125,12 +127,27 @@ export async function PATCH(
       throw new ValidationError("Milestone ID is invalid");
     }
 
-    // 1. Toggle milestone completion (scoped to this project)
+    const cleanMilestoneRename =
+      milestoneTitle !== undefined
+        ? must(str(milestoneTitle, { max: 300, required: true }), "Milestone title is required (max 300 characters)")
+        : null;
+    if (deleteMilestoneId !== undefined && (typeof deleteMilestoneId !== "string" || deleteMilestoneId.length > 100)) {
+      throw new ValidationError("Milestone ID is invalid");
+    }
+
+    // 1. Toggle completion and/or rename a milestone (scoped to this project)
     if (milestoneId) {
-      await prisma.milestone.updateMany({
-        where: { id: milestoneId, projectId: id },
-        data: { isDone: Boolean(milestoneDone) },
-      });
+      const data: { isDone?: boolean; title?: string } = {};
+      if (milestoneDone !== undefined) data.isDone = Boolean(milestoneDone);
+      if (cleanMilestoneRename) data.title = cleanMilestoneRename;
+      if (Object.keys(data).length > 0) {
+        await prisma.milestone.updateMany({ where: { id: milestoneId, projectId: id }, data });
+      }
+    }
+
+    // 1b. Delete a milestone (scoped to this project)
+    if (deleteMilestoneId) {
+      await prisma.milestone.deleteMany({ where: { id: deleteMilestoneId, projectId: id } });
     }
 
     // 2. Add new milestone
