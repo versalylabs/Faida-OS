@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { pickNextAction, pickNextMilestone } from "@/lib/projectNext";
 import { ValidationError, badRequest, color, date, must, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -48,6 +49,8 @@ export async function GET(req: NextRequest) {
         progressPercent: progress,
         totalTasks: proj.tasks.length,
         completedTasks: proj.tasks.filter((t) => t.status === "DONE").length,
+        nextAction: pickNextAction(proj.tasks),
+        nextMilestone: pickNextMilestone(proj.milestones),
         totalMilestones: proj.milestones.length,
         completedMilestones: proj.milestones.filter((m) => m.isDone).length,
       };

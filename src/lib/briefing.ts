@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
 import { zonedNow } from "@/lib/tz";
 import { priorityRank } from "@/lib/priority";
+import { pickNextAction, pickNextMilestone } from "@/lib/projectNext";
 
 /**
  * The Faida Intelligence Briefing: what actually needs the student's attention right now.
@@ -31,6 +32,18 @@ export interface BriefGroup {
   items: BriefItem[];
 }
 
+export interface ProjectFocus {
+  id: string;
+  name: string;
+  color: string | null;
+  action: string | null; // the next task to do on this project
+  actionDue: string | null; // ISO
+  overdue: boolean;
+  milestone: string | null; // the next unfinished milestone
+  milestoneDue: string | null; // ISO
+  milestoneOverdue: boolean;
+}
+
 export interface Briefing {
   generatedAt: string;
   greeting: string;
@@ -45,6 +58,7 @@ export interface Briefing {
     activeProjects: number;
     shoppingPending: number;
     clientsNeedingAttention: string[];
+    projectFocus: ProjectFocus[];
   };
   finance: { spent: number; limit: number; percentUsed: number; currency: string } | null;
 }
@@ -73,7 +87,7 @@ export async function buildBriefing(userId: string, now: Date = new Date()): Pro
   const dayMs = 86400000;
   const rangeEnd = new Date(z.startOfDay.getTime() + 8 * dayMs);
 
-  const [{ items, overdue }, openTasks, activeProjects, shoppingPending, riskyClients, budgets, monthTxs] = await Promise.all([
+  const [{ items, overdue }, openTasks, activeProjects, shoppingPending, riskyClients, budgets, monthTxs, projectRows] = await Promise.all([
     getAgenda(userId, z.startOfDay, rangeEnd, now),
     prisma.task.count({ where: { userId, status: { notIn: ["DONE", "CANCELLED", "ARCHIVED", "BACKLOG"] } } }),
     prisma.project.count({ where: { userId, status: "ACTIVE" } }),
@@ -85,7 +99,48 @@ export async function buildBriefing(userId: string, now: Date = new Date()): Pro
     }),
     prisma.budget.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
     prisma.financeTransaction.findMany({ where: { userId, date: { gte: z.startOfMonth }, amount: { lt: 0 } }, select: { amount: true } }),
+    prisma.project.findMany({
+      where: { userId, status: "ACTIVE" },
+      select: {
+        id: true,
+        name: true,
+        color: true,
+        tasks: {
+          where: { userId, status: { notIn: ["DONE", "CANCELLED", "ARCHIVED", "BACKLOG", "BLOCKED"] } },
+          select: { id: true, title: true, status: true, priority: true, dueDate: true, estimatedMinutes: true, createdAt: true },
+        },
+        milestones: { where: { isDone: false }, select: { id: true, title: true, isDone: true, order: true, dueDate: true } },
+      },
+      take: 30,
+    }),
   ]);
+
+  // One "next move" per active project; the ones that need you most come first.
+  const projectFocus: ProjectFocus[] = projectRows
+    .map((p) => {
+      const action = pickNextAction(p.tasks, now);
+      const milestone = pickNextMilestone(p.milestones, now);
+      return { p, action, milestone };
+    })
+    .filter((x) => x.action || x.milestone)
+    .sort(
+      (a, b) =>
+        Number(!!b.action?.overdue || !!b.milestone?.overdue) - Number(!!a.action?.overdue || !!a.milestone?.overdue) ||
+        priorityRank(a.action?.priority) - priorityRank(b.action?.priority) ||
+        (a.action?.dueDate ?? "9").localeCompare(b.action?.dueDate ?? "9")
+    )
+    .slice(0, 4)
+    .map(({ p, action, milestone }) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      action: action?.title ?? null,
+      actionDue: action?.dueDate ?? null,
+      overdue: !!action?.overdue,
+      milestone: milestone?.title ?? null,
+      milestoneDue: milestone?.dueDate ?? null,
+      milestoneOverdue: !!milestone?.overdue,
+    }));
 
   const startOfTomorrow = z.endOfDay.getTime();
   const endOfTomorrow = startOfTomorrow + dayMs;
@@ -217,6 +272,7 @@ export async function buildBriefing(userId: string, now: Date = new Date()): Pro
       activeProjects,
       shoppingPending,
       clientsNeedingAttention: riskyClients.map((c) => c.name),
+      projectFocus,
     },
     finance,
   };
@@ -236,6 +292,12 @@ export function briefingToMarkdown(b: Briefing): string {
     lines.push(`\n**${g.label} (${g.total})**`);
     g.items.forEach((i) => lines.push(`• ${i.title}${i.meta ? ` · ${i.meta}` : ""}${when(i)}`));
     if (g.total > g.items.length) lines.push(`• …and ${g.total - g.items.length} more`);
+  }
+  if (b.other.projectFocus.length) {
+    lines.push("\n**Projects: next move**");
+    b.other.projectFocus.forEach((p) =>
+      lines.push(`• ${p.name}: ${p.action ?? "no open tasks"}${p.overdue ? " (overdue)" : ""}${p.milestone ? ` · next milestone: ${p.milestone}${p.milestoneOverdue ? " (overdue)" : ""}` : ""}`)
+    );
   }
   if (b.other.clientsNeedingAttention.length) lines.push(`\n**Clients needing attention:** ${b.other.clientsNeedingAttention.join(", ")}`);
   if (b.finance) lines.push(`\n**Money:** KES ${b.finance.spent.toLocaleString()} of KES ${b.finance.limit.toLocaleString()} used this month (${b.finance.percentUsed}%).`);

@@ -116,6 +116,35 @@ export function BriefingCard({ briefing, loading }: { briefing: Briefing | null;
                 </div>
               )}
 
+              {(briefing.other.projectFocus ?? []).length > 0 && (
+                <div className="rounded-xl bg-slate-950/50 border border-slate-800/80 p-2.5">
+                  <div className="flex items-center gap-2 px-2.5 pb-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-400" />
+                    <h3 className="text-[11px] font-bold uppercase tracking-wider text-blue-300">Projects: next move</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-2">
+                    {briefing.other.projectFocus.map((p) => (
+                      <Link key={p.id} href={`/projects/${p.id}`} className="block px-2.5 py-2 rounded-lg hover:bg-white/5 transition-colors min-w-0">
+                        <p className="flex items-center gap-2 text-[11px] text-slate-400">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: p.color || "#3b82f6" }} />
+                          <span className="truncate">{p.name}</span>
+                        </p>
+                        <p className="text-xs text-slate-100 font-medium break-words">
+                          {p.action ?? "No open tasks. Add the next step."}
+                          {p.overdue && <span className="text-rose-300 font-normal"> · overdue</span>}
+                        </p>
+                        {p.milestone && (
+                          <p className="text-[11px] text-slate-400 break-words">
+                            Next milestone: {p.milestone}
+                            {p.milestoneOverdue && <span className="text-rose-300"> · overdue</span>}
+                          </p>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {(briefing.other.clientsNeedingAttention.length > 0 || (briefing.finance && briefing.finance.percentUsed >= 80)) && (
                 <div className="flex flex-col gap-1.5">
                   {briefing.other.clientsNeedingAttention.length > 0 && (

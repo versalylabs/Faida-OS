@@ -42,6 +42,8 @@ interface ProjectItem {
   totalMilestones: number;
   completedMilestones: number;
   milestones: MilestoneItem[];
+  nextAction?: { id: string; title: string; priority: string; dueDate: string | null; overdue: boolean; inProgress: boolean } | null;
+  nextMilestone?: { id: string; title: string; dueDate: string | null; overdue: boolean } | null;
 }
 
 const COLOR_PRESETS = [
@@ -379,6 +381,52 @@ export default function ProjectsPage() {
                       backgroundColor: proj.color || "#3b82f6",
                     }}
                   />
+                </div>
+
+                {/* Next action */}
+                <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/15 space-y-1">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-300">
+                    <ArrowRight className="h-3 w-3" />
+                    <span>Next action</span>
+                  </div>
+                  {proj.nextAction ? (
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-xs font-medium text-slate-100 break-words min-w-0">
+                        {proj.nextAction.title}
+                      </span>
+                      <span
+                        className={`shrink-0 text-[10px] font-mono ${
+                          proj.nextAction.overdue ? "text-rose-400" : "text-slate-400"
+                        }`}
+                      >
+                        {proj.nextAction.overdue
+                          ? "overdue"
+                          : proj.nextAction.inProgress
+                          ? "in progress"
+                          : proj.nextAction.dueDate
+                          ? `due ${formatDate(proj.nextAction.dueDate)}`
+                          : ""}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-500 italic">
+                      {proj.status === "COMPLETED"
+                        ? "Project completed."
+                        : "No open tasks. Open the workspace to add the next step."}
+                    </div>
+                  )}
+                  {proj.nextMilestone && (
+                    <div className="text-[11px] text-slate-400 break-words">
+                      Milestone: {proj.nextMilestone.title}
+                      {proj.nextMilestone.dueDate && (
+                        <span className={proj.nextMilestone.overdue ? "text-rose-400" : ""}>
+                          {" "}
+                          · {proj.nextMilestone.overdue ? "overdue since" : "due"}{" "}
+                          {formatDate(proj.nextMilestone.dueDate)}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* Milestones Preview */}
