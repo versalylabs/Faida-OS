@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
+import { touchProject } from "@/lib/projectActivity";
 import { ValidationError, badRequest, color, date, must, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -173,6 +174,9 @@ export async function PATCH(
         },
       });
     }
+
+    // Finishing or adding a milestone counts as the project moving (used by the stale-project warning).
+    if ((milestoneId && milestoneDone === true) || cleanMilestoneTitle) await touchProject(id);
 
     // 3. Update project details if provided
     if (Object.keys(updateData).length > 0) {

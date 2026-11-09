@@ -42,6 +42,7 @@ interface ProjectItem {
   totalMilestones: number;
   completedMilestones: number;
   milestones: MilestoneItem[];
+  staleDays?: number | null;
   nextAction?: { id: string; title: string; priority: string; dueDate: string | null; overdue: boolean; inProgress: boolean } | null;
   nextMilestone?: { id: string; title: string; dueDate: string | null; overdue: boolean } | null;
 }
@@ -382,6 +383,16 @@ export default function ProjectsPage() {
                     }}
                   />
                 </div>
+
+                {proj.staleDays != null && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300">
+                    <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                    <span>
+                      <strong className="font-semibold">Stalled:</strong> no progress in {proj.staleDays} days. Do the next
+                      action, or pause the project if it is on hold.
+                    </span>
+                  </div>
+                )}
 
                 {/* Next action */}
                 <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/15 space-y-1">

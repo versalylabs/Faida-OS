@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { purgeOldCompleted } from "@/lib/cleanup";
+import { touchProject } from "@/lib/projectActivity";
 import { PRIORITIES, RECURRENCES, ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -126,6 +127,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    await touchProject(task.projectId);
+
     // 3. Log activity
     await prisma.activityLog.create({
       data: {
@@ -179,6 +182,8 @@ export async function PATCH(req: NextRequest) {
       data: dataToUpdate,
       include: { project: true },
     });
+
+    if (status === "DONE") await touchProject(task.projectId);
 
     // Sync status to Entity if linked
     if (task.entityId && status) {

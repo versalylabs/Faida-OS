@@ -74,6 +74,27 @@ export function pickNextAction(tasks: NextTaskInput[], now: Date = new Date()): 
   };
 }
 
+/** An active project with nothing finished, added or edited for this many days counts as stalled. */
+export const STALE_AFTER_DAYS = 7;
+
+/**
+ * Whole days since the project last moved, or null when it is not stalled. Only active projects that still
+ * have something left to do can stall; paused, planning and finished ones are left alone on purpose.
+ * `activity` is every timestamp that counts as movement (project.updatedAt, task updatedAt values).
+ */
+export function staleDays(
+  status: string,
+  hasOpenWork: boolean,
+  activity: (Date | string | null | undefined)[],
+  now: Date = new Date()
+): number | null {
+  if (status !== "ACTIVE" || !hasOpenWork) return null;
+  const last = Math.max(...activity.map((a) => (a ? new Date(a).getTime() : 0)));
+  if (!last) return null;
+  const days = Math.floor((now.getTime() - last) / 86_400_000);
+  return days >= STALE_AFTER_DAYS ? days : null;
+}
+
 /** The next unfinished milestone: dated ones by date, then undated ones in their listed order. */
 export function pickNextMilestone(milestones: NextMilestoneInput[], now: Date = new Date()): NextMilestone | null {
   const open = milestones.filter((m) => !m.isDone);

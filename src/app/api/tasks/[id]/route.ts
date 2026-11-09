@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { spawnNextRecurrence } from "@/lib/recurrence";
+import { touchProject } from "@/lib/projectActivity";
 import { PRIORITIES, RECURRENCES, TASK_STATUSES, ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -138,6 +139,7 @@ async function handleUpdate(
     // Recurring task finished: line up the next one
     if (cleanStatus === "DONE" && existing.status !== "DONE") {
       await spawnNextRecurrence(existing);
+      await touchProject(task.projectId);
     }
 
     // If subtasks array is provided, sync subtasks / todos

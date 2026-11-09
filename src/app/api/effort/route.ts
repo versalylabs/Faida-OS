@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { ValidationError, badRequest, readBody, safeInt, must, idOf, num, notFound } from "@/lib/validate";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { zonedNow } from "@/lib/tz";
+import { touchProject } from "@/lib/projectActivity";
 import { spawnNextRecurrence } from "@/lib/recurrence";
 import { estimateEnergy, evaluateTasks, pickLowEnergyBatch, type RawEffortTask } from "@/lib/effort";
 
@@ -170,6 +171,7 @@ export async function POST(req: NextRequest) {
     if (action === "COMPLETE") {
       await prisma.task.update({ where: { id: task.id }, data: { status: "DONE" } });
       if (task.status !== "DONE") await spawnNextRecurrence(task);
+      await touchProject(task.projectId);
       if (task.entityId) {
         await prisma.entity.update({ where: { id: task.entityId }, data: { status: "COMPLETED" } }).catch(() => {});
       }

@@ -3,6 +3,7 @@ import { buildBriefing, briefingToMarkdown } from "@/lib/briefing";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
 import { zonedNow } from "@/lib/tz";
+import { touchProject } from "@/lib/projectActivity";
 import { createPlan } from "@/lib/ai/assignmentPlan";
 
 export interface ToolActionPayload {
@@ -125,6 +126,7 @@ export async function executeCompleteTask(userId: string, taskTitleOrId: string)
     where: { id: task.id },
     data: { status: "DONE" },
   });
+  await touchProject(task.projectId);
 
   if (task.entityId) {
     await prisma.entity.update({

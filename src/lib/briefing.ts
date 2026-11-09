@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
 import { zonedNow } from "@/lib/tz";
 import { priorityRank } from "@/lib/priority";
-import { pickNextAction, pickNextMilestone } from "@/lib/projectNext";
+import { pickNextAction, pickNextMilestone, staleDays } from "@/lib/projectNext";
 
 /**
  * The Faida Intelligence Briefing: what actually needs the student's attention right now.
@@ -42,6 +42,7 @@ export interface ProjectFocus {
   milestone: string | null; // the next unfinished milestone
   milestoneDue: string | null; // ISO
   milestoneOverdue: boolean;
+  staleDays: number | null; // days with no movement, when the project has stalled
 }
 
 export interface Briefing {
@@ -105,9 +106,10 @@ export async function buildBriefing(userId: string, now: Date = new Date()): Pro
         id: true,
         name: true,
         color: true,
+        updatedAt: true,
         tasks: {
           where: { userId, status: { notIn: ["DONE", "CANCELLED", "ARCHIVED", "BACKLOG", "BLOCKED"] } },
-          select: { id: true, title: true, status: true, priority: true, dueDate: true, estimatedMinutes: true, createdAt: true },
+          select: { id: true, title: true, status: true, priority: true, dueDate: true, estimatedMinutes: true, createdAt: true, updatedAt: true },
         },
         milestones: { where: { isDone: false }, select: { id: true, title: true, isDone: true, order: true, dueDate: true } },
       },
@@ -120,17 +122,20 @@ export async function buildBriefing(userId: string, now: Date = new Date()): Pro
     .map((p) => {
       const action = pickNextAction(p.tasks, now);
       const milestone = pickNextMilestone(p.milestones, now);
-      return { p, action, milestone };
+      const stale = staleDays("ACTIVE", p.tasks.length > 0 || p.milestones.length > 0, [p.updatedAt, ...p.tasks.map((t) => t.updatedAt)], now);
+      return { p, action, milestone, stale };
     })
     .filter((x) => x.action || x.milestone)
     .sort(
       (a, b) =>
         Number(!!b.action?.overdue || !!b.milestone?.overdue) - Number(!!a.action?.overdue || !!a.milestone?.overdue) ||
+        Number(b.stale !== null) - Number(a.stale !== null) ||
         priorityRank(a.action?.priority) - priorityRank(b.action?.priority) ||
         (a.action?.dueDate ?? "9").localeCompare(b.action?.dueDate ?? "9")
     )
     .slice(0, 4)
-    .map(({ p, action, milestone }) => ({
+    .map(({ p, action, milestone, stale }) => ({
+      staleDays: stale,
       id: p.id,
       name: p.name,
       color: p.color,
@@ -296,7 +301,7 @@ export function briefingToMarkdown(b: Briefing): string {
   if (b.other.projectFocus.length) {
     lines.push("\n**Projects: next move**");
     b.other.projectFocus.forEach((p) =>
-      lines.push(`• ${p.name}: ${p.action ?? "no open tasks"}${p.overdue ? " (overdue)" : ""}${p.milestone ? ` · next milestone: ${p.milestone}${p.milestoneOverdue ? " (overdue)" : ""}` : ""}`)
+      lines.push(`• ${p.name}: ${p.action ?? "no open tasks"}${p.overdue ? " (overdue)" : ""}${p.staleDays ? ` (no progress in ${p.staleDays} days)` : ""}${p.milestone ? ` · next milestone: ${p.milestone}${p.milestoneOverdue ? " (overdue)" : ""}` : ""}`)
     );
   }
   if (b.other.clientsNeedingAttention.length) lines.push(`\n**Clients needing attention:** ${b.other.clientsNeedingAttention.join(", ")}`);

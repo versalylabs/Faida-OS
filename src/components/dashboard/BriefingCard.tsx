@@ -133,6 +133,9 @@ export function BriefingCard({ briefing, loading }: { briefing: Briefing | null;
                           {p.action ?? "No open tasks. Add the next step."}
                           {p.overdue && <span className="text-rose-300 font-normal"> · overdue</span>}
                         </p>
+                        {p.staleDays != null && (
+                          <p className="text-[11px] text-amber-300">No progress in {p.staleDays} days</p>
+                        )}
                         {p.milestone && (
                           <p className="text-[11px] text-slate-400 break-words">
                             Next milestone: {p.milestone}
