@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
+import { dueDay, daysUntil, dueLabel } from "@/lib/dueDay";
 
 import { offlineFetch } from "@/lib/offlineSync";
 interface MilestoneItem {
@@ -27,6 +28,7 @@ interface MilestoneItem {
   title: string;
   isDone: boolean;
   order: number;
+  dueDate?: string | null;
 }
 
 interface ProjectItem {
@@ -68,6 +70,7 @@ export default function ProjectsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [view, setView] = useState<"cards" | "roadmap">("cards");
 
   // Create Project Form
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -238,6 +241,33 @@ export default function ProjectsPage() {
     return true;
   });
 
+  // Roadmap: every unfinished milestone and project deadline across the projects shown, soonest first.
+  interface RoadmapRow {
+    key: string;
+    project: ProjectItem;
+    title: string;
+    day: string;
+    kind: "milestone" | "deadline";
+  }
+  const roadmapRows: RoadmapRow[] = [];
+  const undatedMilestones: { key: string; project: ProjectItem; title: string }[] = [];
+  for (const p of filteredProjects) {
+    if (p.status === "COMPLETED") continue;
+    for (const m of p.milestones) {
+      if (m.isDone) continue;
+      if (m.dueDate) roadmapRows.push({ key: `m-${m.id}`, project: p, title: m.title, day: dueDay(m.dueDate), kind: "milestone" });
+      else undatedMilestones.push({ key: `u-${m.id}`, project: p, title: m.title });
+    }
+    if (p.targetDate) roadmapRows.push({ key: `d-${p.id}`, project: p, title: "Project deadline", day: dueDay(p.targetDate), kind: "deadline" });
+  }
+  roadmapRows.sort((a, b) => a.day.localeCompare(b.day));
+  const roadmapGroups = [
+    { key: "overdue", label: "Overdue", tone: "text-rose-400", rows: roadmapRows.filter((r) => daysUntil(r.day) < 0) },
+    { key: "week", label: "Next 7 days", tone: "text-amber-400", rows: roadmapRows.filter((r) => daysUntil(r.day) >= 0 && daysUntil(r.day) <= 7) },
+    { key: "month", label: "Next 30 days", tone: "text-blue-400", rows: roadmapRows.filter((r) => daysUntil(r.day) > 7 && daysUntil(r.day) <= 30) },
+    { key: "later", label: "Later", tone: "text-slate-300", rows: roadmapRows.filter((r) => daysUntil(r.day) > 30) },
+  ].filter((g) => g.rows.length > 0);
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       {/* Header */}
@@ -304,8 +334,111 @@ export default function ProjectsPage() {
         </div>
       </div>
 
+      {/* View switch */}
+      <div className="flex items-center gap-1.5 text-xs">
+        {([
+          { id: "cards", label: "Projects", Icon: FolderGit2 },
+          { id: "roadmap", label: "Roadmap", Icon: Calendar },
+        ] as const).map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            onClick={() => setView(id)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+              view === id
+                ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 font-semibold"
+                : "bg-slate-900/80 text-slate-400 hover:text-slate-200 border border-slate-800"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Roadmap: all deadlines across projects */}
+      {view === "roadmap" && !isLoading && (
+        <div className="space-y-4">
+          {roadmapGroups.length === 0 && undatedMilestones.length === 0 ? (
+            <div className="py-16 text-center text-xs text-slate-500 p-8 rounded-2xl bg-slate-900/40 border border-slate-800">
+              Nothing on the roadmap yet. Give milestones a due date in a project workspace and they will appear here.
+            </div>
+          ) : (
+            <>
+              {roadmapGroups.map((g) => (
+                <div key={g.key} className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                  <h2 className={`text-xs font-bold uppercase tracking-wider ${g.tone}`}>
+                    {g.label} <span className="font-mono text-slate-500">({g.rows.length})</span>
+                  </h2>
+                  <div className="space-y-2">
+                    {g.rows.map((r) => (
+                      <Link
+                        key={r.key}
+                        href={`/projects/${r.project.id}`}
+                        className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-3 transition-all"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: r.project.color || "#3b82f6" }}
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-slate-200 break-words">{r.title}</div>
+                            <div className="text-[11px] text-slate-500 truncate">
+                              {r.project.name}
+                              {r.kind === "deadline" ? " · project" : " · milestone"}
+                            </div>
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border ${
+                            daysUntil(r.day) < 0
+                              ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                              : daysUntil(r.day) <= 3
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                              : "bg-slate-800/80 text-slate-400 border-slate-700"
+                          }`}
+                        >
+                          <Calendar className="h-2.5 w-2.5" />
+                          {dueLabel(r.day)}
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              {undatedMilestones.length > 0 && (
+                <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                    No date set <span className="font-mono text-slate-500">({undatedMilestones.length})</span>
+                  </h2>
+                  <div className="space-y-2">
+                    {undatedMilestones.map((r) => (
+                      <Link
+                        key={r.key}
+                        href={`/projects/${r.project.id}`}
+                        className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 flex items-center gap-3 transition-all"
+                      >
+                        <span
+                          className="h-2.5 w-2.5 rounded-full shrink-0"
+                          style={{ backgroundColor: r.project.color || "#3b82f6" }}
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-slate-200 break-words">{r.title}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{r.project.name} · milestone</div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Projects Grid */}
-      {isLoading ? (
+      {view === "cards" && (isLoading ? (
         <div className="py-16 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
           <Loader2 className="h-4 w-4 animate-spin text-blue-400" />
           <span>Loading project workspaces...</span>
@@ -499,7 +632,7 @@ export default function ProjectsPage() {
             </div>
           ))}
         </div>
-      )}
+      ))}
 
       {/* CREATE PROJECT MODAL */}
       {showCreateModal && (
