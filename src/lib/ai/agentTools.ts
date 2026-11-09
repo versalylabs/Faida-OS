@@ -4,6 +4,8 @@ import { buildBriefing } from "@/lib/briefing";
 import { getLmsOverview } from "@/lib/lms/overview";
 import { whenLabel } from "@/lib/dates";
 import { zonedDateKey, zonedNow, zonedTime } from "@/lib/tz";
+import { pickNextAction, pickNextMilestone, staleDays } from "@/lib/projectNext";
+import { touchProject } from "@/lib/projectActivity";
 import type { ToolSpec } from "@/lib/ai/llm";
 import {
   executeAddShopping,
@@ -332,17 +334,128 @@ const getFinance: AgentTool = {
 };
 
 const listProjects: AgentTool = {
-  spec: fn("list_projects", "The student's projects with progress and open task counts."),
+  spec: fn(
+    "list_projects",
+    "The student's projects: status, progress, the next task to do, the next milestone, whether the project has stalled, and the open milestones with their dates.",
+    { project: s("Optional project name to look at just one") }
+  ),
   write: false,
   groups: ["projects"],
-  async run(userId) {
+  async run(userId, a) {
+    const name = typeof a.project === "string" && a.project.trim() ? a.project.trim() : null;
     const rows = await prisma.project.findMany({
-      where: { userId },
-      include: { _count: { select: { tasks: { where: { status: OPEN } } } } },
+      where: { userId, ...(name ? { name: ci(name) } : {}) },
+      include: {
+        tasks: { where: { userId }, select: { id: true, title: true, status: true, priority: true, dueDate: true, estimatedMinutes: true, createdAt: true, updatedAt: true } },
+        milestones: { orderBy: { order: "asc" } },
+      },
       orderBy: { updatedAt: "desc" },
-      take: 15,
+      take: name ? 5 : 15,
     });
-    return { data: { projects: rows.map((p) => ({ name: p.name, status: p.status, progress_percent: p.progressPercent, open_tasks: p._count.tasks, target: p.targetDate ? day(p.targetDate, true) : null })) } };
+    return {
+      data: {
+        projects: rows.map((p) => {
+          const open = p.tasks.filter((t) => !["DONE", "CANCELLED", "ARCHIVED"].includes(t.status));
+          const openMilestones = p.milestones.filter((m) => !m.isDone);
+          const next = pickNextAction(p.tasks);
+          const nextMs = pickNextMilestone(p.milestones);
+          return {
+            name: p.name,
+            status: p.status,
+            progress_percent: p.milestones.length ? Math.round(((p.milestones.length - openMilestones.length) / p.milestones.length) * 100) : p.progressPercent,
+            open_tasks: open.length,
+            target: p.targetDate ? day(p.targetDate, true) : null,
+            next_action: next ? { title: next.title, priority: next.priority, due: next.dueDate ? day(new Date(next.dueDate), true) : null, overdue: next.overdue } : null,
+            next_milestone: nextMs ? { title: nextMs.title, due: nextMs.dueDate ? day(new Date(nextMs.dueDate), true) : null, overdue: nextMs.overdue } : null,
+            stalled_days: staleDays(p.status, open.length > 0 || openMilestones.length > 0, [p.updatedAt, ...p.tasks.map((t) => t.updatedAt)]),
+            open_milestones: openMilestones.slice(0, 8).map((m) => ({ title: m.title, due: m.dueDate ? day(m.dueDate, true) : null })),
+          };
+        }),
+      },
+    };
+  },
+};
+
+/** One project by name, or a reason it cannot be chosen (none found / several match). */
+async function findProject(userId: string, name: unknown): Promise<{ id: string; name: string } | { error: string; options?: string[] }> {
+  const q = typeof name === "string" ? name.trim() : "";
+  if (!q) return { error: "Which project? Give its name." };
+  const rows = await prisma.project.findMany({ where: { userId, name: ci(q) }, select: { id: true, name: true }, take: 6 });
+  const exact = rows.find((r) => r.name.toLowerCase() === q.toLowerCase());
+  if (exact) return exact;
+  if (rows.length === 0) return { error: `No project matches "${q.slice(0, 60)}".` };
+  if (rows.length > 1) return { error: "More than one project matches. Which one?", options: rows.map((r) => r.name) };
+  return rows[0];
+}
+
+const addMilestone: AgentTool = {
+  spec: fn(
+    "add_milestone",
+    "Add a milestone to a project, optionally with a due date.",
+    { project: s("Project name"), title: s("Milestone title"), due: s("Optional due date YYYY-MM-DD") },
+    ["project", "title"]
+  ),
+  write: true,
+  groups: ["projects"],
+  async run(userId, a) {
+    const project = await findProject(userId, a.project);
+    if ("error" in project) return { data: project };
+    const title = String(a.title || "").trim().slice(0, 300);
+    if (!title) return { data: { error: "The milestone needs a title." } };
+    const due = a.due ? parseWhen(a.due, "00:00") : null;
+    if (a.due && !due) return { data: { error: "That due date is not valid. Use YYYY-MM-DD." } };
+    const last = await prisma.milestone.findFirst({ where: { projectId: project.id }, orderBy: { order: "desc" } });
+    // Due dates are stored as plain dates (UTC midnight), the same as the project page does.
+    const dueDate = due ? new Date(`${String(a.due).trim().slice(0, 10)}T00:00:00.000Z`) : null;
+    await prisma.milestone.create({ data: { projectId: project.id, title, dueDate, order: (last?.order ?? -1) + 1 } });
+    await touchProject(project.id);
+    return {
+      data: { added: title, project: project.name, due: dueDate ? day(dueDate, true) : null },
+      action: { type: "TASK_CREATED", title, badge: "Milestone", link: `/projects/${project.id}` },
+    };
+  },
+};
+
+const updateMilestone: AgentTool = {
+  spec: fn(
+    "update_milestone",
+    "Mark a milestone done (or not done) and/or change its due date. Does not delete anything.",
+    {
+      project: s("Project name"),
+      milestone: s("Words from the milestone title"),
+      done: { type: "boolean", description: "true to complete it, false to reopen it" },
+      due: s("New due date YYYY-MM-DD, or an empty string to clear it"),
+    },
+    ["project", "milestone"]
+  ),
+  write: true,
+  groups: ["projects"],
+  async run(userId, a) {
+    const project = await findProject(userId, a.project);
+    if ("error" in project) return { data: project };
+    const q = String(a.milestone || "").trim();
+    if (!q) return { data: { error: "Which milestone?" } };
+    const matches = await prisma.milestone.findMany({ where: { projectId: project.id, title: ci(q) }, take: 6 });
+    if (matches.length === 0) return { data: { error: `No milestone in ${project.name} matches "${q.slice(0, 60)}".` } };
+    if (matches.length > 1) return { data: { error: "More than one milestone matches. Which one?", options: matches.map((m) => m.title) } };
+    const m = matches[0];
+
+    const data: { isDone?: boolean; dueDate?: Date | null } = {};
+    if (typeof a.done === "boolean") data.isDone = a.done;
+    if (typeof a.due === "string") {
+      const v = a.due.trim();
+      if (!v) data.dueDate = null;
+      else if (/^\d{4}-\d{2}-\d{2}$/.test(v) && parseWhen(v, "00:00")) data.dueDate = new Date(`${v}T00:00:00.000Z`);
+      else return { data: { error: "That due date is not valid. Use YYYY-MM-DD." } };
+    }
+    if (Object.keys(data).length === 0) return { data: { error: "Say what to change: done, or a due date." } };
+
+    await prisma.milestone.update({ where: { id: m.id }, data });
+    if (data.isDone === true) await touchProject(project.id);
+    return {
+      data: { updated: m.title, project: project.name, done: data.isDone ?? m.isDone, due: (data.dueDate !== undefined ? data.dueDate : m.dueDate) ? day((data.dueDate !== undefined ? data.dueDate : m.dueDate) as Date, true) : null },
+      action: { type: "TASK_COMPLETED", title: m.title, badge: data.isDone === false ? "Reopened" : "Milestone", link: `/projects/${project.id}` },
+    };
   },
 };
 
@@ -581,6 +694,8 @@ export const ALL_TOOLS: AgentTool[] = [
   getFinance,
   logTransaction,
   listProjects,
+  addMilestone,
+  updateMilestone,
   decomposeGoal,
   searchNotes,
   getMaintenance,
@@ -597,7 +712,7 @@ const TRIGGERS: [Group, RegExp][] = [
   ["business", /done|finished|completed?|delivered|handed over|shipped/i],
   ["finance", /spen[dt]|money|budget|kes|ksh|expense|income|paid|bought|buy|salary|cash|finance|cost|mpesa|m-pesa|balance/i],
   ["life", /shop|grocer|maintenance|backup|back up|service|buy|supermarket/i],
-  ["projects", /project|note|goal|plan|break down|melio|faida/i],
+  ["projects", /project|note|goal|plan|break down|melio|faida|milestone|stalled|stuck|roadmap|next (action|move|step)/i],
 ];
 
 /** Only the tools the message could need are sent, which keeps each call small enough for free-tier limits. */
