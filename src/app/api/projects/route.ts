@@ -87,11 +87,12 @@ export async function POST(req: NextRequest) {
     const cleanColor = must(color(color_), "Color must be a hex value like #3b82f6") ?? "#3b82f6";
     const cleanTarget = must(date(targetDate), "Target date is invalid");
     if (milestones !== undefined && !Array.isArray(milestones)) throw new ValidationError("Milestones must be a list");
-    const cleanMilestones: string[] = [];
+    const cleanMilestones: { title: string; dueDate: Date | null }[] = [];
     for (const m of (milestones ?? []).slice(0, 50)) {
       const t = str(typeof m === "string" ? m : m?.title, { max: 300 });
       if (t === undefined) throw new ValidationError("Milestone title is invalid (max 300 characters)");
-      if (t) cleanMilestones.push(t);
+      const due = typeof m === "object" && m !== null ? must(date(m.dueDate), "Milestone due date is invalid") : null;
+      if (t) cleanMilestones.push({ title: t, dueDate: due });
     }
 
     // 1. Create Entity node
@@ -120,7 +121,7 @@ export async function POST(req: NextRequest) {
     // 3. Create initial milestones if provided
     for (let i = 0; i < cleanMilestones.length; i++) {
       await prisma.milestone.create({
-        data: { projectId: project.id, title: cleanMilestones[i], order: i },
+        data: { projectId: project.id, title: cleanMilestones[i].title, dueDate: cleanMilestones[i].dueDate, order: i },
       });
     }
 

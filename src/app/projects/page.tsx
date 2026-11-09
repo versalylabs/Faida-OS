@@ -21,6 +21,7 @@ import {
 import Link from "next/link";
 import { formatDate } from "@/lib/utils";
 import { dueDay, daysUntil, dueLabel } from "@/lib/dueDay";
+import { PROJECT_TEMPLATES, spreadDueDates } from "@/lib/projectTemplates";
 
 import { offlineFetch } from "@/lib/offlineSync";
 interface MilestoneItem {
@@ -80,6 +81,7 @@ export default function ProjectsPage() {
   const [color, setColor] = useState("#3b82f6");
   const [status, setStatus] = useState("ACTIVE");
   const [milestonesText, setMilestonesText] = useState("");
+  const [spreadDates, setSpreadDates] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit Project Form
@@ -118,10 +120,13 @@ export default function ProjectsPage() {
     if (!name.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
-    const milestones = milestonesText
+    const titles = milestonesText
       .split("\n")
       .map((m) => m.trim())
       .filter((m) => m.length > 0);
+    // With a target date, spread the milestones evenly between today and that date.
+    const dates = spreadDates && targetDate ? spreadDueDates(titles.length, targetDate) : titles.map(() => null);
+    const milestones = titles.map((title, i) => ({ title, dueDate: dates[i] }));
 
     try {
       const res = await offlineFetch("/api/projects", {
@@ -653,6 +658,26 @@ export default function ProjectsPage() {
 
             <form onSubmit={handleCreateProject} className="space-y-3 text-xs">
               <div>
+                <label className="text-slate-300 block mb-1.5 font-medium">Start from a template</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {PROJECT_TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setMilestonesText(t.milestones.join("\n"));
+                        if (!description.trim()) setDescription(t.description);
+                        if (!name.trim()) setName(t.label);
+                      }}
+                      className="px-2.5 py-1 rounded-lg border border-slate-700 bg-slate-950 text-slate-300 hover:text-white hover:border-blue-500/60 hover:bg-blue-500/10 transition-colors cursor-pointer"
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className="text-slate-300 block mb-1 font-medium">Project Name</label>
                 <input
                   type="text"
@@ -736,6 +761,17 @@ export default function ProjectsPage() {
                   onChange={(e) => setMilestonesText(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
                 />
+                {targetDate && milestonesText.trim() && (
+                  <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={spreadDates}
+                      onChange={(e) => setSpreadDates(e.target.checked)}
+                      className="accent-blue-500"
+                    />
+                    <span>Spread milestone due dates evenly up to the target date</span>
+                  </label>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
