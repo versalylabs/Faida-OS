@@ -706,7 +706,7 @@ export default function ProjectWorkspacePage({
                         );
                       })()}
                     </button>
-                    <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100! transition-opacity">
                       {project.milestones.length > 1 && (
                         <>
                           <button
@@ -915,7 +915,7 @@ export default function ProjectWorkspacePage({
                           <span>{task.estimatedMinutes}m</span>
                           <span className="text-amber-400">[{task.priority}]</span>
                         </div>
-                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100! transition-opacity">
                           <button
                             onClick={() => startEditTask(task)}
                             className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-800 cursor-pointer"
@@ -1113,7 +1113,7 @@ export default function ProjectWorkspacePage({
 
       {/* Note Detail Modal */}
       {activeModalNote && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 modal-overlay z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150 max-h-[85vh] flex flex-col">
             <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
               <div>
@@ -1166,7 +1166,7 @@ export default function ProjectWorkspacePage({
 
       {/* Edit Project Modal */}
       {showEditProjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1205,7 +1205,7 @@ export default function ProjectWorkspacePage({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Status</label>
                   <select
@@ -1277,7 +1277,7 @@ export default function ProjectWorkspacePage({
 
       {/* Delete Project Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5 shrink-0" />

@@ -556,7 +556,7 @@ export default function FilesPage() {
 
       {/* Add / Upload File Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -707,7 +707,7 @@ export default function FilesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Category</label>
                   <select
@@ -741,7 +741,7 @@ export default function FilesPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Project Association</label>
                   <select

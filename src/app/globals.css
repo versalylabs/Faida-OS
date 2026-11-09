@@ -522,3 +522,16 @@ input[type="range"] { accent-color: #8d9bff; }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   [class*="bg-slate-900"], .glass-panel, .glass-bar { background-color: rgba(18, 26, 48, 0.9); }
 }
+
+/* Dialogs: when a dialog is taller than the screen (phone in landscape, on-screen keyboard open, long
+   forms) the overlay scrolls instead of clipping the top and bottom. Auto margins keep a short dialog
+   centred; a tall one simply starts at the top. */
+@layer components {
+  .modal-overlay {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .modal-overlay > * {
+    margin-block: auto;
+  }
+}

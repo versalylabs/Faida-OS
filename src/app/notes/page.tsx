@@ -437,7 +437,7 @@ export default function NotesPage() {
           No notes found matching your filters. Click &quot;New Note&quot; to capture your first document.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-4">
           {displayedNotes.map((note) => (
             <div
               key={note.id}
@@ -447,10 +447,10 @@ export default function NotesPage() {
               <div className="space-y-2">
                 {/* Note Header */}
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-sm font-bold text-white group-hover/card:text-blue-400 transition-colors line-clamp-1">
+                  <h3 className="text-sm font-bold text-white group-hover/card:text-blue-400 transition-colors line-clamp-1 min-w-0 flex-1 break-words">
                     {note.title}
                   </h3>
-                  <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 transition-opacity shrink-0">
+                  <div className="flex items-center gap-1 opacity-0 group-hover/card:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100! transition-opacity shrink-0">
                     <button
                       onClick={(e) => openEditNote(note, e)}
                       title="Edit Note"
@@ -535,7 +535,7 @@ export default function NotesPage() {
 
       {/* VIEW NOTE MODAL */}
       {viewingNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
               <div className="space-y-1">
@@ -626,7 +626,7 @@ export default function NotesPage() {
 
       {/* CREATE NOTE MODAL */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -652,7 +652,7 @@ export default function NotesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Link to Project</label>
                   <select
@@ -743,7 +743,7 @@ export default function NotesPage() {
 
       {/* EDIT NOTE MODAL */}
       {editingNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -768,7 +768,7 @@ export default function NotesPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Link to Project</label>
                   <select
@@ -856,7 +856,7 @@ export default function NotesPage() {
 
       {/* DELETE NOTE CONFIRMATION */}
       {deleteConfirmNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5" />

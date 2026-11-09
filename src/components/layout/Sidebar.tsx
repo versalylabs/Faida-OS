@@ -150,14 +150,14 @@ export function Sidebar() {
       {mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
-          className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-40 md:hidden"
+          className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-40 lg:hidden"
         />
       )}
 
       <aside
         className={cn(
-          "glass-panel w-[17rem] md:w-64 shrink-0 rounded-[28px] flex flex-col h-[calc(100dvh-1.5rem)] select-none fixed md:sticky top-3 left-3 md:left-auto md:ml-3 z-50 transition-transform duration-300 ease-out",
-          mobileOpen ? "translate-x-0" : "-translate-x-[120%] md:translate-x-0"
+          "glass-panel w-[17rem] lg:w-64 shrink-0 rounded-[28px] flex flex-col h-[calc(100dvh-1.5rem)] select-none fixed lg:sticky top-3 left-3 lg:left-auto lg:ml-3 z-50 transition-transform duration-300 ease-out",
+          mobileOpen ? "translate-x-0" : "-translate-x-[120%] lg:translate-x-0"
         )}
       >
         {/* Brand Header */}
@@ -167,7 +167,7 @@ export function Sidebar() {
           {/* Close button on mobile */}
           <button
             onClick={() => setMobileOpen(false)}
-            className="md:hidden glass-orb h-8 w-8 text-slate-300 text-xs cursor-pointer"
+            className="lg:hidden glass-orb h-8 w-8 text-slate-300 text-xs cursor-pointer"
           >
             ✕
           </button>

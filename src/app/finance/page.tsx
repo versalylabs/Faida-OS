@@ -752,27 +752,27 @@ export default function FinancePage() {
         </div>
 
         {/* Accounts Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-3.5">
           {accounts.map((acc) => (
             <div
               key={acc.id}
               className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3 group/acc"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <div
-                    className="p-2 rounded-lg text-white"
+                    className="p-2 rounded-lg text-white shrink-0"
                     style={{ backgroundColor: acc.color ? `${acc.color}25` : "#10b98125", color: acc.color || "#10b981" }}
                   >
                     {getAccountIcon(acc.type)}
                   </div>
-                  <div>
-                    <h3 className="text-xs font-bold text-slate-100">{acc.name}</h3>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-bold text-slate-100 break-words">{acc.name}</h3>
                     <span className="text-[10px] font-mono text-slate-400 uppercase">{acc.type}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 opacity-0 group-hover/acc:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 opacity-0 group-hover/acc:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100! transition-opacity">
                   <button
                     onClick={() => {
                       setEditingAccount(acc);
@@ -1163,7 +1163,7 @@ export default function FinancePage() {
 
       {/* EDIT BUDGETS MODAL */}
       {showBudgetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div>
@@ -1284,7 +1284,7 @@ export default function FinancePage() {
 
       {/* ADD / EDIT ACCOUNT MODAL */}
       {showAccountModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1309,7 +1309,7 @@ export default function FinancePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Type</label>
                   <select
@@ -1380,7 +1380,7 @@ export default function FinancePage() {
 
       {/* QUICK BALANCE EDIT MODAL */}
       {quickBalanceAccount && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-xs bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h2 className="text-xs font-bold text-white uppercase">
@@ -1426,7 +1426,7 @@ export default function FinancePage() {
 
       {/* CATEGORIES MANAGEMENT MODAL */}
       {showCategoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1571,7 +1571,7 @@ export default function FinancePage() {
 
       {/* DELETE ACCOUNT CONFIRMATION */}
       {deleteAccountConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5" />
@@ -1601,7 +1601,7 @@ export default function FinancePage() {
 
       {/* DELETE CATEGORY CONFIRMATION */}
       {deleteCategoryConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5" />
@@ -1631,7 +1631,7 @@ export default function FinancePage() {
 
       {/* LOG TRANSACTION MODAL */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">

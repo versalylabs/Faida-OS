@@ -453,7 +453,7 @@ export default function ProjectsPage() {
           No projects found matching your criteria. Click &quot;New Project&quot; above to initialize a workspace.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-6">
           {filteredProjects.map((proj) => (
             <div
               key={proj.id}
@@ -462,23 +462,23 @@ export default function ProjectsPage() {
               <div className="space-y-4">
                 {/* Title, Actions & Progress Header */}
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2 flex-wrap">
+                  <div className="space-y-1.5 min-w-0 flex-1">
+                    <div className="flex items-start gap-2 min-w-0">
                       <span
-                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        className="h-2.5 w-2.5 rounded-full shrink-0 mt-2"
                         style={{ backgroundColor: proj.color || "#3b82f6" }}
                       />
-                      <h2 className="text-lg font-bold text-slate-100 group-hover/card:text-blue-400 transition-colors">
+                      <h2 className="text-lg font-bold text-slate-100 group-hover/card:text-blue-400 transition-colors break-words min-w-0 leading-snug">
                         {proj.name}
                       </h2>
-                      <span
-                        className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${getStatusBadge(
-                          proj.status
-                        )}`}
-                      >
-                        {proj.status}
-                      </span>
                     </div>
+                    <span
+                      className={`inline-block text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${getStatusBadge(
+                        proj.status
+                      )}`}
+                    >
+                      {proj.status}
+                    </span>
 
                     {proj.description && (
                       <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">
@@ -641,7 +641,7 @@ export default function ProjectsPage() {
 
       {/* CREATE PROJECT MODAL */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -701,7 +701,7 @@ export default function ProjectsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Status</label>
                   <select
@@ -797,7 +797,7 @@ export default function ProjectsPage() {
 
       {/* EDIT PROJECT MODAL */}
       {editingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -836,7 +836,7 @@ export default function ProjectsPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Status</label>
                   <select
@@ -908,7 +908,7 @@ export default function ProjectsPage() {
 
       {/* DELETE PROJECT CONFIRMATION MODAL */}
       {deleteConfirmProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5 shrink-0" />

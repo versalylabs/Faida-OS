@@ -421,7 +421,7 @@ export default function DeveloperHubPage() {
 
       {/* Add Credential Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in">
           <div className="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-slate-100">Add Developer Credential</h2>
@@ -434,7 +434,7 @@ export default function DeveloperHubPage() {
             </div>
 
             <form onSubmit={handleCreate} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Service Name</label>
                   <input
@@ -461,7 +461,7 @@ export default function DeveloperHubPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Key / Variable Name</label>
                   <input
@@ -502,7 +502,7 @@ export default function DeveloperHubPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">Local Port (Optional)</label>
                   <input

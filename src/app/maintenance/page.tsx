@@ -363,7 +363,7 @@ export default function MaintenancePage() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-4">
           {filteredItems.map((item) => (
             <div
               key={item.id}
@@ -448,7 +448,7 @@ export default function MaintenancePage() {
 
       {/* CREATE MAINTENANCE TASK MODAL */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -477,7 +477,7 @@ export default function MaintenancePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Area</label>
                   <select
@@ -574,7 +574,7 @@ export default function MaintenancePage() {
 
       {/* EDIT MAINTENANCE TASK MODAL */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -602,7 +602,7 @@ export default function MaintenancePage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-300 block mb-1 font-medium">Area</label>
                   <select
@@ -696,7 +696,7 @@ export default function MaintenancePage() {
 
       {/* DELETE MAINTENANCE TASK CONFIRMATION MODAL */}
       {deleteConfirmItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5 shrink-0" />

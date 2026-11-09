@@ -108,12 +108,12 @@ export function Header() {
 
   return (
     <>
-      <header className="glass-bar h-14 rounded-2xl mx-3 md:mx-0 md:mr-3 mt-3 px-3 sm:px-4 flex items-center justify-between sticky top-3 z-40">
+      <header className="glass-bar h-14 rounded-2xl mx-3 lg:mx-0 lg:mr-3 mt-3 px-3 sm:px-4 flex items-center justify-between sticky top-3 z-40">
         {/* Mobile Menu Hamburger + Search Trigger */}
         <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 max-w-xl">
           <button
             onClick={() => window.dispatchEvent(new CustomEvent("toggle-mobile-sidebar"))}
-            className="md:hidden glass-orb h-9 w-9 text-slate-200 cursor-pointer shrink-0"
+            className="lg:hidden glass-orb h-9 w-9 text-slate-200 cursor-pointer shrink-0"
             title="Open Navigation"
           >
             <Menu className="h-4 w-4" />
@@ -122,8 +122,8 @@ export function Header() {
           {/* Header Logo Icon & Brand */}
           <div className="flex items-center shrink-0">
             <FaidaLogo size="xs" showText={false} className="sm:hidden" />
-            <FaidaLogo size="sm" showText={true} className="hidden sm:flex md:hidden" />
-            <div className="hidden md:flex items-center pr-1">
+            <FaidaLogo size="sm" showText={true} className="hidden sm:flex lg:hidden" />
+            <div className="hidden lg:flex items-center pr-1">
               <FaidaLogoIcon size={28} className="hover:scale-105 transition-transform" />
             </div>
           </div>

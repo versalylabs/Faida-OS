@@ -247,11 +247,11 @@ export default function CapturePage() {
                   key={item.id}
                   className="p-4 rounded-xl bg-slate-800/40 border border-slate-800/80 hover:border-slate-700 flex items-start justify-between gap-4 transition-all"
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 mt-0.5">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 mt-0.5 shrink-0">
                       {getEntityIcon(item.type)}
                     </div>
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0 break-words">
                       <div className="text-xs font-semibold text-slate-100">{item.title}</div>
                       {item.content && item.content !== item.title && (
                         <p className="text-[11px] text-slate-400 leading-relaxed max-w-xl">

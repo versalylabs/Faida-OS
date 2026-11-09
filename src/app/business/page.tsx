@@ -888,7 +888,7 @@ export default function BusinessPage() {
             <p className="text-xs text-slate-400">No client accounts found for this filter.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-4">
             {displayedClients.map((client) => {
               const clientBusiness = businesses.find((b) => b.id === client.businessId);
               const pendingDelivs = (client.deliverables || []).filter((d) => d.status !== "COMPLETED").length;
@@ -1192,7 +1192,7 @@ export default function BusinessPage() {
 
       {/* MODAL 1: Log Weekly Blueprint Metrics */}
       {showMetricModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-5 shadow-2xl my-8">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -1417,7 +1417,7 @@ export default function BusinessPage() {
 
       {/* MODAL 2: Create / Edit Client */}
       {showClientModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl my-8">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-bold text-white text-base">
@@ -1481,7 +1481,7 @@ export default function BusinessPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Contract Type</label>
                   <select
@@ -1507,7 +1507,7 @@ export default function BusinessPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Billing Cycle</label>
                   <select
@@ -1570,7 +1570,7 @@ export default function BusinessPage() {
 
       {/* MODAL 3: Create Deliverable */}
       {showDeliverableModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="font-bold text-white text-base">{editingDeliverable ? "Edit deliverable" : "Add work deliverable"}</h3>
@@ -1655,7 +1655,7 @@ export default function BusinessPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">Priority</label>
                   <select
@@ -1705,7 +1705,7 @@ export default function BusinessPage() {
 
       {/* Delete deliverable confirmation */}
       {deleteDeliverableConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
             <h3 className="font-bold text-white text-base">Delete this deliverable?</h3>
             <p className="text-xs text-slate-300 leading-relaxed break-words">
@@ -1732,7 +1732,7 @@ export default function BusinessPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteClientConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
             <h3 className="font-bold text-white text-base">Delete Client Account?</h3>
             <p className="text-xs text-slate-400 leading-relaxed">

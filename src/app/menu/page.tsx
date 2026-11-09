@@ -909,7 +909,7 @@ export default function MenuPage() {
 
       {/* MODAL: Plan / Edit Meal */}
       {showModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 space-y-4 shadow-2xl my-8">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
@@ -970,7 +970,7 @@ export default function MenuPage() {
             </div>
 
             <form onSubmit={handleSaveMeal} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
                     Day of Week
@@ -1031,7 +1031,7 @@ export default function MenuPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-300 block mb-1">
                     Prep Time (Minutes)
@@ -1096,7 +1096,7 @@ export default function MenuPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmMeal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
             <h3 className="font-bold text-white text-base">Delete this Meal?</h3>
             <p className="text-xs text-slate-400 leading-relaxed">
@@ -1124,7 +1124,7 @@ export default function MenuPage() {
 
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-2 text-amber-400">
               <Sparkles className="h-5 w-5" />
@@ -1156,7 +1156,7 @@ export default function MenuPage() {
 
       {/* QUICK MEAL IDEAS MANAGER MODAL */}
       {showIdeasManager && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-2xl p-6 space-y-5 shadow-2xl my-8 max-h-[90vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -1464,7 +1464,7 @@ export default function MenuPage() {
 
       {/* Delete Meal Idea Confirmation Modal */}
       {deleteConfirmIdea && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 modal-overlay z-[60] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-2 text-rose-400">
               <Trash2 className="h-5 w-5" />

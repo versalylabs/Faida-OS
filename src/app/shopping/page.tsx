@@ -676,7 +676,7 @@ export default function ShoppingPage() {
                   key={item.id}
                   className="p-3 rounded-xl bg-slate-950/40 border border-slate-800 flex items-center justify-between gap-3 text-xs"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <button
                       onClick={() => handleToggleCheck(item)}
                       className="text-emerald-400 cursor-pointer"
@@ -715,7 +715,7 @@ export default function ShoppingPage() {
 
       {/* MANAGE CATEGORIES MODAL */}
       {showCategoryModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
@@ -857,9 +857,9 @@ export default function ShoppingPage() {
                     return (
                       <div
                         key={cat.id}
-                        className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-all"
+                        className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-all"
                       >
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <span
                             className="h-3 w-3 rounded-full shrink-0"
                             style={{ backgroundColor: cat.color || "#10b981" }}
@@ -917,7 +917,7 @@ export default function ShoppingPage() {
 
       {/* EDIT SHOPPING ITEM MODAL */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -945,7 +945,7 @@ export default function ShoppingPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-slate-300 font-medium">Quantity</label>
                   <input
@@ -975,7 +975,7 @@ export default function ShoppingPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-slate-300 font-medium">Store</label>
                   <input

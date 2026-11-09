@@ -162,7 +162,7 @@ export function OfflineStatusIndicator() {
 
       {/* OFFLINE DETAILS MODAL */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-5 sm:p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">

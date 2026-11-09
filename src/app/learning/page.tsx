@@ -448,7 +448,7 @@ export default function LearningPage() {
           No learning subjects added yet. Click &quot;New Subject&quot; to initialize your skill tree.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-6">
           {subjects.map((subj) => (
             <div
               key={subj.id}
@@ -549,7 +549,7 @@ export default function LearningPage() {
                           </div>
 
                           {/* Quick Action Buttons on Hover */}
-                          <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
+                          <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100! transition-opacity shrink-0">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -605,7 +605,7 @@ export default function LearningPage() {
 
       {/* VIEW LESSON DETAILS MODAL */}
       {viewingTopic && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-xl bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
             <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4">
@@ -653,7 +653,7 @@ export default function LearningPage() {
             </div>
 
             {/* Study Stats & Quick Actions Bar */}
-            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-purple-500/5 border border-purple-500/15">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-xl bg-purple-500/5 border border-purple-500/15">
               <div className="flex items-center gap-2 text-xs">
                 <Clock className="h-4 w-4 text-purple-400" />
                 <div>
@@ -771,7 +771,7 @@ export default function LearningPage() {
 
       {/* ADD LESSON MODAL */}
       {addLessonSubjectId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -857,7 +857,7 @@ export default function LearningPage() {
 
       {/* EDIT LESSON MODAL */}
       {editingTopic && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -946,7 +946,7 @@ export default function LearningPage() {
 
       {/* EDIT SUBJECT MODAL */}
       {editingSubject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1007,7 +1007,7 @@ export default function LearningPage() {
 
       {/* DELETE LESSON CONFIRMATION MODAL */}
       {deleteTopicConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5" />
@@ -1037,7 +1037,7 @@ export default function LearningPage() {
 
       {/* DELETE SUBJECT CONFIRMATION MODAL */}
       {deleteSubjectConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-3 text-rose-400">
               <AlertCircle className="h-5 w-5" />
@@ -1067,7 +1067,7 @@ export default function LearningPage() {
 
       {/* LOG STUDY SESSION MODAL */}
       {showSessionModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -1168,7 +1168,7 @@ export default function LearningPage() {
 
       {/* NEW SUBJECT MODAL */}
       {showSubjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-sm font-bold text-white flex items-center gap-2">

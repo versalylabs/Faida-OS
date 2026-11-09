@@ -465,7 +465,7 @@ export function LmsUnitsGrid({ lms, onConnect }: { lms: LmsController; onConnect
         {totals.missed ? <span className="text-rose-300"> · {totals.missed} missed</span> : null}. Progress counts work you have submitted; it
         grows as you complete each item.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-4">
         {units.map((u) => (
           <UnitCard key={u.courseId} u={u} />
         ))}
