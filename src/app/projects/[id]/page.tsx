@@ -48,6 +48,31 @@ interface MilestoneItem {
   title: string;
   isDone: boolean;
   order: number;
+  dueDate?: string | null;
+}
+
+/** Calendar date (YYYY-MM-DD) of a stored due date; due dates are saved as plain dates. */
+function dueDay(value?: string | null): string {
+  return value ? new Date(value).toISOString().slice(0, 10) : "";
+}
+
+function todayDay(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** Whole days from today until the due day (negative = overdue). */
+function daysUntil(day: string): number {
+  return Math.round((Date.parse(day) - Date.parse(todayDay())) / 86_400_000);
+}
+
+function dueLabel(day: string): string {
+  const n = daysUntil(day);
+  if (n < 0) return `Overdue ${-n}d`;
+  if (n === 0) return "Due today";
+  if (n === 1) return "Due tomorrow";
+  return `Due ${formatDate(day)}`;
 }
 
 interface TaskItem {
@@ -115,6 +140,8 @@ export default function ProjectWorkspacePage({
   // Milestone edit / delete
   const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
   const [editMilestoneTitle, setEditMilestoneTitle] = useState("");
+  const [editMilestoneDue, setEditMilestoneDue] = useState("");
+  const [newMilestoneDue, setNewMilestoneDue] = useState("");
   const [isSavingMilestone, setIsSavingMilestone] = useState(false);
   const [confirmDeleteMilestoneId, setConfirmDeleteMilestoneId] = useState<string | null>(null);
 
@@ -296,9 +323,13 @@ export default function ProjectWorkspacePage({
       await offlineFetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ newMilestoneTitle: newMilestone.trim() }),
+        body: JSON.stringify({
+          newMilestoneTitle: newMilestone.trim(),
+          newMilestoneDueDate: newMilestoneDue || null,
+        }),
       });
       setNewMilestone("");
+      setNewMilestoneDue("");
       fetchWorkspace();
     } catch (e) {
       console.error("Failed to add milestone:", e);
@@ -309,6 +340,7 @@ export default function ProjectWorkspacePage({
     setConfirmDeleteMilestoneId(null);
     setEditingMilestoneId(m.id);
     setEditMilestoneTitle(m.title);
+    setEditMilestoneDue(dueDay(m.dueDate));
   };
 
   const handleSaveMilestone = async (e: React.FormEvent) => {
@@ -321,7 +353,11 @@ export default function ProjectWorkspacePage({
       const res = await offlineFetch(`/api/projects/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ milestoneId: editingMilestoneId, milestoneTitle: title }),
+        body: JSON.stringify({
+          milestoneId: editingMilestoneId,
+          milestoneTitle: title,
+          milestoneDueDate: editMilestoneDue || null,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -562,7 +598,7 @@ export default function ProjectWorkspacePage({
                     <form
                       key={m.id}
                       onSubmit={handleSaveMilestone}
-                      className="p-2.5 rounded-xl bg-slate-950 border border-blue-500/30 flex items-center gap-2"
+                      className="p-2.5 rounded-xl bg-slate-950 border border-blue-500/30 flex flex-wrap items-center gap-2"
                     >
                       <input
                         type="text"
@@ -571,7 +607,14 @@ export default function ProjectWorkspacePage({
                         onKeyDown={(e) => e.key === "Escape" && setEditingMilestoneId(null)}
                         maxLength={300}
                         autoFocus
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                        className="flex-1 min-w-[10rem] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                      />
+                      <input
+                        type="date"
+                        value={editMilestoneDue}
+                        onChange={(e) => setEditMilestoneDue(e.target.value)}
+                        title="Due date (optional)"
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
                       />
                       <button
                         type="submit"
@@ -640,6 +683,25 @@ export default function ProjectWorkspacePage({
                       >
                         {m.title}
                       </span>
+                      {m.dueDate && (() => {
+                        const day = dueDay(m.dueDate);
+                        const n = daysUntil(day);
+                        const tone = m.isDone
+                          ? "bg-slate-800 text-slate-500 border-slate-700"
+                          : n < 0
+                          ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                          : n <= 3
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          : "bg-slate-800/80 text-slate-400 border-slate-700";
+                        return (
+                          <span
+                            className={`shrink-0 flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full border ${tone}`}
+                          >
+                            <Calendar className="h-2.5 w-2.5" />
+                            {m.isDone ? formatDate(day) : dueLabel(day)}
+                          </span>
+                        );
+                      })()}
                     </button>
                     <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
                       <button
@@ -674,7 +736,14 @@ export default function ProjectWorkspacePage({
                 placeholder="Add new milestone..."
                 value={newMilestone}
                 onChange={(e) => setNewMilestone(e.target.value)}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
+                className="flex-1 min-w-0 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
+              />
+              <input
+                type="date"
+                value={newMilestoneDue}
+                onChange={(e) => setNewMilestoneDue(e.target.value)}
+                title="Due date (optional)"
+                className="bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
               />
               <button
                 type="submit"

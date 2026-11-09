@@ -107,6 +107,8 @@ export async function PATCH(
       milestoneDone,
       newMilestoneTitle,
       milestoneTitle,
+      milestoneDueDate,
+      newMilestoneDueDate,
       deleteMilestoneId,
       name,
       description,
@@ -131,15 +133,21 @@ export async function PATCH(
       milestoneTitle !== undefined
         ? must(str(milestoneTitle, { max: 300, required: true }), "Milestone title is required (max 300 characters)")
         : null;
+    // undefined = leave the date alone, empty/null = clear it
+    const cleanMilestoneDue =
+      milestoneDueDate !== undefined ? must(date(milestoneDueDate), "Milestone due date is invalid") : undefined;
+    const cleanNewMilestoneDue =
+      newMilestoneDueDate !== undefined ? must(date(newMilestoneDueDate), "Milestone due date is invalid") : null;
     if (deleteMilestoneId !== undefined && (typeof deleteMilestoneId !== "string" || deleteMilestoneId.length > 100)) {
       throw new ValidationError("Milestone ID is invalid");
     }
 
     // 1. Toggle completion and/or rename a milestone (scoped to this project)
     if (milestoneId) {
-      const data: { isDone?: boolean; title?: string } = {};
+      const data: { isDone?: boolean; title?: string; dueDate?: Date | null } = {};
       if (milestoneDone !== undefined) data.isDone = Boolean(milestoneDone);
       if (cleanMilestoneRename) data.title = cleanMilestoneRename;
+      if (cleanMilestoneDue !== undefined) data.dueDate = cleanMilestoneDue;
       if (Object.keys(data).length > 0) {
         await prisma.milestone.updateMany({ where: { id: milestoneId, projectId: id }, data });
       }
@@ -160,6 +168,7 @@ export async function PATCH(
         data: {
           projectId: id,
           title: cleanMilestoneTitle,
+          dueDate: cleanNewMilestoneDue,
           order: (highestOrder?.order ?? -1) + 1,
         },
       });
