@@ -111,6 +111,7 @@ export async function PATCH(
       milestoneDueDate,
       newMilestoneDueDate,
       deleteMilestoneId,
+      milestoneOrder,
       name,
       description,
       status,
@@ -157,6 +158,22 @@ export async function PATCH(
     // 1b. Delete a milestone (scoped to this project)
     if (deleteMilestoneId) {
       await prisma.milestone.deleteMany({ where: { id: deleteMilestoneId, projectId: id } });
+    }
+
+    // 1c. Reorder milestones: the full list of ids in the new order. Anything not listed (for example one
+    // added in another tab a moment ago) keeps its relative place after the listed ones.
+    if (milestoneOrder !== undefined) {
+      if (!Array.isArray(milestoneOrder) || milestoneOrder.length > 200 || milestoneOrder.some((v: unknown) => typeof v !== "string")) {
+        throw new ValidationError("Milestone order must be a list of milestone IDs");
+      }
+      const current = await prisma.milestone.findMany({ where: { projectId: id }, orderBy: { order: "asc" }, select: { id: true } });
+      const known = new Set(current.map((m) => m.id));
+      const listed = (milestoneOrder as string[]).filter((mid, i, all) => known.has(mid) && all.indexOf(mid) === i);
+      const rest = current.map((m) => m.id).filter((mid) => !listed.includes(mid));
+      const finalOrder = [...listed, ...rest];
+      await prisma.$transaction(
+        finalOrder.map((mid, index) => prisma.milestone.updateMany({ where: { id: mid, projectId: id }, data: { order: index } }))
+      );
     }
 
     // 2. Add new milestone

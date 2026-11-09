@@ -19,6 +19,8 @@ import {
   ChevronRight,
   Edit3,
   Trash2,
+  ChevronUp,
+  ChevronDown,
   AlertCircle,
   Check,
 } from "lucide-react";
@@ -313,6 +315,30 @@ export default function ProjectWorkspacePage({
     }
   };
 
+  const handleMoveMilestone = async (index: number, direction: -1 | 1) => {
+    if (!project) return;
+    const target = index + direction;
+    if (target < 0 || target >= project.milestones.length) return;
+
+    const reordered = [...project.milestones];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    // Optimistic: show the new order straight away, put things right if saving fails.
+    setProject({ ...project, milestones: reordered.map((m, i) => ({ ...m, order: i })) });
+
+    try {
+      const res = await offlineFetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ milestoneOrder: reordered.map((m) => m.id) }),
+      });
+      const data = await res.json();
+      if (!data.success) fetchWorkspace();
+    } catch (err) {
+      console.error("Failed to reorder milestones:", err);
+      fetchWorkspace();
+    }
+  };
+
   const startEditMilestone = (m: MilestoneItem) => {
     setConfirmDeleteMilestoneId(null);
     setEditingMilestoneId(m.id);
@@ -569,7 +595,7 @@ export default function ProjectWorkspacePage({
                   No milestones yet. Add the first one below.
                 </div>
               )}
-              {project.milestones.map((m) => {
+              {project.milestones.map((m, index) => {
                 if (editingMilestoneId === m.id) {
                   return (
                     <form
@@ -681,6 +707,28 @@ export default function ProjectWorkspacePage({
                       })()}
                     </button>
                     <div className="flex items-center gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                      {project.milestones.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => handleMoveMilestone(index, -1)}
+                            disabled={index === 0}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-800 cursor-pointer disabled:opacity-25 disabled:cursor-default disabled:hover:text-slate-500 disabled:hover:bg-transparent"
+                            title="Move up"
+                            aria-label={`Move milestone ${m.title} up`}
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleMoveMilestone(index, 1)}
+                            disabled={index === project.milestones.length - 1}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-800 cursor-pointer disabled:opacity-25 disabled:cursor-default disabled:hover:text-slate-500 disabled:hover:bg-transparent"
+                            title="Move down"
+                            aria-label={`Move milestone ${m.title} down`}
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      )}
                       <button
                         onClick={() => startEditMilestone(m)}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-blue-400 hover:bg-slate-800 cursor-pointer"
