@@ -1,14 +1,14 @@
 import { prisma } from "@/lib/db";
 
 /**
- * Finished tasks and finished work deliverables are removed 48 hours after they were completed, so the lists
+ * Finished tasks and finished work deliverables are removed 24 hours after they were completed, so the lists
  * stay about what is still ahead of you.
  *
  * Safety for existing data: the rule starts at RELEASE_AT. Anything that was already completed before
- * then counts as completed *at* RELEASE_AT, so nothing existing disappears until 48 hours after the release
- * (time to look through, or export it from Settings). After that it is a plain rolling 48-hour window.
+ * then counts as completed *at* RELEASE_AT, so nothing existing disappears until 24 hours after the release
+ * (time to look through, or export it from Settings). After that it is a plain rolling 24-hour window.
  */
-export const COMPLETED_RETENTION_HOURS = 48;
+export const COMPLETED_RETENTION_HOURS = 24;
 const RELEASE_AT = new Date("2026-11-07T04:00:00Z");
 
 const lastRun = new Map<string, number>();

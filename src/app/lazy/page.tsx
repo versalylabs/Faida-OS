@@ -8,6 +8,8 @@ import {
   Coffee,
   Layers,
   Loader2,
+  Pause,
+  Play,
   Sparkles,
   Timer,
   Trash2,
@@ -48,6 +50,7 @@ interface Toast {
 }
 
 const SPRINT_MINUTES = 15;
+const TIMER_STORAGE_KEY = "faida_lazy_timer_v1";
 
 function energyMeta(val: number) {
   if (val >= 85) return { label: "Full flow", bar: "from-emerald-400 to-teal-300" };
@@ -87,7 +90,10 @@ export default function LazyModePage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [showWaiting, setShowWaiting] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const [timer, setTimer] = useState<{ taskId: string; sprint: boolean; endsAt: number } | null>(null);
+  // endsAt is the moment the countdown reaches zero while it runs. While it is paused, pausedLeft holds the
+  // milliseconds still left (and endsAt is ignored), so resuming picks up exactly where it stopped.
+  const [timer, setTimer] = useState<{ taskId: string; sprint: boolean; endsAt: number; pausedLeft: number | null } | null>(null);
+  const timerRestored = useRef(false);
   const [now, setNow] = useState(Date.now());
   const [batchRun, setBatchRun] = useState<string[] | null>(null);
   const [batchDone, setBatchDone] = useState<string[]>([]);
@@ -135,11 +141,38 @@ export default function LazyModePage() {
     });
   }, [apply, load]);
 
-  // Countdown clock, only while a timer is running
+  // Countdown clock, only while a timer is running (a paused one does not tick)
+  const timerRunning = !!timer && timer.pausedLeft === null;
   useEffect(() => {
-    if (!timer) return;
+    if (!timerRunning) return;
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
+  }, [timerRunning]);
+
+  // Keep the timer across a refresh, a closed tab or a trip to another page, so a pause can really be
+  // continued later. Best effort: storage can be blocked, and the timer then simply lives in this page.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(TIMER_STORAGE_KEY) || "null");
+      if (saved && typeof saved.taskId === "string" && Date.now() - Number(saved.savedAt || 0) < 24 * 3600000) {
+        setNow(Date.now());
+        setTimer({
+          taskId: saved.taskId,
+          sprint: !!saved.sprint,
+          endsAt: Number(saved.endsAt) || Date.now(),
+          pausedLeft: saved.pausedLeft === null || saved.pausedLeft === undefined ? null : Math.max(0, Number(saved.pausedLeft) || 0),
+        });
+      }
+    } catch {}
+    timerRestored.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!timerRestored.current) return;
+    try {
+      if (timer) localStorage.setItem(TIMER_STORAGE_KEY, JSON.stringify({ ...timer, savedAt: Date.now() }));
+      else localStorage.removeItem(TIMER_STORAGE_KEY);
+    } catch {}
   }, [timer]);
 
   const lazyEffective = lazyOn || energy <= 30;
@@ -236,7 +269,15 @@ export default function LazyModePage() {
   const startTimer = (task: EvaluatedEffortTask, sprint: boolean) => {
     const minutes = sprint ? SPRINT_MINUTES : Math.min(Math.max(task.estimatedMinutes, 10), 50);
     setNow(Date.now());
-    setTimer({ taskId: task.id, sprint, endsAt: Date.now() + minutes * 60000 });
+    setTimer({ taskId: task.id, sprint, endsAt: Date.now() + minutes * 60000, pausedLeft: null });
+  };
+
+  const pauseTimer = () =>
+    setTimer((t) => (t && t.pausedLeft === null ? { ...t, pausedLeft: Math.max(0, t.endsAt - Date.now()) } : t));
+
+  const resumeTimer = () => {
+    setNow(Date.now());
+    setTimer((t) => (t && t.pausedLeft !== null ? { ...t, endsAt: Date.now() + t.pausedLeft, pausedLeft: null } : t));
   };
 
   const finishTimer = async (taskDone: boolean) => {
@@ -269,10 +310,16 @@ export default function LazyModePage() {
     }
   };
 
-  const remaining = timer ? Math.max(0, timer.endsAt - now) : 0;
+  const paused = !!timer && timer.pausedLeft !== null;
+  const remaining = timer ? (timer.pausedLeft !== null ? timer.pausedLeft : Math.max(0, timer.endsAt - now)) : 0;
   const mm = String(Math.floor(remaining / 60000)).padStart(2, "0");
   const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2, "0");
   const timerTask = timer ? evaluated.find((t) => t.id === timer.taskId) : null;
+
+  // A restored timer whose task is gone (finished or removed elsewhere) is dropped once the list has loaded
+  useEffect(() => {
+    if (timer && !isLoading && !timerTask) setTimer(null);
+  }, [timer, isLoading, timerTask]);
   const batchItems = batchRun ? batchRun.map((id) => batch.tasks.find((t) => t.id === id) || raw.find((t) => t.id === id)).filter(Boolean) as any[] : [];
 
   const renderTask = (task: EvaluatedEffortTask) => {
@@ -430,15 +477,32 @@ export default function LazyModePage() {
         </div>
       ) : timer && timerTask ? (
         <div className="morph-in p-6 sm:p-8 rounded-[2rem] bg-slate-900/60 border border-amber-300/30 text-center space-y-4">
-          <div className="text-xs text-amber-200">{timer.sprint ? "15-minute sprint" : "Focus time"}</div>
+          <div className="text-xs text-amber-200">
+            {timer.sprint ? "15-minute sprint" : "Focus time"}
+            {paused && " · paused"}
+          </div>
           <div className="text-lg font-semibold text-white">{timerTask.title}</div>
-          <div className="text-6xl sm:text-7xl font-semibold tabular-nums text-white tracking-tight">
+          <div className={`text-6xl sm:text-7xl font-semibold tabular-nums tracking-tight ${paused ? "text-slate-400" : "text-white"}`}>
             {mm}:{ss}
           </div>
           <p className="text-sm text-slate-300">
-            {remaining === 0 ? "Time. Stop here if you want to; that was enough." : "One thing only. Nothing else matters for these minutes."}
+            {paused
+              ? "Paused. Take your break; the time left is saved, even if you leave this page."
+              : remaining === 0
+              ? "Time. Stop here if you want to; that was enough."
+              : "One thing only. Nothing else matters for these minutes."}
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+            {remaining > 0 &&
+              (paused ? (
+                <button onClick={resumeTimer} className="press px-5 py-2.5 rounded-full bg-amber-400 text-slate-900 text-sm font-semibold cursor-pointer flex items-center gap-2">
+                  <Play className="h-4 w-4" /> Resume
+                </button>
+              ) : (
+                <button onClick={pauseTimer} className="press px-5 py-2.5 rounded-full bg-slate-800 text-slate-100 text-sm font-medium border border-white/15 cursor-pointer flex items-center gap-2">
+                  <Pause className="h-4 w-4" /> Pause
+                </button>
+              ))}
             <button onClick={() => finishTimer(true)} className="press px-5 py-2.5 rounded-full bg-blue-600 text-white text-sm font-semibold cursor-pointer flex items-center gap-2">
               <Check className="h-4 w-4" /> Task is done
             </button>

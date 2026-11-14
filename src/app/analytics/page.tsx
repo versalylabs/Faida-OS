@@ -249,7 +249,7 @@ export default function AnalyticsPage() {
             <ul className="space-y-2.5 text-sm text-slate-300">
               {[
                 "Repeating tasks line up their next occurrence the moment you finish one.",
-                "Finished tasks and finished work deliverables clear themselves 48 hours after completion.",
+                "Finished tasks and finished work deliverables clear themselves 24 hours after completion.",
                 "Overdue and due-today work is flagged in the header and placed first in your daily plan.",
                 "Lazy Mode learns your energy by the hour from your check-ins and keeps heavy work for when you have it.",
                 "The planner works around your classes and calendar events, and protects lunch and breaks.",

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    // Housekeeping: finished tasks are cleared 48 hours after they were completed
+    // Housekeeping: finished tasks are cleared 24 hours after they were completed
     await purgeOldCompleted(user.id);
 
     const { searchParams } = new URL(req.url);

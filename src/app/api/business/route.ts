@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
     }
 
-    // Housekeeping: finished work deliverables are cleared 48 hours after completion
+    // Housekeeping: finished work deliverables are cleared 24 hours after completion
     await purgeOldCompleted(user.id);
 
     // Check if user has businesses

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 /**
  * Marks a project as having just moved (task added or finished, milestone changed).
  *
- * Finished tasks are cleared 48 hours after completion, so "when did work last happen here?" cannot be
+ * Finished tasks are cleared 24 hours after completion, so "when did work last happen here?" cannot be
  * worked out from tasks alone. Project.updatedAt is that record. Best effort: a failure here must never
  * break the action that triggered it.
  */

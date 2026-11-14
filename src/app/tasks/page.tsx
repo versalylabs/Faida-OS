@@ -690,7 +690,7 @@ export default function TasksPage() {
         </span>
       </div>
       <p className="text-[11px] text-slate-400 -mt-2">
-        Finished tasks clear themselves 48 hours after you complete them.
+        Finished tasks clear themselves 24 hours after you complete them.
       </p>
 
       {/* Task List */}
