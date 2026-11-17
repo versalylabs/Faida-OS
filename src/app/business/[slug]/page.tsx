@@ -205,7 +205,13 @@ export default function BusinessCompanyPage({ params }: { params: Promise<{ slug
                 )}
               </Card>
 
-              <KpiOverviewCard businessId={business?.id ?? ""} onOpen={() => choose("kpis")} />
+              {business ? (
+                <KpiOverviewCard businessId={business.id} onOpen={() => choose("kpis")} />
+              ) : (
+                <Card title="KPIs this month">
+                  <Skeleton className="h-20 w-full" />
+                </Card>
+              )}
 
               <Card title="Sales pipeline">
                 {loading ? (

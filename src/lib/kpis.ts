@@ -22,16 +22,52 @@ export interface KpiDefault {
 /** autoKey values: "revenue" (money in this month), "paying", "recurring", "reached:STAGE" (pipeline stage reached). */
 
 export const STRATEN_KPIS: KpiDefault[] = [
-  { key: "researched", name: "New prospects researched", unit: "COUNT", period: "MONTH", target: 200, hint: "Businesses you looked into this month" },
-  { key: "qualified", name: "Qualified prospects", unit: "COUNT", period: "MONTH", target: 60, hint: "Prospects that fit and could pay" },
-  { key: "outreach", name: "Personalised outreach contacts", unit: "COUNT", period: "MONTH", target: 100, hint: "Personal messages sent" },
-  { key: "conversations", name: "Meaningful conversations", unit: "COUNT", period: "MONTH", target: 20, hint: "Real two-way conversations" },
+  { key: "researched", name: "New prospects researched", unit: "COUNT", period: "MONTH", target: 150, hint: "Businesses you looked into this month" },
+  { key: "qualified", name: "Qualified prospects", unit: "COUNT", period: "MONTH", target: 50, hint: "Prospects scoring 60 or more" },
+  { key: "outreach", name: "Personalised outreach contacts", unit: "COUNT", period: "MONTH", target: 60, hint: "Qualified and warm prospects only, never more than that" },
+  { key: "conversations", name: "Meaningful conversations", unit: "COUNT", period: "MONTH", target: 15, hint: "Replies and real two-way conversations" },
   { key: "consultations", name: "Consultations", unit: "COUNT", period: "MONTH", target: 10, hint: "Consultations and audits held" },
-  { key: "paying", name: "Paying customers", unit: "COUNT", period: "TOTAL", target: 5, autoKey: "paying", hint: "Clients marked Active or Completed" },
+  { key: "proposals", name: "Quotations or proposals sent", unit: "COUNT", period: "MONTH", target: 8, hint: "Quotes and proposals you sent this month" },
+  { key: "paying", name: "Paying customers", unit: "COUNT", period: "TOTAL", target: 5, autoKey: "paying", hint: "Clients marked Active or Completed. Three by 31 Dec, five by 31 Jan" },
   { key: "recurring", name: "Recurring customers", unit: "COUNT", period: "TOTAL", target: 2, autoKey: "recurring", hint: "Active clients billed monthly or quarterly" },
-  { key: "satisfaction", name: "Customer satisfaction", unit: "PERCENT", period: "LEVEL", target: 85, hint: "Latest figure, aim for 85% or more" },
-  { key: "revenue", name: "Revenue collected", unit: "CURRENCY", period: "MONTH", target: 40000, autoKey: "revenue", hint: "Money in recorded for this business this month" },
+  { key: "contribution", name: "Contribution per founder hour", unit: "CURRENCY", period: "LEVEL", target: 500, hint: "Latest figure: price minus direct costs, divided by your hours. Keep it at KSh 500 or more" },
+  { key: "satisfaction", name: "Customer satisfaction", unit: "PERCENT", period: "LEVEL", target: 80, hint: "Latest rating as a percent. The plan's 4 out of 5 is 80%" },
+  { key: "revenue", name: "Revenue collected", unit: "CURRENCY", period: "MONTH", target: 30000, autoKey: "revenue", hint: "Money in recorded for this business this month. The plan expects KSh 30,000 in Dec" },
 ];
+
+/** What version 1 of the Straten plan seeded, so an untouched KPI can be moved to version 2 without overwriting your edits. */
+const STRATEN_V1: Record<string, { name: string; target: number }> = {
+  researched: { name: "New prospects researched", target: 200 },
+  qualified: { name: "Qualified prospects", target: 60 },
+  outreach: { name: "Personalised outreach contacts", target: 100 },
+  conversations: { name: "Meaningful conversations", target: 20 },
+  satisfaction: { name: "Customer satisfaction", target: 85 },
+  revenue: { name: "Revenue collected", target: 40000 },
+};
+
+export interface KpiRowLite {
+  key: string;
+  name: string;
+  target: number;
+}
+
+/**
+ * Moves a Straten KPI set that is still on version 1 targets to version 2: untouched targets are updated, and the
+ * KPIs version 2 adds are created. Does nothing once any version 2 KPI exists, so deleting one is never undone.
+ */
+export function stratenKpiUpgrade(existing: KpiRowLite[]): { update: { key: string; target: number }[]; create: KpiDefault[] } {
+  const by = new Map(existing.map((k) => [k.key, k]));
+  const stillV1 = Object.entries(STRATEN_V1).some(([key, v]) => by.get(key)?.target === v.target);
+  if (!stillV1 || by.has("proposals") || by.has("contribution")) return { update: [], create: [] };
+  const update: { key: string; target: number }[] = [];
+  for (const d of STRATEN_KPIS) {
+    const cur = by.get(d.key);
+    const old = STRATEN_V1[d.key];
+    if (cur && old && cur.target === old.target && cur.target !== d.target) update.push({ key: d.key, target: d.target });
+  }
+  const create = STRATEN_KPIS.filter((d) => !by.has(d.key) && (d.key === "proposals" || d.key === "contribution"));
+  return { update, create };
+}
 
 export const VERSALY_KPIS: KpiDefault[] = [
   { key: "interviews", name: "Customer discovery interviews", unit: "COUNT", period: "TOTAL", target: 30, autoKey: "reached:DISCOVERY", hint: "Prospects that reached Discovery done or later. The plan aims for 30 to 45." },

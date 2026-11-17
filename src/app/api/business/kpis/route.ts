@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { autoKpiValue, defaultKpisFor } from "@/lib/kpis";
+import { autoKpiValue, defaultKpisFor, stratenKpiUpgrade } from "@/lib/kpis";
 import { zonedDateKey, zonedNow } from "@/lib/tz";
 import { ValidationError, badRequest, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
@@ -26,8 +26,21 @@ function lastMonths(count = 6): string[] {
 
 /** Creates the plan's starting KPIs the first time a business is opened, so there is something to track. */
 async function seedIfEmpty(userId: string, business: { id: string; slug: string }) {
-  const count = await prisma.businessKpi.count({ where: { businessId: business.id } });
-  if (count > 0) return;
+  const existing = await prisma.businessKpi.findMany({ where: { businessId: business.id }, select: { key: true, name: true, target: true, sortOrder: true } });
+  if (existing.length > 0) {
+    // Straten: bring a set that is still on the first plan's targets up to the revised plan
+    if (business.slug.toLowerCase() !== "straten") return;
+    const { update, create } = stratenKpiUpgrade(existing);
+    for (const u of update) await prisma.businessKpi.updateMany({ where: { businessId: business.id, key: u.key }, data: { target: u.target } });
+    if (create.length > 0) {
+      const next = Math.max(...existing.map((e) => e.sortOrder)) + 1;
+      await prisma.businessKpi.createMany({
+        data: create.map((d, i) => ({ userId, businessId: business.id, key: d.key, name: d.name, unit: d.unit, period: d.period, target: d.target, autoKey: d.autoKey ?? null, sortOrder: next + i })),
+        skipDuplicates: true,
+      });
+    }
+    return;
+  }
   const defaults = defaultKpisFor(business.slug);
   if (defaults.length === 0) return;
   await prisma.businessKpi.createMany({

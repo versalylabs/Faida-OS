@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Edit3, Minus, Plus, Trash2 } from "lucide-react";
 import { offlineFetch } from "@/lib/offlineSync";
 import { formatKpiValue } from "@/lib/kpis";
@@ -38,10 +38,13 @@ export function useKpis(businessId?: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const latest = useRef(0);
   const reload = useCallback(async () => {
+    const mine = ++latest.current;
     try {
       const res = await offlineFetch(`/api/business/kpis${businessId ? `?businessId=${businessId}` : ""}`, { cache: "no-store" });
       const data = await res.json();
+      if (mine !== latest.current) return; // a newer request has been made since: its answer wins
       if (data.success) {
         setKpis(data.kpis || []);
         setBusinesses(data.businesses || []);
