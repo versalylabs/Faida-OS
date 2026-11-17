@@ -86,7 +86,7 @@ export async function getAgenda(userId: string, from: Date, to: Date, now: Date 
       }),
       prisma.businessDeliverable.findMany({
         where: { userId, dueDate: { gte: from, lt: to } },
-        include: { business: { select: { name: true, color: true } }, client: { select: { name: true } } },
+        include: { business: { select: { name: true, color: true, slug: true } }, client: { select: { name: true } } },
         orderBy: { dueDate: "asc" },
         take: 300,
       }),
@@ -109,7 +109,7 @@ export async function getAgenda(userId: string, from: Date, to: Date, now: Date 
       }),
       prisma.businessDeliverable.findMany({
         where: { userId, status: { not: "COMPLETED" }, dueDate: { lt: startOfDay } },
-        include: { business: { select: { name: true, color: true } }, client: { select: { name: true } } },
+        include: { business: { select: { name: true, color: true, slug: true } }, client: { select: { name: true } } },
         orderBy: { dueDate: "desc" },
         take: 40,
       }),
@@ -186,7 +186,7 @@ export async function getAgenda(userId: string, from: Date, to: Date, now: Date 
     done: d.status === "COMPLETED",
     priority: d.priority,
     color: d.business?.color ?? null,
-    href: "/business",
+    href: d.business?.slug ? `/business/${d.business.slug}#work` : "/business",
     url: null,
     canToggle: true,
     canEdit: false,

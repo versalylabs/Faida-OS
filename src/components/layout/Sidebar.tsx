@@ -63,7 +63,10 @@ const navCategories: NavCategory[] = [
     title: "Business & Ventures",
     icon: Building2,
     items: [
-      { name: "Business Hub", href: "/business", icon: Briefcase },
+      { name: "Business Overview", href: "/business", icon: Briefcase },
+      { name: "Straten", href: "/business/straten", icon: Building2 },
+      { name: "VersalyLabs", href: "/business/versaly", icon: Building2 },
+      { name: "Business Finance", href: "/business/finance", icon: Wallet },
     ],
   },
   {

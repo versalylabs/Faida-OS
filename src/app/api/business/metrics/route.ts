@@ -86,13 +86,9 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Also update the business current MRR if specified
-    if (parsedMrr > 0) {
-      await prisma.business.update({
-        where: { id: businessId },
-        data: { mrr: parsedMrr },
-      });
-    }
+    // The business's current MRR is no longer copied from here: it is worked out from the active
+    // recurring clients (see lib/businessMath), so logging a week with 0 can no longer be ignored
+    // and no old typed-in figure can linger.
 
     return NextResponse.json({ success: true, metric }, { headers: noCacheHeaders });
   } catch (error: any) {
@@ -102,5 +98,23 @@ export async function POST(req: NextRequest) {
       { success: false, error: "Failed to log weekly metric" },
       { status: 500, headers: noCacheHeaders }
     );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noCacheHeaders });
+    }
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) return NextResponse.json({ success: false, error: "Entry ID is required" }, { status: 400, headers: noCacheHeaders });
+
+    const result = await prisma.businessWeeklyMetric.deleteMany({ where: { id, userId: user.id } });
+    if (result.count === 0) return NextResponse.json({ success: false, error: "Entry not found" }, { status: 404, headers: noCacheHeaders });
+    return NextResponse.json({ success: true }, { headers: noCacheHeaders });
+  } catch (error: any) {
+    console.error("Error deleting weekly metric:", error);
+    return NextResponse.json({ success: false, error: "Failed to delete entry" }, { status: 500, headers: noCacheHeaders });
   }
 }

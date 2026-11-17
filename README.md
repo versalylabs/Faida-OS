@@ -171,3 +171,21 @@ Engines (OpenAI-compatible, tried in order, next one used if one is busy): set a
 `GROQ_API_KEY`, `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY` (optional `GROQ_MODEL`, `CEREBRAS_MODEL`,
 `OPENROUTER_MODEL`, `AI_PROVIDER_ORDER`). With no key, or when every engine is busy, the original keyword
 assistant answers, so the chat never goes dead. Keys stay on the server.
+
+## Business section
+
+Under **Business & Ventures**: an overview of every business, a page each for **Straten** and **VersalyLabs**,
+and **Business Finance**.
+
+- **Overview** (`/business`): monthly recurring revenue (worked out from active monthly clients, never typed in),
+  active clients, this month's money in and out, open client work, and what needs attention. Nothing is invented:
+  with no records every figure is 0.
+- **Company pages** (`/business/straten`, `/business/versaly`): overview, clients and sales pipeline, client work
+  (deliverables), money, equipment to buy, weekly sales activity. Straten also has a **Business plan** tab (roadmap
+  against today's date, KPI targets, price list, operating rules); one tap turns the roadmap into a tracked project.
+- **Business Finance** (`/business/finance`): money in and out across businesses, retainers still to collect,
+  cash accounts and the purchases list (equipment, software). Marking a purchase as bought can record the expense.
+  Business money is stored with the rest of your finances, so the Finance page always agrees.
+
+Needs one database update (`npx prisma db push`) that adds `businessId`/`clientId` to transactions and the
+`BusinessPurchase` table. Run it before deploying code that uses them.

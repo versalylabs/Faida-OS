@@ -53,6 +53,7 @@ model User {
   businessClients       BusinessClient[]
   businessWeeklyMetrics BusinessWeeklyMetric[]
   businessDeliverables  BusinessDeliverable[]
+  businessPurchases     BusinessPurchase[]
   mealPlanItems         MealPlanItem[]
   mealIdeas             MealIdea[]
   energyCheckins        EnergyCheckin[]
@@ -141,6 +142,7 @@ model Task {
   category         String?
   recurrence       String?   // DAILY, WEEKLY, MONTHLY
   projectId        String?
+  milestoneId      String?
   courseId         String?
   isAcademic       Boolean   @default(false)
   academicType     String?   // ASSIGNMENT, CAT_PREP, LAB, STUDY, EXAM_PREP
@@ -151,8 +153,11 @@ model Task {
   user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
   entity           Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
   project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestone        Milestone?        @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   course           UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
   subtasks         Subtask[]
+
+  @@index([milestoneId])
   reminders        Reminder[]
   calendarEvents   CalendarEvent[]
 }
@@ -245,6 +250,7 @@ model Milestone {
   createdAt DateTime  @default(now())
 
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks     Task[]
 }
 
 model Note {
@@ -558,8 +564,14 @@ model FinanceTransaction {
   date        DateTime @default(now())
   isRecurring Boolean  @default(false)
   createdAt   DateTime @default(now())
+  businessId  String?  // set when the money belongs to one of the businesses
+  clientId    String?  // the business client it came from or was spent for
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  business    Business?       @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  client      BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, date])
 }
 
 model Budget {
@@ -789,6 +801,8 @@ model Business {
   clients       BusinessClient[]
   weeklyMetrics BusinessWeeklyMetric[]
   deliverables  BusinessDeliverable[]
+  transactions  FinanceTransaction[]
+  purchases     BusinessPurchase[]
 }
 
 model BusinessClient {
@@ -814,6 +828,7 @@ model BusinessClient {
   business     Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
   user         User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   deliverables BusinessDeliverable[]
+  transactions FinanceTransaction[]
 }
 
 model BusinessWeeklyMetric {
@@ -860,6 +875,30 @@ model BusinessDeliverable {
   business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   client   BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Things a business needs to buy (a camera for Straten, a laptop, software...), before and after buying.
+model BusinessPurchase {
+  id            String    @id @default(uuid())
+  userId        String?
+  businessId    String
+  name          String
+  category      String    @default("EQUIPMENT") // EQUIPMENT, SOFTWARE, MARKETING, OFFICE, OTHER
+  estimatedCost Float     @default(0)
+  actualCost    Float?
+  priority      String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status        String    @default("WISHLIST") // WISHLIST, PLANNED, BOUGHT
+  neededBy      DateTime?
+  link          String?
+  notes         String?
+  purchasedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
 }
 
 // -------------------------------------------------------------

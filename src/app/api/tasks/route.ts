@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { purgeOldCompleted } from "@/lib/cleanup";
 import { touchProject } from "@/lib/projectActivity";
+import { resolveMilestoneLink } from "@/lib/milestoneLink";
 import { PRIORITIES, RECURRENCES, ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { title, description, priority, estimatedMinutes, dueDate, projectId, category, subtasks, recurrence } = body;
+    const { title, description, priority, estimatedMinutes, dueDate, projectId, milestoneId, category, subtasks, recurrence } = body;
 
     const cleanTitle = must(str(title, { max: 300, required: true }), "Task title is required (max 300 characters)");
     const cleanDescription = must(str(description, { max: 10000 }), "Description is too long");
@@ -83,6 +84,8 @@ export async function POST(req: NextRequest) {
     const cleanRecurrence = must(oneOf(recurrence, RECURRENCES), "Invalid repeat option");
     const ownedProjectId = await ownedId("project", user.id, projectId);
     if (ownedProjectId === undefined) return notFound("Project not found");
+    const link = await resolveMilestoneLink(user.id, milestoneId, ownedProjectId);
+    if ("error" in link) throw new ValidationError(link.error);
     const cleanSubtasks: { title: string; isDone: boolean }[] = [];
     if (subtasks !== undefined && !Array.isArray(subtasks)) throw new ValidationError("Subtasks must be a list");
     for (const sub of (subtasks ?? []).slice(0, 100)) {
@@ -114,7 +117,8 @@ export async function POST(req: NextRequest) {
         status: "TODO",
         estimatedMinutes: minutes,
         dueDate: cleanDue,
-        projectId: ownedProjectId,
+        projectId: ownedProjectId ?? link.projectId ?? null,
+        milestoneId: link.milestoneId,
         category: cleanCategory,
         recurrence: cleanRecurrence,
         subtasks: cleanSubtasks.length > 0 ? { create: cleanSubtasks } : undefined,

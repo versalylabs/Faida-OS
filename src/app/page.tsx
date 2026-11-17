@@ -32,6 +32,7 @@ import Link from "next/link";
 import { formatKES } from "@/lib/utils";
 import { getCachedOfflineData, offlineFetch } from "@/lib/offlineSync";
 import { BriefingCard } from "@/components/dashboard/BriefingCard";
+import { BusinessPulse } from "@/components/dashboard/BusinessPulse";
 import type { Briefing } from "@/lib/briefing";
 
 interface TaskItem {
@@ -175,23 +176,26 @@ export default function DashboardPage() {
     totalLiquidBalance: number;
     netCashFlow: number;
   }>({
-    monthlyBudget: 200000,
-    remainingBudget: 145000,
-    budgetPercentUsed: 28,
-    personalBudget: 120000,
-    personalExpense: 35000,
-    personalRemaining: 85000,
-    personalPercentUsed: 29,
-    businessBudget: 80000,
-    businessExpense: 20000,
-    businessRemaining: 60000,
-    businessPercentUsed: 25,
-    savingsTarget: 100000,
-    savingsBalance: 220000,
-    savingsPercent: 100,
-    totalLiquidBalance: 310000,
-    netCashFlow: 45000,
+    monthlyBudget: 0,
+    remainingBudget: 0,
+    budgetPercentUsed: 0,
+    personalBudget: 0,
+    personalExpense: 0,
+    personalRemaining: 0,
+    personalPercentUsed: 0,
+    businessBudget: 0,
+    businessExpense: 0,
+    businessRemaining: 0,
+    businessPercentUsed: 0,
+    savingsTarget: 0,
+    savingsBalance: 0,
+    savingsPercent: 0,
+    totalLiquidBalance: 0,
+    netCashFlow: 0,
   });
+  // Until the real finance numbers arrive, show dots instead of figures
+  const [financeReady, setFinanceReady] = useState(false);
+  const fin = (n: number) => (financeReady ? formatKES(n) : "···");
   const [isLoading, setIsLoading] = useState(true);
   const [briefing, setBriefing] = useState<Briefing | null>(null);
 
@@ -213,6 +217,7 @@ export default function DashboardPage() {
 
       // 3. Finance
       if (financeData.success && financeData.metrics) {
+        setFinanceReady(true);
         setFinanceMetrics({
           monthlyBudget: financeData.metrics.monthlyBudget ?? 0,
           remainingBudget: financeData.metrics.remainingBudget ?? 0,
@@ -660,7 +665,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="text-sm font-bold text-slate-100 font-mono tracking-tight">
-                  {formatKES(financeMetrics.personalBudget)}
+                  {fin(financeMetrics.personalBudget)}
                 </div>
                 <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
                   <div
@@ -675,7 +680,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 <div className="text-[10px] text-emerald-400 font-mono truncate">
-                  {formatKES(financeMetrics.personalRemaining)} rem.
+                  {fin(financeMetrics.personalRemaining)} rem.
                 </div>
               </div>
 
@@ -684,14 +689,14 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold flex items-center gap-1">
                     <Briefcase className="h-3 w-3 text-blue-400" />
-                    Business
+                    <Link href="/business/finance" className="hover:text-slate-200">Business</Link>
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     {financeMetrics.businessBudget > 0 ? `${100 - financeMetrics.businessPercentUsed}% left` : "N/A"}
                   </span>
                 </div>
                 <div className="text-sm font-bold text-slate-100 font-mono tracking-tight">
-                  {formatKES(financeMetrics.businessBudget)}
+                  {fin(financeMetrics.businessBudget)}
                 </div>
                 <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
                   <div
@@ -706,7 +711,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 <div className="text-[10px] text-blue-400 font-mono truncate">
-                  {formatKES(financeMetrics.businessRemaining)} rem.
+                  {fin(financeMetrics.businessRemaining)} rem.
                 </div>
               </div>
 
@@ -722,7 +727,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
                 <div className="text-sm font-bold text-purple-300 font-mono tracking-tight">
-                  {formatKES(financeMetrics.savingsBalance)}
+                  {fin(financeMetrics.savingsBalance)}
                 </div>
                 <div className="w-full bg-slate-700/50 h-1.5 rounded-full overflow-hidden">
                   <div
@@ -731,7 +736,7 @@ export default function DashboardPage() {
                   />
                 </div>
                 <div className="text-[10px] text-slate-400 font-mono truncate">
-                  Target: {formatKES(financeMetrics.savingsTarget)}
+                  Target: {fin(financeMetrics.savingsTarget)}
                 </div>
               </div>
 
@@ -748,11 +753,11 @@ export default function DashboardPage() {
                     }`}
                   >
                     {financeMetrics.netCashFlow >= 0 ? "+" : ""}
-                    {formatKES(financeMetrics.netCashFlow)}
+                    {fin(financeMetrics.netCashFlow)}
                   </span>
                 </div>
                 <div className="text-sm font-bold text-cyan-300 font-mono tracking-tight">
-                  {formatKES(financeMetrics.totalLiquidBalance)}
+                  {fin(financeMetrics.totalLiquidBalance)}
                 </div>
                 <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1">
                   <span>Urgent alerts:</span>
@@ -770,6 +775,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Business & Ventures: the same numbers as the Business pages */}
+      <BusinessPulse />
 
       {/* SECONDARY ROW: Scheduler Card, Smart Shopping Card, Academic Command Hub, Today's Menu */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">

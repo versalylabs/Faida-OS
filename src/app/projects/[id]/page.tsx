@@ -60,6 +60,7 @@ interface TaskItem {
   priority: string;
   status: string;
   estimatedMinutes: number;
+  milestoneId?: string | null;
 }
 
 interface NoteItem {
@@ -114,6 +115,10 @@ export default function ProjectWorkspacePage({
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDuration, setNewTaskDuration] = useState("45");
   const [newTaskPriority, setNewTaskPriority] = useState("HIGH");
+  const [newTaskMilestone, setNewTaskMilestone] = useState("");
+  const [editTaskMilestone, setEditTaskMilestone] = useState("");
+  // Shown when the last open task of a milestone has just been finished
+  const [suggestMilestone, setSuggestMilestone] = useState<{ id: string; title: string } | null>(null);
   const [isAddingTask, setIsAddingTask] = useState(false);
 
   // Milestone edit / delete
@@ -397,6 +402,7 @@ export default function ProjectWorkspacePage({
     setEditTaskTitle(task.title);
     setEditTaskPriority(task.priority);
     setEditTaskDuration(String(task.estimatedMinutes));
+    setEditTaskMilestone(task.milestoneId || "");
   };
 
   const handleSaveTask = async (e: React.FormEvent) => {
@@ -413,6 +419,7 @@ export default function ProjectWorkspacePage({
           title,
           priority: editTaskPriority,
           estimatedMinutes: Math.max(0, parseInt(editTaskDuration, 10) || 30),
+          milestoneId: editTaskMilestone || null,
         }),
       });
       const data = await res.json();
@@ -454,6 +461,7 @@ export default function ProjectWorkspacePage({
           projectId: id,
           priority: newTaskPriority,
           estimatedMinutes: parseInt(newTaskDuration, 10) || 30,
+          milestoneId: newTaskMilestone || null,
         }),
       });
       if (res.ok) {
@@ -469,6 +477,16 @@ export default function ProjectWorkspacePage({
 
   const handleToggleTaskDone = async (task: TaskItem) => {
     const nextStatus = task.status === "DONE" ? "TODO" : "DONE";
+
+    // Finishing the last open task of a milestone: offer to tick the milestone too.
+    if (nextStatus === "DONE" && task.milestoneId && project) {
+      const milestone = project.milestones.find((m) => m.id === task.milestoneId);
+      const othersOpen = project.tasks.some(
+        (t) => t.id !== task.id && t.milestoneId === task.milestoneId && t.status !== "DONE" && t.status !== "ARCHIVED" && t.status !== "CANCELLED"
+      );
+      setSuggestMilestone(milestone && !milestone.isDone && !othersOpen ? { id: milestone.id, title: milestone.title } : null);
+    }
+
     try {
       await offlineFetch("/api/tasks", {
         method: "PATCH",
@@ -589,6 +607,32 @@ export default function ProjectWorkspacePage({
               </span>
             </div>
 
+            {suggestMilestone && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs text-emerald-300 min-w-0 break-words">
+                  All tasks for &quot;{suggestMilestone.title}&quot; are done. Mark the milestone complete?
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setSuggestMilestone(null)}
+                    className="px-2.5 py-1 rounded-lg text-xs text-slate-400 hover:text-slate-200 cursor-pointer"
+                  >
+                    Not yet
+                  </button>
+                  <button
+                    onClick={() => {
+                      const m = project.milestones.find((x) => x.id === suggestMilestone.id);
+                      setSuggestMilestone(null);
+                      if (m && !m.isDone) handleToggleMilestone(m);
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold cursor-pointer"
+                  >
+                    Complete milestone
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               {project.milestones.length === 0 && (
                 <div className="text-xs text-slate-500 text-center py-4">
@@ -686,6 +730,16 @@ export default function ProjectWorkspacePage({
                       >
                         {m.title}
                       </span>
+                      {(() => {
+                        const open = project.tasks.filter(
+                          (t) => t.milestoneId === m.id && t.status !== "DONE" && t.status !== "ARCHIVED" && t.status !== "CANCELLED"
+                        ).length;
+                        return open > 0 && !m.isDone ? (
+                          <span className="shrink-0 text-[10px] font-mono px-2 py-0.5 rounded-full border bg-blue-500/10 text-blue-400 border-blue-500/20">
+                            {open} task{open === 1 ? "" : "s"}
+                          </span>
+                        ) : null;
+                      })()}
                       {m.dueDate && (() => {
                         const day = dueDay(m.dueDate);
                         const n = daysUntil(day);
@@ -825,6 +879,21 @@ export default function ProjectWorkspacePage({
                             <option value="MEDIUM">Medium</option>
                             <option value="LOW">Low</option>
                           </select>
+                          <select
+                            value={editTaskMilestone}
+                            onChange={(e) => setEditTaskMilestone(e.target.value)}
+                            title="Milestone this task belongs to"
+                            className="max-w-[11rem] bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="">No milestone</option>
+                            {project.milestones
+                              .filter((m) => !m.isDone || m.id === editTaskMilestone)
+                              .map((m) => (
+                                <option key={m.id} value={m.id}>
+                                  {m.title}
+                                </option>
+                              ))}
+                          </select>
                           <label className="flex items-center gap-1.5 text-[11px] text-slate-400">
                             <Clock className="h-3 w-3" />
                             <input
@@ -909,6 +978,11 @@ export default function ProjectWorkspacePage({
                         >
                           {task.title}
                         </span>
+                        {task.milestoneId && (
+                          <span className="hidden sm:inline-block shrink-0 max-w-[10rem] truncate text-[10px] font-mono px-2 py-0.5 rounded-full border bg-slate-800/80 text-slate-400 border-slate-700">
+                            {project.milestones.find((m) => m.id === task.milestoneId)?.title ?? "Milestone"}
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500">
@@ -944,13 +1018,13 @@ export default function ProjectWorkspacePage({
             </div>
 
             {/* Quick Add Task to Project */}
-            <form onSubmit={handleAddTask} className="flex gap-2 pt-2 border-t border-slate-800">
+            <form onSubmit={handleAddTask} className="flex flex-wrap gap-2 pt-2 border-t border-slate-800">
               <input
                 type="text"
                 placeholder="New task for this project..."
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
+                className="flex-1 min-w-[10rem] bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
               />
               <select
                 value={newTaskPriority}
@@ -962,6 +1036,23 @@ export default function ProjectWorkspacePage({
                 <option value="LOW">Low</option>
                 <option value="URGENT">Urgent</option>
               </select>
+              {project.milestones.some((m) => !m.isDone) && (
+                <select
+                  value={newTaskMilestone}
+                  onChange={(e) => setNewTaskMilestone(e.target.value)}
+                  title="Milestone this task belongs to (optional)"
+                  className="max-w-[10rem] bg-slate-950 border border-slate-700 rounded-xl px-2 py-1.5 text-xs text-slate-300 focus:outline-none"
+                >
+                  <option value="">No milestone</option>
+                  {project.milestones
+                    .filter((m) => !m.isDone)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.title}
+                      </option>
+                    ))}
+                </select>
+              )}
               <button
                 type="submit"
                 disabled={!newTaskTitle.trim() || isAddingTask}

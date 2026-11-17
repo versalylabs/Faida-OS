@@ -5,6 +5,7 @@ import { getLmsOverview } from "@/lib/lms/overview";
 import { whenLabel } from "@/lib/dates";
 import { zonedDateKey, zonedNow, zonedTime } from "@/lib/tz";
 import { pickNextAction, pickNextMilestone, staleDays } from "@/lib/projectNext";
+import { computeMrr, PURCHASE_CATEGORIES } from "@/lib/businessMath";
 import { touchProject } from "@/lib/projectActivity";
 import type { ToolSpec } from "@/lib/ai/llm";
 import {
@@ -211,23 +212,26 @@ const getUniversity: AgentTool = {
 };
 
 const getBusiness: AgentTool = {
-  spec: fn("get_business", "Business Hub overview: businesses and MRR, clients and their health, deliverables overdue or due soon, latest weekly metrics."),
+  spec: fn("get_business", "Business overview for Straten and VersalyLabs: monthly recurring revenue (from active clients), this month's money in and out, clients and their health, deliverables overdue or due soon, things still to buy, latest weekly sales numbers."),
   write: false,
   groups: ["business"],
   async run(userId) {
-    const [businesses, clients, deliverables] = await Promise.all([
+    const monthStart = zonedNow().startOfMonth;
+    const [businesses, clients, deliverables, monthTx, toBuy] = await Promise.all([
       prisma.business.findMany({
         where: { userId, isActive: true },
         include: { weeklyMetrics: { orderBy: { createdAt: "desc" }, take: 1 } },
         take: 8,
       }),
-      prisma.businessClient.findMany({ where: { userId }, select: { name: true, status: true, health: true, business: { select: { name: true } }, contractValue: true, billingCycle: true }, take: 60 }),
+      prisma.businessClient.findMany({ where: { userId }, select: { name: true, status: true, health: true, businessId: true, business: { select: { name: true } }, contractType: true, contractValue: true, billingCycle: true }, take: 100 }),
       prisma.businessDeliverable.findMany({
         where: { userId, status: { not: "COMPLETED" } },
         include: { business: { select: { name: true } }, client: { select: { name: true } } },
         orderBy: { dueDate: "asc" },
         take: 40,
       }),
+      prisma.financeTransaction.findMany({ where: { userId, businessId: { not: null }, date: { gte: monthStart } }, select: { businessId: true, amount: true } }),
+      prisma.businessPurchase.findMany({ where: { userId, status: { not: "BOUGHT" } }, select: { name: true, estimatedCost: true, priority: true, status: true, business: { select: { name: true } } }, orderBy: { createdAt: "desc" }, take: 15 }),
     ]);
     const now = Date.now();
     const byStatus: Record<string, number> = {};
@@ -247,8 +251,14 @@ const getBusiness: AgentTool = {
         businesses: businesses.map((b) => ({
           name: b.name,
           type: b.type,
-          mrr: b.mrr,
+          mrr: computeMrr(clients.filter((c) => c.businessId === b.id)),
           target_mrr: b.targetMrr,
+          this_month: (() => {
+            const mine = monthTx.filter((t) => t.businessId === b.id);
+            const income = mine.filter((t) => t.amount > 0).reduce((n, t) => n + t.amount, 0);
+            const expense = mine.filter((t) => t.amount < 0).reduce((n, t) => n + Math.abs(t.amount), 0);
+            return { money_in: Math.round(income), money_out: Math.round(expense), net: Math.round(income - expense) };
+          })(),
           currency: b.currency,
           latest_week: b.weeklyMetrics[0]
             ? { week: b.weeklyMetrics[0].weekStartDate, outreach: b.weeklyMetrics[0].outreachSent, audits_booked: b.weeklyMetrics[0].auditsBooked, show_rate: b.weeklyMetrics[0].showRate, close_rate: b.weeklyMetrics[0].closeRate, mrr: b.weeklyMetrics[0].mrr }
@@ -256,6 +266,7 @@ const getBusiness: AgentTool = {
         })),
         clients: { total: clients.length, by_status: byStatus },
         clients_needing_attention: clients.filter((c) => c.health !== "HEALTHY" && !["COMPLETED", "PAUSED"].includes(c.status)).slice(0, 8).map((c) => ({ name: c.name, health: c.health, business: c.business?.name })),
+        to_buy: { count: toBuy.length, estimated_total: Math.round(toBuy.reduce((n, p) => n + p.estimatedCost, 0)), items: toBuy.slice(0, 6).map((p) => ({ name: p.name, cost: p.estimatedCost, business: p.business?.name, priority: p.priority })) },
         open_deliverables: deliverables.length,
         overdue_deliverables: late.slice(0, 8).map(row),
         due_next_7_days: soon.slice(0, 8).map(row),
@@ -657,6 +668,110 @@ const updateDeliverable: AgentTool = {
   },
 };
 
+/** One business by name, or a reason it cannot be chosen. */
+async function findBusiness(userId: string, name: unknown): Promise<{ id: string; name: string } | { error: string; options?: string[] }> {
+  const q = typeof name === "string" ? name.trim() : "";
+  if (!q) return { error: "Which business: Straten or VersalyLabs?" };
+  const rows = await prisma.business.findMany({ where: { userId, OR: [{ name: ci(q) }, { slug: ci(q) }] }, select: { id: true, name: true }, take: 4 });
+  if (rows.length === 0) return { error: `No business matches "${q.slice(0, 60)}".` };
+  if (rows.length > 1) return { error: "More than one business matches. Which one?", options: rows.map((r) => r.name) };
+  return rows[0];
+}
+
+const logBusinessMoney: AgentTool = {
+  spec: fn(
+    "log_business_money",
+    "Record money that came into or went out of one of the businesses (a client payment, a subscription, equipment). Shows in the business finance and the main finance page.",
+    {
+      business: s("Business name: Straten or VersalyLabs"),
+      type: { type: "string", enum: ["INCOME", "EXPENSE"] },
+      amount: n("Amount in KES, positive"),
+      description: s("What it was for"),
+      category: s("Optional category, e.g. Client payment, Equipment, Software & subscriptions"),
+      client: s("Optional client name (for payments)"),
+    },
+    ["business", "type", "amount", "description"]
+  ),
+  write: true,
+  groups: ["business", "finance"],
+  async run(userId, a) {
+    const business = await findBusiness(userId, a.business);
+    if ("error" in business) return { data: business };
+    const type = a.type === "EXPENSE" ? "EXPENSE" : a.type === "INCOME" ? "INCOME" : null;
+    const amount = Number(a.amount);
+    const description = String(a.description || "").trim().slice(0, 300);
+    if (!type || !Number.isFinite(amount) || amount <= 0 || !description) return { data: { error: "Need a type (income or expense), an amount above 0 and what it was for." } };
+
+    let clientId: string | null = null;
+    if (a.client) {
+      const matches = await prisma.businessClient.findMany({ where: { userId, businessId: business.id, name: ci(String(a.client)) }, select: { id: true, name: true }, take: 4 });
+      if (matches.length > 1) return { data: { error: "More than one client matches. Which one?", options: matches.map((m) => m.name) } };
+      clientId = matches[0]?.id ?? null;
+    }
+    await prisma.financeTransaction.create({
+      data: {
+        userId,
+        businessId: business.id,
+        clientId,
+        description,
+        amount: type === "EXPENSE" ? -Math.abs(amount) : Math.abs(amount),
+        type,
+        category: String(a.category || "").trim().slice(0, 80) || (type === "INCOME" ? "Client payment" : "Other expense"),
+      },
+    });
+    return {
+      data: { recorded: type === "INCOME" ? "money in" : "money out", amount, business: business.name, description },
+      action: { type: "FINANCE_LOGGED", title: description, badge: `${type === "INCOME" ? "+" : "-"}KES ${Math.round(amount).toLocaleString()}`, link: "/business/finance" },
+    };
+  },
+};
+
+const addBusinessPurchase: AgentTool = {
+  spec: fn(
+    "add_business_purchase",
+    "Add something a business needs to buy (a camera, software, a laptop) to its purchases list.",
+    {
+      business: s("Business name: Straten or VersalyLabs"),
+      name: s("What to buy"),
+      estimated_cost: n("Estimated cost in KES"),
+      priority: { type: "string", enum: ["LOW", "MEDIUM", "HIGH", "URGENT"] },
+      needed_by: s("Optional date YYYY-MM-DD"),
+    },
+    ["business", "name"]
+  ),
+  write: true,
+  groups: ["business"],
+  async run(userId, a) {
+    const business = await findBusiness(userId, a.business);
+    if ("error" in business) return { data: business };
+    const name = String(a.name || "").trim().slice(0, 200);
+    if (!name) return { data: { error: "What should be bought?" } };
+    const cost = Number(a.estimated_cost);
+    const neededBy = a.needed_by && /^\d{4}-\d{2}-\d{2}$/.test(String(a.needed_by)) ? new Date(`${a.needed_by}T00:00:00.000Z`) : null;
+    const lower = name.toLowerCase();
+    const category = /camera|laptop|phone|lens|tripod|light|mic|monitor|printer|drone|gimbal|computer/.test(lower)
+      ? "EQUIPMENT"
+      : /subscription|software|licen[cs]e|canva|adobe|figma/.test(lower)
+      ? "SOFTWARE"
+      : "OTHER";
+    await prisma.businessPurchase.create({
+      data: {
+        userId,
+        businessId: business.id,
+        name,
+        category: PURCHASE_CATEGORIES.some((c) => c.value === category) ? category : "OTHER",
+        estimatedCost: Number.isFinite(cost) && cost > 0 ? cost : 0,
+        priority: ["LOW", "MEDIUM", "HIGH", "URGENT"].includes(String(a.priority)) ? String(a.priority) : "MEDIUM",
+        neededBy: neededBy && !Number.isNaN(neededBy.getTime()) ? neededBy : null,
+      },
+    });
+    return {
+      data: { added: name, business: business.name, estimated_cost: Number.isFinite(cost) && cost > 0 ? cost : null },
+      action: { type: "TASK_CREATED", title: name, badge: "To buy", link: "/business/finance" },
+    };
+  },
+};
+
 const decomposeGoal: AgentTool = {
   spec: fn("break_down_goal", "Turn a big goal into a project with concrete tasks.", { goal: s("The goal"), project: s("Project name") }, ["goal"]),
   write: true,
@@ -696,6 +811,8 @@ export const ALL_TOOLS: AgentTool[] = [
   listProjects,
   addMilestone,
   updateMilestone,
+  logBusinessMoney,
+  addBusinessPurchase,
   decomposeGoal,
   searchNotes,
   getMaintenance,
@@ -707,7 +824,7 @@ const TOOL_BY_NAME = new Map(ALL_TOOLS.map((t) => [t.spec.function.name, t]));
 export const toolByName = (name: string) => TOOL_BY_NAME.get(name);
 
 const TRIGGERS: [Group, RegExp][] = [
-  ["business", /business|client|deliverable|mrr|revenue|versaly|straten|invoice|proposal|retainer|outreach|lead|audit|contract/i],
+  ["business", /business|client|deliverable|mrr|revenue|versaly|straten|invoice|proposal|retainer|outreach|lead|audit|contract|equipment|camera|laptop|purchase|wishlist|to buy/i],
   ["university", /universit|class|lecture|cat\b|cats\b|exam|assignment|unit\b|units\b|lecturer|lms|moodle|marks?\b|grades?\b|course|study|submission|submit|due/i],
   ["business", /done|finished|completed?|delivered|handed over|shipped/i],
   ["finance", /spen[dt]|money|budget|kes|ksh|expense|income|paid|bought|buy|salary|cash|finance|cost|mpesa|m-pesa|balance/i],

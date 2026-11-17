@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
       }),
       prisma.financeTransaction.findMany({
         where: { userId: user.id, date: { gte: monthStart } },
-        select: { amount: true, category: true },
+        select: { amount: true, category: true, businessId: true },
       }),
     ]);
 
@@ -88,7 +88,8 @@ export async function GET(req: NextRequest) {
       } else {
         const absAmt = Math.abs(tx.amount);
         totalExpense += absAmt;
-        if (isBusinessCategory(cat)) {
+        // Money tagged to one of the businesses is business spending whatever its category is called
+        if (tx.businessId || isBusinessCategory(cat)) {
           businessExpense += absAmt;
         } else {
           personalExpense += absAmt;

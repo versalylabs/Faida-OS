@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { spawnNextRecurrence } from "@/lib/recurrence";
 import { touchProject } from "@/lib/projectActivity";
+import { resolveMilestoneLink } from "@/lib/milestoneLink";
 import { PRIORITIES, RECURRENCES, TASK_STATUSES, ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -92,6 +93,7 @@ async function handleUpdate(
       actualMinutes,
       dueDate,
       projectId,
+      milestoneId,
       category,
       recurrence,
       isAcademic,
@@ -115,6 +117,14 @@ async function handleUpdate(
       const ownedProjectId = await ownedId("project", user.id, projectId);
       if (ownedProjectId === undefined) return notFound("Project not found", noCacheHeaders);
       dataToUpdate.projectId = ownedProjectId;
+      // Moving a task to another project drops a milestone it had in the old one.
+      if (ownedProjectId !== existing.projectId && milestoneId === undefined) dataToUpdate.milestoneId = null;
+    }
+    if (milestoneId !== undefined) {
+      const link = await resolveMilestoneLink(user.id, milestoneId, dataToUpdate.projectId !== undefined ? dataToUpdate.projectId : existing.projectId);
+      if ("error" in link) throw new ValidationError(link.error);
+      dataToUpdate.milestoneId = link.milestoneId;
+      if (link.projectId && !(dataToUpdate.projectId ?? existing.projectId)) dataToUpdate.projectId = link.projectId;
     }
     if (category !== undefined) dataToUpdate.category = must(str(category, { max: 80 }), "Category is too long");
     if (recurrence !== undefined) dataToUpdate.recurrence = must(oneOf(recurrence, RECURRENCES), "Invalid recurrence");

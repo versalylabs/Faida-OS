@@ -32,7 +32,7 @@ const CATEGORIES: { key: keyof Prefs; label: string; hint: string }[] = [
   { key: "academic", label: "CATs & assignments", hint: "From your LMS and university page" },
   { key: "events", label: "Meetings & events", hint: "Client meetings and anything on your calendar" },
   { key: "reminders", label: "Your reminders", hint: "Sent at the time you set" },
-  { key: "business", label: "Business deliverables", hint: "Due dates in the Business Hub" },
+  { key: "business", label: "Business deliverables", hint: "Due dates in the Business section" },
   { key: "tasks", label: "Task deadlines", hint: "Tasks with a due date" },
   { key: "classes", label: "Classes", hint: "15 minutes before a class or live session" },
   { key: "maintenance", label: "Maintenance", hint: "On the morning it is due" },
