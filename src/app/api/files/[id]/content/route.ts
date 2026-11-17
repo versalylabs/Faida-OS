@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { isInlineSafe } from "@/lib/files";
+import { previewType } from "@/lib/preview";
 
 export const dynamic = "force-dynamic";
 
@@ -26,19 +26,23 @@ export async function GET(
     }
 
     const forceDownload = new URL(req.url).searchParams.get("download") === "1";
-    const inline = !forceDownload && isInlineSafe(asset.blob.mimeType);
+    // Show it on screen when the browser can display it (also judging by the file extension, since phones often
+    // upload with a generic type); everything else downloads.
+    const shownAs = forceDownload ? null : previewType(asset.name, asset.blob.mimeType);
+    const inline = shownAs !== null;
     const safeName = asset.name.replace(/[^\w.\- ]/g, "_").slice(0, 150) || "file";
-    const contentType = inline ? asset.blob.mimeType : "application/octet-stream";
+    const contentType = shownAs ? (shownAs === "text/plain" ? "text/plain; charset=utf-8" : shownAs) : "application/octet-stream";
 
     return new NextResponse(new Uint8Array(asset.blob.data), {
       headers: {
         "Content-Type": contentType,
+        "Accept-Ranges": "none",
         "Content-Length": String(asset.blob.data.length),
         "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${safeName}"`,
         "X-Content-Type-Options": "nosniff",
         // The PDF viewer breaks under a sandboxed CSP; every other type here is inert.
         "Content-Security-Policy":
-          inline && contentType === "application/pdf"
+          inline && (shownAs === "application/pdf" || shownAs!.startsWith("audio/") || shownAs!.startsWith("video/"))
             ? "default-src 'none'"
             : "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox",
         "Cache-Control": "private, no-store",

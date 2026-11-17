@@ -26,6 +26,7 @@ import {
   FileUp,
 } from "lucide-react";
 import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
+import { previewType } from "@/lib/preview";
 
 interface FileAsset {
   id: string;
@@ -498,6 +499,7 @@ export default function FilesPage() {
                     {/* View / Open Button if uploaded asset */}
                     {file.filePath.startsWith("/api/files/") && (
                       <>
+                        {previewType(file.name) && (
                         <a
                           href={file.filePath}
                           target="_blank"
@@ -508,6 +510,7 @@ export default function FilesPage() {
                           <Eye className="h-3 w-3" />
                           <span className="text-[10px] hidden sm:inline">View</span>
                         </a>
+                        )}
 
                         <a
                           href={`${file.filePath}?download=1`}
