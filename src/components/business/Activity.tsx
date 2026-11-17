@@ -3,11 +3,12 @@
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { offlineFetch } from "@/lib/offlineSync";
+import { nairobiToday } from "@/lib/dueDay";
 import { formatKES } from "@/lib/utils";
 import type { BusinessItem, MetricItem } from "@/components/business/types";
 import { Card, ConfirmDelete, EmptyState, Field, Modal, dayLabel, ghostBtn, inputCls, primaryBtn } from "@/components/business/ui";
 
-const todayInput = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
+const todayInput = nairobiToday;
 
 type Variant = "default" | "versaly";
 

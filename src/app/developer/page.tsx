@@ -12,7 +12,6 @@ import {
   Plus,
   Trash2,
   ExternalLink,
-  ShieldCheck,
   AlertTriangle,
   FileCode2,
   RefreshCw,

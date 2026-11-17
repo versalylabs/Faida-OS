@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import {
   GraduationCap,
   Clock,
-  BookOpen,
   Plus,
   CheckCircle2,
   Circle,
@@ -16,8 +15,6 @@ import {
   Calendar,
   FileText,
   AlertCircle,
-  Check,
-  ChevronRight,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 

@@ -102,11 +102,6 @@ export function date(value: unknown, opts: { required?: boolean } = {}): Date | 
   return d;
 }
 
-export function bool(value: unknown): boolean | null | undefined {
-  if (value === undefined || value === null) return null;
-  return typeof value === "boolean" ? value : undefined;
-}
-
 export function email(value: unknown): string | null | undefined {
   const s = str(value, { max: 254 });
   if (s === null || s === undefined) return s;

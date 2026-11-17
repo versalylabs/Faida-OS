@@ -3,7 +3,6 @@
  * No database or network access here, so it can be tested on its own.
  */
 
-export type ItemState = "TODO" | "SUBMITTED" | "GRADED";
 
 export interface ProgressItem {
   id: string;

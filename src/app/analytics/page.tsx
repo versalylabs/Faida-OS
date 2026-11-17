@@ -6,16 +6,12 @@ import {
   CheckCircle,
   Clock,
   BookOpen,
-  Zap,
   TrendingUp,
-  FolderGit2,
-  Calendar,
   Loader2,
   Sparkles,
   Bot,
-  Layers,
 } from "lucide-react";
-import { formatKES, formatDate } from "@/lib/utils";
+import { formatKES } from "@/lib/utils";
 
 import { offlineFetch } from "@/lib/offlineSync";
 interface AnalyticsData {
@@ -47,19 +43,9 @@ interface JournalData {
   activities: { id: string; action: string; details?: string | null; timestamp: string }[];
 }
 
-interface AutomationRule {
-  id: string;
-  name: string;
-  trigger: string;
-  description: string;
-  isActive: boolean;
-  timesTriggered: number;
-}
-
 export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [journal, setJournal] = useState<JournalData | null>(null);
-  const [automations, setAutomations] = useState<AutomationRule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchData = async () => {
@@ -85,23 +71,6 @@ export default function AnalyticsPage() {
     fetchData();
   }, []);
 
-  const handleToggleAutomation = async (rule: AutomationRule) => {
-    const nextState = !rule.isActive;
-    setAutomations(
-      automations.map((r) => (r.id === rule.id ? { ...r, isActive: nextState } : r))
-    );
-
-    try {
-      await offlineFetch("/api/automations", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: rule.id, isActive: nextState }),
-      });
-    } catch (e) {
-      fetchData();
-    }
-  };
-
   return (
     <div className="max-w-6xl mx-auto space-y-8">
       {/* Header */}
@@ -114,7 +83,7 @@ export default function AnalyticsPage() {
           Personal Analytics & Work Journal
         </h1>
         <p className="text-xs text-slate-400 mt-1">
-          Auto-constructed retrospective logs, execution velocity, and personal automation rules.
+          Auto-constructed retrospective logs, and execution velocity.
         </p>
       </div>
 

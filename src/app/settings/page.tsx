@@ -1,25 +1,17 @@
 "use client";
 
-import { Settings, Shield, Cpu, Database, Save, KeyRound, Loader2 } from "lucide-react";
+import { Settings, Shield, Database, KeyRound, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { NotificationSettings } from "@/components/settings/NotificationSettings";
 import { AiEngineStatus } from "@/components/settings/AiEngineStatus";
 
 export default function SettingsPage() {
-  const [geminiKey, setGeminiKey] = useState("");
-  const [isSaved, setIsSaved] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
-  };
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();

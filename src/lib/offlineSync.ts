@@ -253,12 +253,6 @@ export function enqueueMutation(
 /**
  * Remove a specific mutation from queue
  */
-export function removeQueuedMutation(id: string): void {
-  const queue = getQueuedMutations();
-  const filtered = queue.filter((m) => m.id !== id);
-  saveQueue(filtered);
-}
-
 /**
  * Clear all queued mutations
  */
@@ -353,8 +347,9 @@ export async function syncPendingMutations(): Promise<{
   }
 }
 
-// How long a page waits for the server before showing its saved copy instead.
-const SLOW_NETWORK_MS = 7000;
+// How long a page waits for the server before showing its saved copy instead. Short on purpose: a saved copy
+// appears almost at once and the fresh answer replaces it a moment later, so the app never feels slow.
+const SLOW_NETWORK_MS = 600;
 // Keys whose fresh data arrived after the saved copy was already shown.
 const justRefreshed = new Map<string, number>();
 // A page that refreshed after a slow load is only served the new data this soon afterwards.

@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/db";
 import { createEntry, defaultAccountId } from "@/lib/ledger";
 import { buildBriefing, briefingToMarkdown } from "@/lib/briefing";
-import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
 import { zonedNow } from "@/lib/tz";
 import { touchProject } from "@/lib/projectActivity";

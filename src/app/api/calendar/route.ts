@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { RECURRENCES, ValidationError, badRequest, idOf, must, notFound, oneOf, ownedId, readBody, str } from "@/lib/validate";
+import { RECURRENCES, ValidationError, badRequest, idOf, must, oneOf, ownedId, readBody, str } from "@/lib/validate";
 import { date as parseDate } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";

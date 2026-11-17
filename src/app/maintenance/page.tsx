@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   Clock,
   Plus,
-  RefreshCw,
   Loader2,
   Laptop,
   Home,

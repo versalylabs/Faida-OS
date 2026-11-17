@@ -12,13 +12,11 @@ import {
   User,
   Zap,
   CheckCircle2,
-  PlusCircle,
   Banknote,
   ShoppingCart,
   Layers,
   SunMedium,
   ExternalLink,
-  Flame,
 } from "lucide-react";
 
 interface ActionExecuted {

@@ -7,26 +7,16 @@ import {
   TrendingDown,
   Plus,
   Trash2,
-  Calendar,
-  Loader2,
   PieChart,
   Edit3,
-  CreditCard,
-  Banknote,
   PiggyBank,
-  Building2,
-  Coins,
   X,
   Tag,
   AlertCircle,
-  Layers,
-  ArrowUpRight,
-  ArrowDownRight,
   User,
   Briefcase,
-  Target,
 } from "lucide-react";
-import { formatKES, formatDate } from "@/lib/utils";
+import { formatKES } from "@/lib/utils";
 
 import { offlineFetch } from "@/lib/offlineSync";
 import { AccountsSection } from "@/components/finance/AccountsSection";
@@ -113,7 +103,7 @@ export default function FinancePage() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [catName, setCatName] = useState("");
   const [catType, setCatType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-  const [catColor, setCatColor] = useState("#f43f5e");
+  const [catColor] = useState("#f43f5e");
   const [editingCategory, setEditingCategory] = useState<CategoryItem | null>(null);
   const [isSavingCat, setIsSavingCat] = useState(false);
 
@@ -470,23 +460,6 @@ export default function FinancePage() {
       setIsDeleting(false);
     }
   };
-
-  const getAccountIcon = (type: string) => {
-    switch (type) {
-      case "CARD":
-        return <CreditCard className="h-4 w-4" />;
-      case "CASH":
-        return <Banknote className="h-4 w-4" />;
-      case "SAVINGS":
-        return <PiggyBank className="h-4 w-4" />;
-      case "BANK":
-        return <Building2 className="h-4 w-4" />;
-      default:
-        return <Coins className="h-4 w-4" />;
-    }
-  };
-
-  const totalAccountBalance = accounts.reduce((acc, a) => acc + a.balance, 0);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">

@@ -27,13 +27,41 @@ function tunedDatabaseUrl(raw: string | undefined): string | undefined {
   }
 }
 
+/**
+ * Errors that come from the connection, not from the query: a database that is still waking up, a pooled
+ * connection the server closed while the app was idle, a closed connection that was reused.
+ * Running the same query again on a fresh connection almost always works.
+ */
+const TRANSIENT_CODES = new Set(["P1001", "P1002", "P1008", "P1017"]);
+function isTransient(err: unknown): boolean {
+  const e = err as { code?: string; message?: string };
+  if (e?.code && TRANSIENT_CODES.has(e.code)) return true;
+  return /Server has closed the connection|ConnectionReset|forcibly closed|Connection terminated/i.test(e?.message || "");
+}
+
 const url = tunedDatabaseUrl(process.env.DATABASE_URL);
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createClient(): PrismaClient {
+  const base = new PrismaClient({
     datasources: url ? { db: { url } } : undefined,
     log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
   });
+  // One quiet retry for connection hiccups (reads and writes alike: a failed connection never ran the query).
+  return base.$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        try {
+          return await query(args);
+        } catch (err) {
+          if (!isTransient(err)) throw err;
+          await new Promise((r) => setTimeout(r, 400));
+          return query(args);
+        }
+      },
+    },
+  }) as unknown as PrismaClient;
+}
+
+export const prisma = globalForPrisma.prisma ?? createClient();
 
 globalForPrisma.prisma = prisma;

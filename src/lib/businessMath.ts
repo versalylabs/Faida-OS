@@ -10,9 +10,6 @@ export interface MoneyClient {
   billingCycle: string;
 }
 
-/** Statuses that mean the client is paying (or about to start paying). */
-export const PAYING_STATUSES = ["ACTIVE"] as const;
-
 /** One stage of a business's sales pipeline. "open" = still being worked, "won" = paying, "closed" = finished or dropped. */
 export interface StageDef {
   key: string;
@@ -58,14 +55,6 @@ export const STAGE_LABEL: Record<string, string> = {
 /** Still being worked on: not a paying customer and not finished, paused or lost. */
 export function isOpenStage(status: string): boolean {
   return !["ACTIVE", "COMPLETED", "PAUSED", "LOST"].includes(status);
-}
-
-/** Kept for older code: Straten's stage keys. */
-export const PIPELINE_STAGES = DEFAULT_STAGES.map((s) => s.key);
-
-/** Where a client has got to in a pipeline (0 = first stage), or -1 for a stage that is not in the list. */
-export function stageIndex(slug: string | null | undefined, status: string): number {
-  return stagesFor(slug).findIndex((s) => s.key === status);
 }
 
 /** VersalyLabs products a prospect can be interested in. Stored as a leading tag in the scope text. */

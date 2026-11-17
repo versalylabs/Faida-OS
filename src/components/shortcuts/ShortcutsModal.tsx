@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Keyboard, X, Sparkles, Navigation, Zap, Cpu } from "lucide-react";
+import { Keyboard, X } from "lucide-react";
 
 interface ShortcutGroup {
   title: string;

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import {
-  FileText,
   Search,
   Plus,
   Trash2,
@@ -11,12 +10,9 @@ import {
   Tag,
   Loader2,
   X,
-  Eye,
   Calendar,
   AlertCircle,
-  ExternalLink,
   BookOpen,
-  Sparkles,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";

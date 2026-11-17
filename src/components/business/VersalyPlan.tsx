@@ -16,12 +16,13 @@ import {
   VERSALY_TARGETS,
   planDate,
 } from "@/lib/versalyPlaybook";
+import { nairobiToday } from "@/lib/dueDay";
 import type { BusinessItem } from "@/components/business/types";
 import { createTrackedProject, fetchProjects } from "@/components/business/trackProject";
 import { Badge, Card, ProgressBar, daysFromToday, primaryBtn } from "@/components/business/ui";
 
 const shortDate = (key: string) => new Date(`${key}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-const today = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
+const today = nairobiToday;
 
 function Row({ label, actual, target, hint }: { label: string; actual: number; target: number; hint?: string }) {
   const pct = target > 0 ? (actual / target) * 100 : 0;

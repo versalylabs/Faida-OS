@@ -40,7 +40,6 @@ export async function GET(req: NextRequest) {
     if (businessFilter && !businessId) return notFound("Business not found", noCacheHeaders);
 
     const z = zonedNow();
-    const monthStart = z.startOfMonth;
     const firstKey = keyOf(z.year, z.month - 5);
     const sixMonthsAgo = zonedTime(`${firstKey}-01`, "00:00");
     const where = { userId: user.id, businessId: businessId ?? { not: null } };

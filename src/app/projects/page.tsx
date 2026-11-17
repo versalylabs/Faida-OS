@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Circle,
   ArrowRight,
-  Clock,
   CheckSquare,
   Loader2,
   Calendar,

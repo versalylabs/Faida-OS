@@ -12,10 +12,7 @@ import {
   Loader2,
   X,
   Edit3,
-  Settings2,
-  Check,
   FolderPlus,
-  Sparkles,
   Save,
 } from "lucide-react";
 import { formatKES } from "@/lib/utils";

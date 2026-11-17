@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
 
     let importedCount = 0;
     let updatedCount = 0;
-    const errors: string[] = [];
 
     // -------------------------------------------------------------------------
     // Mode 1: Manual / Structured Data Import (Courses, Assignments, Classes)

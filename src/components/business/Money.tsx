@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Edit3, Trash2, Wallet } from "lucide-react";
 import { offlineFetch } from "@/lib/offlineSync";
+import { nairobiToday } from "@/lib/dueDay";
 import { formatKES } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/businessMath";
 import type { BusinessItem, FinanceOverview, TransactionItem } from "@/components/business/types";
 import { useAccounts } from "@/components/business/useAccounts";
 import { Badge, Card, ConfirmDelete, EmptyState, Field, Modal, Skeleton, Stat, dayLabel, ghostBtn, inputCls, primaryBtn } from "@/components/business/ui";
 
-const todayInput = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
+const todayInput = nairobiToday;
 
 export function TransactionModal({
   businesses,

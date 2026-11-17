@@ -2,6 +2,7 @@
 
 import { Banknote, Building2, Coins, CreditCard, PiggyBank } from "lucide-react";
 import type { ReactNode } from "react";
+import { nairobiToday } from "@/lib/dueDay";
 
 export interface FinAccount {
   id: string;
@@ -53,7 +54,7 @@ export const accountIcon = (type: string): ReactNode => {
 };
 
 /** Today's date as the date input wants it, in Nairobi time. */
-export const todayInput = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
+export const todayInput = nairobiToday;
 
 /** A date-input value as a real instant (noon Nairobi time, so it never slips a day). */
 export const inputToIso = (value: string) => new Date(`${value}T12:00:00+03:00`).toISOString();

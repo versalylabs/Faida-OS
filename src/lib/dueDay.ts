@@ -5,6 +5,9 @@ export function dueDay(value?: string | null): string {
   return value ? new Date(value).toISOString().slice(0, 10) : "";
 }
 
+/** Today's date (YYYY-MM-DD) on the user's own calendar, Nairobi time. One definition for every page. */
+export const nairobiToday = (): string => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
+
 export function todayDay(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

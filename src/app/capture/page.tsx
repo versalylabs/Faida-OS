@@ -12,7 +12,6 @@ import {
   Wallet,
   ShoppingCart,
   Clock,
-  Tag,
 } from "lucide-react";
 import { formatKES, formatDate } from "@/lib/utils";
 

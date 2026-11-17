@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
-import { ValidationError, badRequest, idOf, must, num, ownedId, readBody, str } from "@/lib/validate";
+import { ValidationError, badRequest, idOf, must, num, readBody, str } from "@/lib/validate";
 import { date as parseDate } from "@/lib/validate";
 
 // GET /api/university/assessments - Fetch CATs, Exams, Quizzes

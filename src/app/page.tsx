@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import {
   Sparkles,
-  CheckCircle2,
   Calendar,
   Clock,
   FolderGit2,
@@ -14,15 +13,8 @@ import {
   Loader2,
   GraduationCap,
   BookOpen,
-  Tag,
   MapPin,
-  Bell,
-  CheckSquare,
-  AlertTriangle,
   UtensilsCrossed,
-  Sunrise,
-  Sun,
-  Moon,
   User,
   Briefcase,
   PiggyBank,

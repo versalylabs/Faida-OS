@@ -5,7 +5,6 @@ import { Download, Smartphone, X, Share } from "lucide-react";
 
 export function PWAInstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
   const [showIOSTip, setShowIOSTip] = useState(false);
@@ -28,14 +27,12 @@ export function PWAInstallButton() {
     const handleBeforeInstall = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
-      setIsInstallable(true);
     };
 
     window.addEventListener("beforeinstallprompt", handleBeforeInstall);
 
     window.addEventListener("appinstalled", () => {
       setIsStandalone(true);
-      setIsInstallable(false);
       setDeferredPrompt(null);
     });
 
@@ -58,7 +55,6 @@ export function PWAInstallButton() {
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === "accepted") {
-      setIsInstallable(false);
       setDeferredPrompt(null);
     }
   };

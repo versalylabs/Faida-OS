@@ -39,20 +39,6 @@ export function inferFileType(filename: string, mimeType?: string): string {
   return "DOCUMENT";
 }
 
-/** MIME types that are safe to render inline. Everything else is forced to download. */
-const INLINE_SAFE = new Set([
-  "image/png",
-  "image/jpeg",
-  "image/gif",
-  "image/webp",
-  "application/pdf",
-  "text/plain",
-]);
-
-export function isInlineSafe(mimeType: string): boolean {
-  return INLINE_SAFE.has(mimeType);
-}
-
 /** Returns the project id only if it belongs to the user; null if absent; undefined if invalid. */
 export async function resolveOwnedProjectId(
   userId: string,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, Bell, Search, Command, Keyboard, Menu, LogOut, User as UserIcon } from "lucide-react";
+import { Search, Command, Keyboard, Menu, LogOut } from "lucide-react";
 import { QuickCaptureModal } from "@/components/capture/QuickCaptureModal";
 import { FaidaLogo, FaidaLogoIcon } from "@/components/brand/FaidaLogo";
 import { OfflineStatusIndicator } from "@/components/offline/OfflineStatusIndicator";

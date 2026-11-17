@@ -143,14 +143,6 @@ export async function getCurrentUser(req?: Request | NextRequest, opts: { strict
   }
 }
 
-export async function requireAuth(req?: Request | NextRequest) {
-  const user = await getCurrentUser(req);
-  if (!user) {
-    throw new Error("Unauthorized");
-  }
-  return user;
-}
-
 export async function deleteSession(token: string) {
   const tokenHash = hashSessionToken(token);
   sessionCache.delete(tokenHash);

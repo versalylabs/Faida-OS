@@ -16,10 +16,7 @@ const noCacheHeaders = {
 };
 
 const businessInclude = {
-  clients: {
-    orderBy: { createdAt: "desc" as const },
-    include: { deliverables: { orderBy: { createdAt: "desc" as const } } },
-  },
+  clients: { orderBy: { createdAt: "desc" as const } },
   weeklyMetrics: { orderBy: { createdAt: "desc" as const }, take: 10 },
   deliverables: { orderBy: { createdAt: "desc" as const } },
   purchases: { orderBy: { createdAt: "desc" as const } },

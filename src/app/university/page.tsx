@@ -13,18 +13,14 @@ import {
   RefreshCw,
   ExternalLink,
   ChevronRight,
-  ChevronDown,
   CheckCircle2,
   Circle,
   FileText,
   MapPin,
   UploadCloud,
   Zap,
-  Layers,
-  ArrowRight,
   X,
   Loader2,
-  ListTodo,
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
@@ -186,7 +182,6 @@ export default function UniversityPage() {
   const [showAssessmentModal, setShowAssessmentModal] = useState(false);
   const [showClassModal, setShowClassModal] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [selectedCourseForDetail, setSelectedCourseForDetail] = useState<Course | null>(null);
 
   // Form states
   const [newCourse, setNewCourse] = useState({ code: "", name: "", lecturer: "", semester: "Year 2 Sem 1", color: "#3b82f6", credits: 3 });
@@ -200,6 +195,10 @@ export default function UniversityPage() {
   const [moodleUrl, setMoodleUrl] = useState("");
   const [lmsAuthMode, setLmsAuthMode] = useState<"sso" | "login" | "key">("sso");
   const [ssoNote, setSsoNote] = useState<string | null>(null);
+  // After pressing "Sign in": waiting for the LMS tab, with a key box in case the browser does not bring us back
+  const [ssoWaiting, setSsoWaiting] = useState(false);
+  const [ssoKey, setSsoKey] = useState("");
+  const [ssoBusy, setSsoBusy] = useState(false);
   const [lmsUsername, setLmsUsername] = useState("");
   const [lmsPassword, setLmsPassword] = useState("");
   const [moodleToken, setMoodleToken] = useState("");
@@ -508,7 +507,6 @@ export default function UniversityPage() {
       return null;
     }
   };
-  const isPhone = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   // Let this browser hand the LMS's reply back to Faida OS (Chrome/Edge/Firefox on a computer).
   useEffect(() => {
@@ -535,9 +533,84 @@ export default function UniversityPage() {
       setSyncStatus("Your browser is blocking site data, which this sign-in needs. Allow it for this site and try again.");
       return;
     }
-    setSyncStatus("Opening your LMS sign-in\u2026");
-    window.location.assign(`${root}/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=${nonce}&urlscheme=${encodeURIComponent("web+faida")}`);
+    const url = `${root}/admin/tool/mobile/launch.php?service=moodle_mobile_app&passport=${nonce}&urlscheme=${encodeURIComponent("web+faida")}`;
+    // A new tab keeps this dialog open. If the browser hands the LMS answer back to Faida OS, that tab connects it;
+    // if not, the key box below finishes the connection from here.
+    const opened = window.open(url, "_blank");
+    if (!opened) {
+      window.location.assign(url); // pop-up blocked: fall back to leaving this page
+      return;
+    }
+    setSyncStatus(null);
+    setSsoWaiting(true);
   };
+
+  // What happens once the LMS is connected (from the sign-in tab, the key box or the password form)
+  const onLmsConnected = (message: string) => {
+    setSyncStatus(message);
+    setSsoWaiting(false);
+    setSsoKey("");
+    setTimeout(() => {
+      setShowSyncModal(false);
+      setSyncStatus(null);
+      lms.reload();
+      fetchData(true);
+    }, 1500);
+  };
+
+  // Connect with a key pasted in the sign-in dialog (from the LMS "Security keys" page)
+  const connectWithSsoKey = async () => {
+    const root = lmsRoot(moodleUrl);
+    if (!root || !ssoKey.trim() || ssoBusy) return;
+    setSsoBusy(true);
+    setSyncStatus("Checking the key with your LMS...");
+    try {
+      const res = await fetch("/api/lms/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ baseUrl: root, token: ssoKey.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        const s = data.summary;
+        onLmsConnected(
+          s && !s.skipped
+            ? `Connected${data.studentName ? " as " + data.studentName : ""}. Read ${s.courses ?? 0} units and ${s.items ?? 0} items.`
+            : data.message || "Connected."
+        );
+      } else setSyncStatus(data.error || "Could not connect to the LMS.");
+    } catch {
+      setSyncStatus("Could not reach Faida OS. Check your connection and try again.");
+    } finally {
+      setSsoBusy(false);
+    }
+  };
+
+  // While waiting for the LMS tab: if the browser brought the answer back there, the connection appears here by itself
+  useEffect(() => {
+    if (!showSyncModal || !ssoWaiting) return;
+    let alive = true;
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch("/api/lms", { cache: "no-store" });
+        const json = await res.json();
+        if (alive && json?.success && json.connected) onLmsConnected("Connected.");
+      } catch {}
+    }, 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showSyncModal, ssoWaiting]);
+
+  // A fresh dialog starts from the first step
+  useEffect(() => {
+    if (!showSyncModal) {
+      setSsoWaiting(false);
+      setSsoKey("");
+    }
+  }, [showSyncModal]);
 
   // Sync / Import Trigger
   const handleRunSync = async () => {
@@ -1688,35 +1761,79 @@ export default function UniversityPage() {
 
                 {lmsAuthMode === "sso" && (
                   <div className="space-y-3">
-                    <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
-                      <p className="font-semibold text-slate-100">For LMS sites you open with a Google or Microsoft account</p>
-                      <p>
-                        You sign in on your LMS&apos;s own page, the way you normally do, and it sends you straight back here with a read-only key. Faida OS never
-                        sees your Google or Microsoft password.
-                      </p>
-                      <ol className="list-decimal pl-4 space-y-0.5">
-                        <li>Enter your LMS address above.</li>
-                        <li>
-                          If your browser asks to let Faida OS open these sign-in links, choose <span className="font-semibold text-white">Allow</span>.
-                        </li>
-                        <li>Press the button, sign in if asked, and you will land back in University.</li>
-                      </ol>
-                    </div>
-                    {ssoNote && <p className="text-[11px] text-amber-200 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">{ssoNote}</p>}
-                    {isPhone && (
-                      <p className="text-[11px] text-slate-300">
-                        On a phone this usually does not work. Connect once from your laptop in Chrome or Edge; syncing and reminders then keep working on your phone.
-                      </p>
+                    {!ssoWaiting ? (
+                      <>
+                        <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                          <p className="font-semibold text-slate-100">For LMS sites you open with a Google or Microsoft account</p>
+                          <p>
+                            You sign in on your LMS&apos;s own page, the way you normally do. Faida OS never sees your Google or Microsoft password; it only receives a
+                            read-only key.
+                          </p>
+                          <ol className="list-decimal pl-4 space-y-0.5">
+                            <li>Enter your LMS address above.</li>
+                            <li>Press the button. Your LMS opens in a new tab: sign in there.</li>
+                            <li>If your browser asks to let Faida OS open sign-in links, choose <span className="font-semibold text-white">Allow</span>. If you are not brought back, the next step is shown here.</li>
+                          </ol>
+                        </div>
+                        {ssoNote && <p className="text-[11px] text-amber-200 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/25">{ssoNote}</p>}
+                        <button
+                          type="button"
+                          onClick={startSso}
+                          disabled={!moodleUrl.trim()}
+                          className="press w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
+                        >
+                          Sign in with my university account
+                        </button>
+                      </>
+                    ) : (
+                      <div className="rounded-lg bg-slate-950 border border-blue-500/30 p-3 text-[11px] text-slate-300 space-y-3 leading-relaxed">
+                        <p className="font-semibold text-slate-100 flex items-center gap-2">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />
+                          Waiting for you to sign in to your LMS...
+                        </p>
+                        <p>Sign in on the tab that opened. If it brings you back to Faida OS, this dialog closes by itself.</p>
+                        <div className="space-y-2 pt-2 border-t border-slate-800">
+                          <p className="font-semibold text-slate-100">Still on your LMS and not brought back?</p>
+                          <ol className="list-decimal pl-4 space-y-1.5">
+                            <li>
+                              Open your LMS&apos;s key page:{" "}
+                              <a
+                                href={`${lmsRoot(moodleUrl) || ""}/user/managetoken.php`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-semibold text-blue-300 hover:underline"
+                              >
+                                Security keys
+                              </a>
+                              . Copy the key shown there (a long mix of letters and numbers).
+                            </li>
+                            <li>Paste it here:</li>
+                          </ol>
+                          <input
+                            type="text"
+                            value={ssoKey}
+                            onChange={(e) => setSsoKey(e.target.value)}
+                            autoComplete="off"
+                            autoCapitalize="none"
+                            spellCheck={false}
+                            placeholder="Paste the key here"
+                            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-blue-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={connectWithSsoKey}
+                            disabled={!ssoKey.trim() || ssoBusy}
+                            className="press w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
+                          >
+                            {ssoBusy ? "Connecting..." : "Connect with this key"}
+                          </button>
+                          <p className="text-slate-400">The Security keys page shows no key? Press &ldquo;Sign in&rdquo; again first; signing in creates it.</p>
+                        </div>
+                        <button type="button" onClick={() => setSsoWaiting(false)} className="text-slate-400 hover:text-slate-200 underline">
+                          Start again
+                        </button>
+                      </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={startSso}
-                      disabled={!moodleUrl.trim()}
-                      className="press w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
-                    >
-                      Sign in with my university account
-                    </button>
-                    <p className="text-[11px] text-slate-400">If you do not come back here, use the &ldquo;Paste key&rdquo; tab.</p>
                   </div>
                 )}
 
@@ -1770,20 +1887,17 @@ export default function UniversityPage() {
                       />
                     </div>
                     <div className="rounded-lg bg-slate-950 border border-slate-800 p-3 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
-                      <p className="font-semibold text-slate-100">Getting it by hand (Chrome or Edge on a computer)</p>
+                      <p className="font-semibold text-slate-100">Where to find your key</p>
                       <ol className="list-decimal pl-4 space-y-0.5">
-                        <li>Open a new tab, press F12, open the Network tab and tick &ldquo;Preserve log&rdquo;.</li>
+                        <li>Sign in to your LMS in this browser.</li>
                         <li>
-                          In that tab open this address (sign in if asked):
-                          <span className="block font-mono text-[10px] text-blue-200 break-all mt-0.5">
-                            {lmsRoot(moodleUrl) || "https://your-lms-address"}/admin/tool/mobile/launch.php?service=moodle_mobile_app&amp;passport=12345&amp;urlscheme=moodlemobile
-                          </span>
-                          If the browser asks to open an app, cancel.
+                          Open{" "}
+                          <a href={`${lmsRoot(moodleUrl) || ""}/user/managetoken.php`} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-300 hover:underline">
+                            {lmsRoot(moodleUrl) || "your-lms-address"}/user/managetoken.php
+                          </a>{" "}
+                          (Profile → Preferences → Security keys) and copy the key shown there.
                         </li>
-                        <li>
-                          In the Network list click <span className="font-mono">launch.php</span>, then Headers, and copy the value of <span className="font-mono">Location</span>{" "}
-                          (it starts <span className="font-mono">moodlemobile://token=</span>). Paste it above. Faida OS takes the key out of it.
-                        </li>
+                        <li>Paste it above. No key listed? Use the Sign in tab once; it creates one.</li>
                       </ol>
                       <p className="text-slate-400">
                         The key is read-only, stored encrypted and never shown again. Your LMS decides when it expires; Faida OS then asks you to reconnect.

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Circle, ExternalLink, FolderGit2, Loader2, Target } from "lucide-react";
 import { offlineFetch } from "@/lib/offlineSync";
+import { nairobiToday } from "@/lib/dueDay";
 import { formatKES } from "@/lib/utils";
 import {
   STRATEN_CATALOG,
@@ -13,13 +14,12 @@ import {
   STRATEN_PROJECT_NAME,
   STRATEN_RULES,
   STRATEN_SEGMENTS,
-  STRATEN_TARGETS,
   type Phase,
 } from "@/lib/playbooks";
 import type { BusinessItem } from "@/components/business/types";
 import { Badge, Card, ProgressBar, daysFromToday, primaryBtn } from "@/components/business/ui";
 
-const todayKey = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
+const todayKey = nairobiToday;
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 const shortDate = (key: string) => new Date(`${key}T12:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
@@ -113,11 +113,6 @@ export function StratenPlan({ business }: { business: BusinessItem }) {
   // ---- real numbers (nothing invented: no data means 0) ----
   const clients = business.clients;
   const paying = clients.filter((c) => c.status === "ACTIVE" || c.status === "COMPLETED").length;
-  const recurring = clients.filter((c) => c.status === "ACTIVE" && (c.billingCycle === "MONTHLY" || c.billingCycle === "QUARTERLY")).length;
-  const month = today.slice(0, 7);
-  const monthRows = business.weeklyMetrics.filter((m) => m.weekStartDate.slice(0, 7) === month);
-  const outreach = monthRows.reduce((a, m) => a + (m.outreachSent || 0), 0);
-  const consultations = monthRows.reduce((a, m) => a + (m.auditsBooked || 0), 0);
 
   const current = STRATEN_PHASES.find((p) => phaseState(p, today) === "now");
   const upcoming = STRATEN_PHASES.find((p) => phaseState(p, today) === "next");

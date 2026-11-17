@@ -9,10 +9,8 @@ import {
   Plus,
   Clock,
   BookOpen,
-  CheckSquare,
   Loader2,
   Calendar,
-  Sparkles,
   ExternalLink,
   FileText,
   X,
@@ -113,7 +111,7 @@ export default function ProjectWorkspacePage({
   // Quick inputs
   const [newMilestone, setNewMilestone] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
-  const [newTaskDuration, setNewTaskDuration] = useState("45");
+  const newTaskDuration = "45"; // minutes for a quickly added task
   const [newTaskPriority, setNewTaskPriority] = useState("HIGH");
   const [newTaskMilestone, setNewTaskMilestone] = useState("");
   const [editTaskMilestone, setEditTaskMilestone] = useState("");

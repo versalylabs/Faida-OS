@@ -18,10 +18,7 @@ import {
   X,
   Loader2,
   ChefHat,
-  Tag,
-  Info,
   Check,
-  ArrowRight,
   Settings2,
 } from "lucide-react";
 import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";

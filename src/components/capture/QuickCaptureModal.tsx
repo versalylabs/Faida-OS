@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Sparkles, ArrowRight, X, Check, Loader2, Command } from "lucide-react";
+import { Sparkles, ArrowRight, X, Check, Loader2 } from "lucide-react";
 
 import { offlineFetch } from "@/lib/offlineSync";
 interface QuickCaptureModalProps {

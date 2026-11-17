@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { zonedNow } from "@/lib/tz";
-import { ValidationError, badRequest, idOf, must, num, readBody, str, tagsOf } from "@/lib/validate";
+import { ValidationError, badRequest, idOf, must, num, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

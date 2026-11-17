@@ -251,7 +251,6 @@ export async function askFaidaAssistant(
     recentNotes,
     recentTransactions,
     userSubjects,
-    shoppingItems,
     userBudgets,
   ] = await Promise.all([
     prisma.task.findMany({
@@ -277,9 +276,6 @@ export async function askFaidaAssistant(
     prisma.learningSubject.findMany({
       where: { userId },
       include: { topics: true },
-    }),
-    prisma.shoppingItem.findMany({
-      where: { userId, isChecked: false },
     }),
     prisma.budget.findFirst({
       where: { userId },
