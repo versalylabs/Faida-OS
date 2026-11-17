@@ -7,6 +7,7 @@ import { zonedDateKey, zonedNow, zonedTime } from "@/lib/tz";
 import { pickNextAction, pickNextMilestone, staleDays } from "@/lib/projectNext";
 import { computeMrr, PURCHASE_CATEGORIES } from "@/lib/businessMath";
 import { touchProject } from "@/lib/projectActivity";
+import { createEntry, defaultAccountId } from "@/lib/ledger";
 import type { ToolSpec } from "@/lib/ai/llm";
 import {
   executeAddShopping,
@@ -312,7 +313,7 @@ const getFinance: AgentTool = {
   async run(userId) {
     const start = zonedNow().startOfMonth;
     const [txs, budgets, accounts, recent] = await Promise.all([
-      prisma.financeTransaction.findMany({ where: { userId, date: { gte: start } }, select: { amount: true, category: true } }),
+      prisma.financeTransaction.findMany({ where: { userId, date: { gte: start }, type: { not: "TRANSFER" } }, select: { amount: true, category: true } }),
       prisma.budget.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
       prisma.financeAccount.findMany({ where: { userId }, select: { name: true, balance: true, currency: true } }),
       prisma.financeTransaction.findMany({ where: { userId }, orderBy: { date: "desc" }, take: 5, select: { description: true, amount: true, category: true, date: true } }),
@@ -708,16 +709,15 @@ const logBusinessMoney: AgentTool = {
       if (matches.length > 1) return { data: { error: "More than one client matches. Which one?", options: matches.map((m) => m.name) } };
       clientId = matches[0]?.id ?? null;
     }
-    await prisma.financeTransaction.create({
-      data: {
-        userId,
-        businessId: business.id,
-        clientId,
-        description,
-        amount: type === "EXPENSE" ? -Math.abs(amount) : Math.abs(amount),
-        type,
-        category: String(a.category || "").trim().slice(0, 80) || (type === "INCOME" ? "Client payment" : "Other expense"),
-      },
+    await createEntry({
+      userId,
+      businessId: business.id,
+      clientId,
+      description,
+      amount: type === "EXPENSE" ? -Math.abs(amount) : Math.abs(amount),
+      type,
+      category: String(a.category || "").trim().slice(0, 80) || (type === "INCOME" ? "Client payment" : "Other expense"),
+      accountId: await defaultAccountId(userId),
     });
     return {
       data: { recorded: type === "INCOME" ? "money in" : "money out", amount, business: business.name, description },

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       prisma.financeTransaction.findMany({
-        where: { userId: user.id },
+        where: { userId: user.id, type: { not: "TRANSFER" } },
         select: { amount: true },
       }),
       prisma.task.count({

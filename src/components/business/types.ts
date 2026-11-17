@@ -103,6 +103,7 @@ export interface TransactionItem {
   id: string;
   businessId: string | null;
   clientId: string | null;
+  accountId?: string | null;
   description: string;
   amount: number; // income positive, expense negative
   type: string;
@@ -129,7 +130,7 @@ export interface FinanceOverview {
   months: { key: string; income: number; expense: number }[];
   expenseByCategory: { category: string; amount: number }[];
   transactions: TransactionItem[];
-  accounts: { id: string; name: string; type: string; balance: number; color?: string | null }[];
+  accounts: { id: string; name: string; type: string; balance: number; color?: string | null; isDefault?: boolean }[];
   totalBalance: number;
   purchases: PurchaseItem[];
   purchaseSummary: { openCount: number; openEstimate: number };

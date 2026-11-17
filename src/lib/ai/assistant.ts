@@ -270,7 +270,7 @@ export async function askFaidaAssistant(
       take: 5,
     }),
     prisma.financeTransaction.findMany({
-      where: { userId },
+      where: { userId, type: { not: "TRANSFER" } },
       orderBy: { date: "desc" },
       take: 10,
     }),

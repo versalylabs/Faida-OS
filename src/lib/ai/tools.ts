@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { createEntry, defaultAccountId } from "@/lib/ledger";
 import { buildBriefing, briefingToMarkdown } from "@/lib/briefing";
 import { byPriorityThenNewest } from "@/lib/priority";
 import { formatKES } from "@/lib/utils";
@@ -164,19 +165,18 @@ export async function executeLogFinance(params: {
 }): Promise<{ message: string; action: ToolActionPayload }> {
   const finalAmount = params.type === "EXPENSE" ? -Math.abs(params.amount) : Math.abs(params.amount);
 
-  await prisma.financeTransaction.create({
-    data: {
-      userId: params.userId,
-      description: params.description.trim(),
-      amount: finalAmount,
-      type: params.type,
-      category: params.category || "General",
-    },
+  await createEntry({
+    userId: params.userId,
+    description: params.description.trim(),
+    amount: finalAmount,
+    type: params.type,
+    category: params.category || "General",
+    accountId: await defaultAccountId(params.userId),
   });
 
   // Budgets are monthly, so measure this calendar month (Nairobi time), like the Finance page does.
   const [monthTxs, budgets] = await Promise.all([
-    prisma.financeTransaction.findMany({ where: { userId: params.userId, date: { gte: zonedNow().startOfMonth }, amount: { lt: 0 } }, select: { amount: true } }),
+    prisma.financeTransaction.findMany({ where: { userId: params.userId, date: { gte: zonedNow().startOfMonth }, amount: { lt: 0 }, type: { not: "TRANSFER" } }, select: { amount: true } }),
     prisma.budget.findMany({ where: { userId: params.userId }, orderBy: { createdAt: "desc" } }),
   ]);
   const totalExpenses = monthTxs.reduce((sum, t) => sum + Math.abs(t.amount), 0);

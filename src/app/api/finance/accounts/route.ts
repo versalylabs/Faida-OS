@@ -102,7 +102,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { id, name, type, balance, color: colorIn } = body;
+    const { id, name, type, balance, color: colorIn, isDefault } = body;
 
     const accountId = must(idOf(id), "Account ID is required");
     const patchName = name !== undefined ? must(str(name, { max: 120, required: true }), "Account name is required (max 120 characters)") : undefined;
@@ -117,9 +117,15 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Account not found" }, { status: 404, headers: noCacheHeaders });
     }
 
+    // Only one default account: choosing one clears the others
+    if (isDefault === true) {
+      await prisma.financeAccount.updateMany({ where: { userId: user.id, id: { not: accountId } }, data: { isDefault: false } });
+    }
+
     const updated = await prisma.financeAccount.update({
       where: { id: accountId },
       data: {
+        ...(typeof isDefault === "boolean" && { isDefault }),
         ...(patchName !== undefined && { name: patchName }),
         ...(patchType !== undefined && { type: patchType }),
         ...(patchBalance !== undefined && { balance: patchBalance }),

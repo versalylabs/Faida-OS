@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { computeMrr } from "@/lib/businessMath";
+import { LedgerError, createEntry, defaultAccountId, deleteEntry, updateEntry } from "@/lib/ledger";
 import { zonedDateKey, zonedNow, zonedTime } from "@/lib/tz";
 import { ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
@@ -145,7 +146,7 @@ export async function GET(req: NextRequest) {
           .map(([category, amount]) => ({ category, amount: Math.round(amount) }))
           .sort((a, b) => b.amount - a.amount),
         transactions: recent,
-        accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: a.balance, color: a.color })),
+        accounts: accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, balance: a.balance, color: a.color, isDefault: a.isDefault })),
         totalBalance: accounts.reduce((a, x) => a + x.balance, 0),
         purchases,
         purchaseSummary: {
@@ -170,7 +171,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { businessId, clientId, type, amount, category, description, date: dateIn } = body;
+    const { businessId, clientId, type, amount, category, description, date: dateIn, accountId } = body;
 
     const ownedBusinessId = await ownedId("business", user.id, businessId);
     if (!ownedBusinessId) return notFound("Business not found", noCacheHeaders);
@@ -187,21 +188,29 @@ export async function POST(req: NextRequest) {
       ownedClientId = client.id;
     }
 
-    const transaction = await prisma.financeTransaction.create({
-      data: {
-        userId: user.id,
-        businessId: ownedBusinessId,
-        clientId: ownedClientId,
-        description: cleanDescription,
-        amount: cleanType === "EXPENSE" ? -Math.abs(parsed) : Math.abs(parsed),
-        type: cleanType,
-        category: cleanCategory,
-        date: when,
-      },
+    // No account named: use the default account. An explicit null means "do not touch any balance".
+    let account: string | null;
+    if (accountId === undefined) account = await defaultAccountId(user.id);
+    else {
+      const owned = await ownedId("financeAccount", user.id, accountId);
+      if (owned === undefined) return notFound("Account not found", noCacheHeaders);
+      account = owned;
+    }
+
+    const transaction = await createEntry({
+      userId: user.id,
+      businessId: ownedBusinessId,
+      clientId: ownedClientId,
+      description: cleanDescription,
+      amount: cleanType === "EXPENSE" ? -Math.abs(parsed) : Math.abs(parsed),
+      type: cleanType,
+      category: cleanCategory,
+      date: when,
+      accountId: account,
     });
     return NextResponse.json({ success: true, transaction }, { headers: noCacheHeaders });
   } catch (error: any) {
-    if (error instanceof ValidationError) return badRequest(error.message);
+    if (error instanceof ValidationError || error instanceof LedgerError) return badRequest(error.message);
     console.error("Error logging business transaction:", error);
     return NextResponse.json({ success: false, error: "Failed to save transaction" }, { status: 500, headers: noCacheHeaders });
   }
@@ -215,35 +224,41 @@ export async function PATCH(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { id, type, amount, category, description, date: dateIn, clientId } = body;
+    const { id, type, amount, category, description, date: dateIn, clientId, accountId, applyToBalance } = body;
     if (typeof id !== "string" || !id || id.length > 100) throw new ValidationError("Transaction ID is required");
 
     const existing = await prisma.financeTransaction.findFirst({ where: { id, userId: user.id, businessId: { not: null } } });
     if (!existing) return notFound("Transaction not found", noCacheHeaders);
 
     const nextType = type !== undefined ? must(oneOf(type, ["INCOME", "EXPENSE"] as const, { required: true }), "Type must be INCOME or EXPENSE") : existing.amount >= 0 ? "INCOME" : "EXPENSE";
-    const data: Record<string, unknown> = {};
-    if (type !== undefined) data.type = nextType;
+    const patch: Parameters<typeof updateEntry>[2] = {};
+    if (type !== undefined) patch.type = nextType;
     if (amount !== undefined || type !== undefined) {
       const abs = amount !== undefined ? must(num(amount, { min: 0, max: 1e12, required: true }), "Amount must be a number, 0 or more") : Math.abs(existing.amount);
-      data.amount = nextType === "EXPENSE" ? -Math.abs(abs) : Math.abs(abs);
+      patch.amount = nextType === "EXPENSE" ? -Math.abs(abs) : Math.abs(abs);
     }
-    if (category !== undefined) data.category = must(str(category, { max: 80 }), "Category is too long") ?? "General";
-    if (description !== undefined) data.description = must(str(description, { max: 300, required: true }), "Description is required (max 300 characters)");
-    if (dateIn !== undefined) data.date = must(date(dateIn, { required: true }), "Date is invalid");
+    if (category !== undefined) patch.category = must(str(category, { max: 80 }), "Category is too long") ?? "General";
+    if (description !== undefined) patch.description = must(str(description, { max: 300, required: true }), "Description is required (max 300 characters)");
+    if (dateIn !== undefined) patch.date = must(date(dateIn, { required: true }), "Date is invalid");
     if (clientId !== undefined) {
-      if (!clientId) data.clientId = null;
+      if (!clientId) patch.clientId = null;
       else {
         const client = await prisma.businessClient.findFirst({ where: { id: String(clientId), userId: user.id, businessId: existing.businessId! }, select: { id: true } });
         if (!client) return notFound("Client not found in this business", noCacheHeaders);
-        data.clientId = client.id;
+        patch.clientId = client.id;
       }
     }
+    if (accountId !== undefined) {
+      const owned = await ownedId("financeAccount", user.id, accountId);
+      if (owned === undefined) return notFound("Account not found", noCacheHeaders);
+      patch.accountId = owned;
+    }
+    if (applyToBalance === true) patch.applyToBalance = true;
 
-    const transaction = await prisma.financeTransaction.update({ where: { id }, data });
+    const transaction = await updateEntry(user.id, id, patch);
     return NextResponse.json({ success: true, transaction }, { headers: noCacheHeaders });
   } catch (error: any) {
-    if (error instanceof ValidationError) return badRequest(error.message);
+    if (error instanceof ValidationError || error instanceof LedgerError) return badRequest(error.message);
     console.error("Error updating business transaction:", error);
     return NextResponse.json({ success: false, error: "Failed to update transaction" }, { status: 500, headers: noCacheHeaders });
   }
@@ -258,8 +273,9 @@ export async function DELETE(req: NextRequest) {
     const id = new URL(req.url).searchParams.get("id");
     if (!id) return NextResponse.json({ success: false, error: "Transaction ID is required" }, { status: 400, headers: noCacheHeaders });
 
-    const result = await prisma.financeTransaction.deleteMany({ where: { id, userId: user.id, businessId: { not: null } } });
-    if (result.count === 0) return notFound("Transaction not found", noCacheHeaders);
+    const row = await prisma.financeTransaction.findFirst({ where: { id, userId: user.id, businessId: { not: null } }, select: { id: true } });
+    if (!row) return notFound("Transaction not found", noCacheHeaders);
+    await deleteEntry(user.id, id);
     return NextResponse.json({ success: true }, { headers: noCacheHeaders });
   } catch (error: any) {
     console.error("Error deleting business transaction:", error);

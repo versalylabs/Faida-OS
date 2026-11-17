@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { createEntry, defaultAccountId } from "@/lib/ledger";
 import { getCurrentUser } from "@/lib/auth";
 import { classifyUniversalInput } from "@/lib/ai/classifier";
 import { ValidationError, badRequest, readBody } from "@/lib/validate";
@@ -130,15 +131,18 @@ export async function POST(req: NextRequest) {
         },
       });
     } else if (parsed.type === "FINANCE") {
-      await prisma.financeTransaction.create({
-        data: {
+      // An amount is needed to record money; without one nothing is added to the ledger
+      if (parsed.amount && Math.abs(parsed.amount) > 0) {
+        const kind = parsed.transactionType === "INCOME" ? "INCOME" : "EXPENSE";
+        await createEntry({
           userId: user.id,
           description: parsed.title,
-          amount: parsed.amount ? (parsed.transactionType === "EXPENSE" ? -Math.abs(parsed.amount) : Math.abs(parsed.amount)) : 0,
-          type: parsed.transactionType || "EXPENSE",
+          amount: kind === "EXPENSE" ? -Math.abs(parsed.amount) : Math.abs(parsed.amount),
+          type: kind,
           category: parsed.category || "General",
-        },
-      });
+          accountId: await defaultAccountId(user.id),
+        });
+      }
     }
 
     // 4. Record Activity Log for Auto Work Journal & Analytics

@@ -6,6 +6,7 @@ import { offlineFetch } from "@/lib/offlineSync";
 import { formatKES } from "@/lib/utils";
 import { PURCHASE_CATEGORIES } from "@/lib/businessMath";
 import type { BusinessItem, PurchaseItem } from "@/components/business/types";
+import { useAccounts } from "@/components/business/useAccounts";
 import { Badge, Card, ConfirmDelete, EmptyState, Field, Modal, Skeleton, Stat, dayLabel, daysFromToday, ghostBtn, inputCls, primaryBtn } from "@/components/business/ui";
 
 const PRIORITY_RANK: Record<string, number> = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
@@ -146,8 +147,14 @@ function PurchaseModal({
 function BoughtModal({ item, onClose, onSaved }: { item: PurchaseItem; onClose: () => void; onSaved: () => void }) {
   const [cost, setCost] = useState(String(item.estimatedCost || ""));
   const [logExpense, setLogExpense] = useState(true);
+  const { accounts, loaded } = useAccounts();
+  const [accountId, setAccountId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    if (loaded && !accountId) setAccountId(accounts.find((a) => a.isDefault)?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -158,7 +165,7 @@ function BoughtModal({ item, onClose, onSaved }: { item: PurchaseItem; onClose: 
       const res = await offlineFetch("/api/business/purchases", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, status: "BOUGHT", actualCost: parseFloat(cost) || 0, logExpense }),
+        body: JSON.stringify({ id: item.id, status: "BOUGHT", actualCost: parseFloat(cost) || 0, logExpense, accountId: accountId || null }),
       });
       const data = await res.json();
       if (data.success) {
@@ -182,6 +189,18 @@ function BoughtModal({ item, onClose, onSaved }: { item: PurchaseItem; onClose: 
           <input type="checkbox" checked={logExpense} onChange={(e) => setLogExpense(e.target.checked)} className="accent-blue-500 mt-0.5" />
           <span>Also record it as a business expense, so it shows in this business's money and in your Finance page.</span>
         </label>
+        {logExpense && (
+          <Field label="Paid from account" hint="The cost comes off this account's balance.">
+            <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
+              <option value="">No account (do not change a balance)</option>
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} · {formatKES(a.balance)}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {error && <p className="text-xs text-rose-400">{error}</p>}
         <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
           <button type="button" onClick={onClose} className={ghostBtn}>

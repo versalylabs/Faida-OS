@@ -99,7 +99,7 @@ export async function buildBriefing(userId: string, now: Date = new Date()): Pro
       take: 5,
     }),
     prisma.budget.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
-    prisma.financeTransaction.findMany({ where: { userId, date: { gte: z.startOfMonth }, amount: { lt: 0 } }, select: { amount: true } }),
+    prisma.financeTransaction.findMany({ where: { userId, date: { gte: z.startOfMonth }, amount: { lt: 0 }, type: { not: "TRANSFER" } }, select: { amount: true } }),
     prisma.project.findMany({
       where: { userId, status: "ACTIVE" },
       select: {

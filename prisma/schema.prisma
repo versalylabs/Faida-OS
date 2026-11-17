@@ -566,12 +566,16 @@ model FinanceTransaction {
   createdAt   DateTime @default(now())
   businessId  String?  // set when the money belongs to one of the businesses
   clientId    String?  // the business client it came from or was spent for
+  accountId   String?  // the account whose balance this moved (null = recorded only, no balance change)
+  transferGroup String? // the two rows of one transfer between accounts share this id
 
   user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   business    Business?       @relation(fields: [businessId], references: [id], onDelete: SetNull)
   client      BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  account     FinanceAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([businessId, date])
+  @@index([accountId, date])
 }
 
 model Budget {
@@ -593,10 +597,12 @@ model FinanceAccount {
   balance   Float    @default(0)
   currency  String   @default("KES")
   color     String?  @default("#10b981")
+  isDefault Boolean  @default(false) // used when money is logged without choosing an account (quick capture, Faida AI)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions FinanceTransaction[]
 }
 
 model FinanceCategory {

@@ -661,7 +661,7 @@ export default function DashboardPage() {
                     Personal
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
-                    {financeMetrics.personalBudget > 0 ? `${100 - financeMetrics.personalPercentUsed}% left` : "N/A"}
+                    {financeMetrics.personalBudget > 0 ? (financeMetrics.personalPercentUsed > 100 ? "over budget" : `${100 - financeMetrics.personalPercentUsed}% left`) : "N/A"}
                   </span>
                 </div>
                 <div className="text-sm font-bold text-slate-100 font-mono tracking-tight">
@@ -692,7 +692,7 @@ export default function DashboardPage() {
                     <Link href="/business/finance" className="hover:text-slate-200">Business</Link>
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
-                    {financeMetrics.businessBudget > 0 ? `${100 - financeMetrics.businessPercentUsed}% left` : "N/A"}
+                    {financeMetrics.businessBudget > 0 ? (financeMetrics.businessPercentUsed > 100 ? "over budget" : `${100 - financeMetrics.businessPercentUsed}% left`) : "N/A"}
                   </span>
                 </div>
                 <div className="text-sm font-bold text-slate-100 font-mono tracking-tight">

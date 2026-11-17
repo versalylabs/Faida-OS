@@ -29,31 +29,16 @@ import {
 import { formatKES, formatDate } from "@/lib/utils";
 
 import { offlineFetch } from "@/lib/offlineSync";
-interface TransactionItem {
-  id: string;
-  description: string;
-  amount: number;
-  type: string;
-  category: string;
-  date: string;
-  isRecurring: boolean;
-}
+import { AccountsSection } from "@/components/finance/AccountsSection";
+import { BudgetCards } from "@/components/finance/BudgetCards";
+import { TransactionDialog } from "@/components/finance/TransactionDialog";
+import { TransferDialog } from "@/components/finance/TransferDialog";
+import { TransactionFeed, type FeedKind } from "@/components/finance/TransactionFeed";
+import type { FinAccount, FinCategory, FinTransaction } from "@/components/finance/shared";
 
-interface AccountItem {
-  id: string;
-  name: string;
-  type: string;
-  balance: number;
-  currency: string;
-  color?: string | null;
-}
-
-interface CategoryItem {
-  id: string;
-  name: string;
-  type: "INCOME" | "EXPENSE" | string;
-  color?: string | null;
-}
+type TransactionItem = FinTransaction;
+type AccountItem = FinAccount;
+type CategoryItem = FinCategory;
 
 interface FinanceMetrics {
   monthlyBudget: number;
@@ -71,6 +56,8 @@ interface FinanceMetrics {
   savingsBalance: number;
   savingsPercent: number;
   totalLiquidBalance: number;
+  savedThisMonth: number;
+  breakdown?: { period: string; label: string; expense: Record<string, number>; income: Record<string, number> };
   netCashFlow: number;
   totalIncome: number;
   totalExpense: number;
@@ -90,14 +77,15 @@ export default function FinancePage() {
   const [chartMode, setChartMode] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null);
 
-  // Add Transaction Modal
-  const [showModal, setShowModal] = useState(false);
-  const [desc, setDesc] = useState("");
-  const [amount, setAmount] = useState("");
-  const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-  const [category, setCategory] = useState("Groceries");
-  const [isRecurring, setIsRecurring] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Ledger filters, chart period and dialogs
+  const [period, setPeriod] = useState<"month" | "last" | "30d" | "year">("month");
+  const [feedKind, setFeedKind] = useState<FeedKind>("all");
+  const [feedAccount, setFeedAccount] = useState("");
+  const [feedQuery, setFeedQuery] = useState("");
+  const [feedLimit, setFeedLimit] = useState(100);
+  const [hasMore, setHasMore] = useState(false);
+  const [txDialog, setTxDialog] = useState<{ editing: TransactionItem | null; type: "EXPENSE" | "INCOME"; accountId: string | null } | null>(null);
+  const [transferDialog, setTransferDialog] = useState<{ fromId: string | null } | null>(null);
 
   // Edit Budgets Modal (Personal, Business, Savings Target)
   const [showBudgetModal, setShowBudgetModal] = useState(false);
@@ -136,10 +124,15 @@ export default function FinancePage() {
 
   const fetchFinance = async () => {
     try {
-      const res = await offlineFetch("/api/finance", { cache: "no-store" });
+      const p = new URLSearchParams({ period, limit: String(feedLimit) });
+      if (feedKind !== "all") p.set("kind", feedKind);
+      if (feedAccount) p.set("accountId", feedAccount);
+      if (feedQuery) p.set("q", feedQuery);
+      const res = await offlineFetch("/api/finance?" + p.toString(), { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setTransactions(data.transactions);
+        setHasMore(!!data.hasMore);
         setMetrics(data.metrics);
         setAccounts(data.accounts || []);
         setCategories(data.categories || []);
@@ -151,48 +144,37 @@ export default function FinancePage() {
     }
   };
 
+  // Reload when a filter or the chart period changes
   useEffect(() => {
     fetchFinance();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, feedKind, feedAccount, feedQuery, feedLimit]);
 
-  // Update default category when transaction type changes
-  useEffect(() => {
-    const validCats = categories.filter((c) => c.type === type);
-    if (validCats.length > 0) {
-      setCategory(validCats[0].name);
-    }
-  }, [type, categories]);
+  const openLog = (type: "EXPENSE" | "INCOME", accountId: string | null = null) => setTxDialog({ editing: null, type, accountId });
+
+  const viewActivity = (acc: AccountItem) => {
+    setFeedAccount(acc.id);
+    setFeedLimit(100);
+    setTimeout(() => document.getElementById("transactions")?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+
+  const setDefaultAccount = async (acc: AccountItem) => {
+    await offlineFetch("/api/finance/accounts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: acc.id, isDefault: !acc.isDefault }),
+    }).catch(() => {});
+    fetchFinance();
+  };
 
   // Compute category breakdown data for the pie / donut chart
   const breakdownData = useMemo(() => {
     const totals: Record<string, number> = {};
 
-    // Filter transactions based on current mode
-    const matchingTx = transactions.filter((tx) => {
-      if (chartMode === "EXPENSE") {
-        return tx.type === "EXPENSE" || tx.amount < 0;
-      } else {
-        return tx.type === "INCOME" || tx.amount > 0;
-      }
-    });
-
-    if (matchingTx.length > 0) {
-      for (const tx of matchingTx) {
-        const cat = tx.category || "Uncategorized";
-        const val = Math.abs(tx.amount);
-        totals[cat] = (totals[cat] || 0) + val;
-      }
-    } else if (metrics) {
-      // Fallback to metrics breakdown if transactions array is empty or paginated
-      const fallback =
-        chartMode === "EXPENSE"
-          ? metrics.expenseCategoryBreakdown || metrics.categoryBreakdown
-          : metrics.incomeCategoryBreakdown;
-      if (fallback) {
-        for (const [k, v] of Object.entries(fallback)) {
-          if (v > 0) totals[k] = v;
-        }
-      }
+    // The server totals the chosen period, so the chart never depends on how many rows are listed
+    const source = metrics?.breakdown ? (chartMode === "EXPENSE" ? metrics.breakdown.expense : metrics.breakdown.income) : {};
+    for (const [cat, val] of Object.entries(source)) {
+      if (val > 0) totals[cat] = val;
     }
 
     const totalSum = Object.values(totals).reduce((acc, curr) => acc + curr, 0);
@@ -283,47 +265,15 @@ export default function FinancePage() {
       items,
       totalSum,
     };
-  }, [transactions, metrics, chartMode, categories]);
+  }, [metrics, chartMode, categories]);
 
-  const handleCreateTransaction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!desc.trim() || !amount || isSubmitting) return;
-
-    setIsSubmitting(true);
+  const handleDeleteTransaction = async (tx: TransactionItem) => {
     try {
-      const res = await offlineFetch("/api/finance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description: desc.trim(),
-          amount: parseFloat(amount),
-          type,
-          category,
-          isRecurring,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setDesc("");
-        setAmount("");
-        setShowModal(false);
-        fetchFinance();
-      }
+      await offlineFetch("/api/finance?id=" + tx.id, { method: "DELETE" });
     } catch (e) {
-      console.error("Failed to create transaction:", e);
-    } finally {
-      setIsSubmitting(false);
+      console.error("Failed to delete transaction:", e);
     }
-  };
-
-  const handleDeleteTransaction = async (id: string) => {
-    setTransactions(transactions.filter((t) => t.id !== id));
-    try {
-      await offlineFetch(`/api/finance?id=${id}`, { method: "DELETE" });
-      fetchFinance();
-    } catch (e) {
-      fetchFinance();
-    }
+    fetchFinance();
   };
 
   const handleOpenBudgetModal = (tab: "ALL" | "PERSONAL" | "BUSINESS" | "SAVINGS" = "ALL") => {
@@ -564,7 +514,7 @@ export default function FinancePage() {
             <span>Categories</span>
           </button>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => openLog("EXPENSE")}
             className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md shadow-emerald-500/10 cursor-pointer transition-all shrink-0"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -573,252 +523,39 @@ export default function FinancePage() {
         </div>
       </div>
 
-      {/* Top Financial Pillars & Budget Metrics */}
-      {metrics && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. Personal Budget Card */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5 relative group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
-                  <User className="h-3.5 w-3.5 text-emerald-400" />
-                  Personal Budget
-                </span>
-                <button
-                  onClick={() => handleOpenBudgetModal("PERSONAL")}
-                  title="Edit Personal Budget"
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-emerald-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <Edit3 className="h-3 w-3" />
-                  <span>Edit</span>
-                </button>
-              </div>
-              <div className="text-2xl font-bold text-white font-mono tracking-tight">
-                {formatKES(metrics.personalBudget)}
-              </div>
-              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    metrics.personalPercentUsed > 90
-                      ? "bg-rose-500"
-                      : metrics.personalPercentUsed > 75
-                      ? "bg-amber-500"
-                      : "bg-emerald-500"
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(4, 100 - metrics.personalPercentUsed))}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                <span className="text-slate-400">{formatKES(metrics.personalExpense)} spent</span>
-                <span className="text-emerald-400 font-semibold">
-                  {formatKES(metrics.personalRemaining)} rem. ({Math.max(0, 100 - metrics.personalPercentUsed)}%)
-                </span>
-              </div>
-            </div>
+      {/* ACCOUNTS FIRST: what you hold right now */}
+      <AccountsSection
+        accounts={accounts}
+        loading={isLoading}
+        activeAccountId={feedAccount || null}
+        onAdd={() => {
+          setEditingAccount(null);
+          setAccountName("");
+          setAccountType("CARD");
+          setAccountBalance("0");
+          setShowAccountModal(true);
+        }}
+        onEdit={(acc) => {
+          setEditingAccount(acc);
+          setAccountName(acc.name);
+          setAccountType(acc.type);
+          setAccountBalance(acc.balance.toString());
+          setAccountColor(acc.color || "#10b981");
+          setShowAccountModal(true);
+        }}
+        onDelete={(acc) => setDeleteAccountConfirm(acc)}
+        onAdjust={(acc) => {
+          setQuickBalanceAccount(acc);
+          setQuickBalanceVal(acc.balance.toString());
+        }}
+        onLog={(type, accountId) => openLog(type, accountId)}
+        onTransfer={(fromId) => setTransferDialog({ fromId })}
+        onSetDefault={setDefaultAccount}
+        onViewActivity={viewActivity}
+      />
 
-            {/* 2. Business Budget Card */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5 relative group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
-                  <Briefcase className="h-3.5 w-3.5 text-blue-400" />
-                  Business Budget
-                </span>
-                <button
-                  onClick={() => handleOpenBudgetModal("BUSINESS")}
-                  title="Edit Business Budget"
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-blue-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <Edit3 className="h-3 w-3" />
-                  <span>Edit</span>
-                </button>
-              </div>
-              <div className="text-2xl font-bold text-white font-mono tracking-tight">
-                {formatKES(metrics.businessBudget)}
-              </div>
-              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className={`h-full rounded-full transition-all duration-500 ${
-                    metrics.businessPercentUsed > 90
-                      ? "bg-rose-500"
-                      : metrics.businessPercentUsed > 75
-                      ? "bg-amber-500"
-                      : "bg-blue-500"
-                  }`}
-                  style={{ width: `${Math.min(100, Math.max(4, 100 - metrics.businessPercentUsed))}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                <span className="text-slate-400">{formatKES(metrics.businessExpense)} spent</span>
-                <span className="text-blue-400 font-semibold">
-                  {formatKES(metrics.businessRemaining)} rem. ({Math.max(0, 100 - metrics.businessPercentUsed)}%)
-                </span>
-              </div>
-            </div>
-
-            {/* 3. Savings & Reserves Card */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5 relative group">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
-                  <PiggyBank className="h-3.5 w-3.5 text-purple-400" />
-                  Savings Reserves
-                </span>
-                <button
-                  onClick={() => handleOpenBudgetModal("SAVINGS")}
-                  title="Edit Savings Target"
-                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-slate-400 hover:text-purple-400 hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  <Edit3 className="h-3 w-3" />
-                  <span>Target</span>
-                </button>
-              </div>
-              <div className="text-2xl font-bold text-purple-300 font-mono tracking-tight">
-                {formatKES(metrics.savingsBalance)}
-              </div>
-              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-purple-500 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(4, metrics.savingsPercent))}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                <span className="text-slate-400">Target: {formatKES(metrics.savingsTarget)}</span>
-                <span className="text-purple-300 font-semibold">{metrics.savingsPercent}% funded</span>
-              </div>
-            </div>
-
-            {/* 4. Net Liquid Assets & Cash Flow Card */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] text-slate-400 uppercase font-semibold flex items-center gap-1.5">
-                  <TrendingUp className="h-3.5 w-3.5 text-cyan-400" />
-                  Net Liquid Assets
-                </span>
-                <span
-                  className={`text-[11px] font-mono font-semibold ${
-                    metrics.netCashFlow >= 0 ? "text-emerald-400" : "text-rose-400"
-                  }`}
-                >
-                  {metrics.netCashFlow >= 0 ? "+" : ""}
-                  {formatKES(metrics.netCashFlow)} flow
-                </span>
-              </div>
-              <div className="text-2xl font-bold text-cyan-300 font-mono tracking-tight">
-                {formatKES(metrics.totalLiquidBalance)}
-              </div>
-              <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                <div
-                  className="bg-cyan-500 h-full rounded-full"
-                  style={{ width: "100%" }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-[10px] font-mono pt-0.5">
-                <span className="text-emerald-400">+{formatKES(metrics.totalIncome)} in</span>
-                <span className="text-rose-400">-{formatKES(metrics.totalExpense)} out</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ACCOUNTS SECTION */}
-      <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-emerald-400" />
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-200">
-                Accounts & Liquid Assets
-              </h2>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Net balance across all accounts:{" "}
-              <span className="font-mono font-bold text-emerald-400">{formatKES(totalAccountBalance)}</span>
-            </p>
-          </div>
-
-          <button
-            onClick={() => {
-              setEditingAccount(null);
-              setAccountName("");
-              setAccountType("CARD");
-              setAccountBalance("0");
-              setShowAccountModal(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold border border-slate-700 transition-colors cursor-pointer w-fit"
-          >
-            <Plus className="h-3.5 w-3.5 text-emerald-400" />
-            <span>Add Account</span>
-          </button>
-        </div>
-
-        {/* Accounts Grid */}
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-3.5">
-          {accounts.map((acc) => (
-            <div
-              key={acc.id}
-              className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/90 hover:border-slate-700 transition-all flex flex-col justify-between space-y-3 group/acc"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div
-                    className="p-2 rounded-lg text-white shrink-0"
-                    style={{ backgroundColor: acc.color ? `${acc.color}25` : "#10b98125", color: acc.color || "#10b981" }}
-                  >
-                    {getAccountIcon(acc.type)}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="text-xs font-bold text-slate-100 break-words">{acc.name}</h3>
-                    <span className="text-[10px] font-mono text-slate-400 uppercase">{acc.type}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-1 opacity-0 group-hover/acc:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100! transition-opacity">
-                  <button
-                    onClick={() => {
-                      setEditingAccount(acc);
-                      setAccountName(acc.name);
-                      setAccountType(acc.type);
-                      setAccountBalance(acc.balance.toString());
-                      setAccountColor(acc.color || "#10b981");
-                      setShowAccountModal(true);
-                    }}
-                    title="Edit Account Details"
-                    className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                  </button>
-                  <button
-                    onClick={() => setDeleteAccountConfirm(acc)}
-                    title="Delete Account"
-                    className="p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-end justify-between pt-1">
-                <div>
-                  <span className="text-[10px] text-slate-400 block font-medium">Balance</span>
-                  <div className="font-mono text-lg font-bold text-white tracking-tight">
-                    {formatKES(acc.balance)}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => {
-                    setQuickBalanceAccount(acc);
-                    setQuickBalanceVal(acc.balance.toString());
-                  }}
-                  className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] text-emerald-400 font-mono font-medium hover:bg-slate-800 transition-colors cursor-pointer"
-                >
-                  Edit Balance
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Budgets, savings and this month's cash flow */}
+      {metrics && <BudgetCards metrics={metrics} onEdit={handleOpenBudgetModal} />}
 
       {/* Interactive Category & Cash Flow Pie Chart Overview */}
       <div className="p-5 sm:p-6 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-6">
@@ -842,11 +579,23 @@ export default function FinancePage() {
                 </span>
               </h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Interactive distribution of your cash flow and active categories
+                {metrics?.breakdown?.label ?? "This month"}: where your money came from and went. Transfers are not counted.
               </p>
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as typeof period)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
+              aria-label="Chart period"
+            >
+              <option value="month">This month</option>
+              <option value="last">Last month</option>
+              <option value="30d">Last 30 days</option>
+              <option value="year">This year</option>
+            </select>
           {/* Segmented Controls for Expense vs Income */}
           <div className="inline-flex p-1 rounded-xl bg-slate-950 border border-slate-800 self-start sm:self-auto">
             <button
@@ -880,6 +629,7 @@ export default function FinancePage() {
               <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
               <span>Income Overview</span>
             </button>
+          </div>
           </div>
         </div>
 
@@ -1023,7 +773,7 @@ export default function FinancePage() {
             {breakdownData.items.length === 0 ? (
               <div className="py-10 text-center rounded-xl bg-slate-950/40 border border-slate-800/80 p-6 space-y-2">
                 <div className="text-xs font-medium text-slate-400">
-                  No {chartMode === "EXPENSE" ? "expenses" : "income"} logged yet
+                  No {chartMode === "EXPENSE" ? "expenses" : "income"} in this period
                 </div>
                 <p className="text-[11px] text-slate-500 max-w-sm mx-auto">
                   Log your first {chartMode.toLowerCase()} transaction using the &quot;Log Transaction&quot; button above to see your breakdown visualized.
@@ -1089,77 +839,30 @@ export default function FinancePage() {
       </div>
 
       {/* Transactions Feed */}
-      <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-4 sm:p-6 space-y-4">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-          Recent Transactions ({transactions.length})
-        </h2>
-
-        {isLoading ? (
-          <div className="py-12 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
-            <span>Loading ledger...</span>
-          </div>
-        ) : transactions.length === 0 ? (
-          <div className="py-12 text-center text-xs text-slate-500">
-            No transactions recorded. Click &quot;Log Transaction&quot; or capture via `Ctrl + K`.
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {transactions.map((tx) => {
-              const isIncome = tx.amount > 0;
-              return (
-                <div
-                  key={tx.id}
-                  className="p-3 sm:p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 hover:border-slate-700 flex items-center justify-between gap-3 sm:gap-4 transition-all"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`p-2 rounded-xl shrink-0 ${
-                        isIncome ? "bg-emerald-500/10 text-emerald-400" : "bg-rose-500/10 text-rose-400"
-                      }`}
-                    >
-                      {isIncome ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-200 truncate">{tx.description}</div>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                        <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
-                          {tx.category}
-                        </span>
-                        <span>•</span>
-                        <span>{formatDate(tx.date)}</span>
-                        {tx.isRecurring && (
-                          <>
-                            <span>•</span>
-                            <span className="text-purple-400 font-mono font-medium">Recurring</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span
-                      className={`font-mono font-bold text-xs ${
-                        isIncome ? "text-emerald-400" : "text-rose-400"
-                      }`}
-                    >
-                      {isIncome ? "+" : ""}
-                      {formatKES(tx.amount)}
-                    </span>
-                    <button
-                      onClick={() => handleDeleteTransaction(tx.id)}
-                      className="p-1 rounded text-slate-600 hover:text-rose-400 hover:bg-slate-900 transition-colors"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      <TransactionFeed
+        transactions={transactions}
+        accounts={accounts}
+        loading={isLoading}
+        kind={feedKind}
+        setKind={(k) => {
+          setFeedKind(k);
+          setFeedLimit(100);
+        }}
+        accountId={feedAccount}
+        setAccountId={(id) => {
+          setFeedAccount(id);
+          setFeedLimit(100);
+        }}
+        query={feedQuery}
+        setQuery={(q) => {
+          setFeedQuery(q);
+          setFeedLimit(100);
+        }}
+        hasMore={hasMore}
+        onLoadMore={() => setFeedLimit((n) => n + 100)}
+        onEdit={(tx) => setTxDialog({ editing: tx, type: tx.amount >= 0 ? "INCOME" : "EXPENSE", accountId: tx.accountId ?? null })}
+        onDelete={handleDeleteTransaction}
+      />
 
       {/* EDIT BUDGETS MODAL */}
       {showBudgetModal && (
@@ -1384,7 +1087,7 @@ export default function FinancePage() {
           <div className="relative w-full max-w-xs bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h2 className="text-xs font-bold text-white uppercase">
-                Update {quickBalanceAccount.name} Balance
+                Set {quickBalanceAccount.name} Balance
               </h2>
               <button onClick={() => setQuickBalanceAccount(null)} className="text-slate-400 hover:text-slate-200">
                 <X className="h-4 w-4" />
@@ -1392,7 +1095,7 @@ export default function FinancePage() {
             </div>
             <form onSubmit={handleSaveQuickBalance} className="space-y-3 text-xs">
               <div>
-                <label className="text-slate-300 block mb-1 font-medium">New Balance (KES)</label>
+                <label className="text-slate-300 block mb-1 font-medium">Actual balance right now (KES)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -1580,6 +1283,9 @@ export default function FinancePage() {
             <p className="text-xs text-slate-300">
               Are you sure you want to delete <strong className="text-white">&quot;{deleteAccountConfirm.name}&quot;</strong> with balance of {formatKES(deleteAccountConfirm.balance)}?
             </p>
+            <p className="text-[11px] text-slate-400">
+              Its past transactions stay in your history but are no longer linked to an account, and the {formatKES(deleteAccountConfirm.balance)} drops out of your total. Move the money to another account first if it still exists.
+            </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 onClick={() => setDeleteAccountConfirm(null)}
@@ -1629,132 +1335,22 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* LOG TRANSACTION MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
-          <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Wallet className="h-4 w-4 text-emerald-400" />
-                Log Transaction
-              </h2>
-              <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-200">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateTransaction} className="space-y-3 text-xs">
-              <div className="flex rounded-xl bg-slate-950 p-1 border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setType("EXPENSE")}
-                  className={`flex-1 py-1.5 rounded-lg font-medium transition-all ${
-                    type === "EXPENSE" ? "bg-rose-500/20 text-rose-400" : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  Expense
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setType("INCOME")}
-                  className={`flex-1 py-1.5 rounded-lg font-medium transition-all ${
-                    type === "INCOME" ? "bg-emerald-500/20 text-emerald-400" : "text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  Income
-                </button>
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">Description</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Carrefour Supermarket, Upwork Payout"
-                  value={desc}
-                  onChange={(e) => setDesc(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-                  autoFocus
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-medium">Amount (KES)</label>
-                <input
-                  type="number"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500 font-mono"
-                  required
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-300 font-medium">Category</label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowModal(false);
-                      setShowCategoryModal(true);
-                    }}
-                    className="text-[11px] text-blue-400 hover:underline"
-                  >
-                    Manage Categories
-                  </button>
-                </div>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-emerald-500"
-                >
-                  {categories
-                    .filter((c) => c.type === type)
-                    .map((c) => (
-                      <option key={c.id} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                  {categories.filter((c) => c.type === type).length === 0 && (
-                    <option value="General">General</option>
-                  )}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="recurringCheck"
-                  checked={isRecurring}
-                  onChange={(e) => setIsRecurring(e.target.checked)}
-                  className="h-4 w-4 rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-0"
-                />
-                <label htmlFor="recurringCheck" className="text-slate-300 cursor-pointer">
-                  Recurring Monthly Transaction
-                </label>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!desc.trim() || !amount || isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting ? "Logging..." : "Record Transaction"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {txDialog && (
+        <TransactionDialog
+          key={txDialog.editing?.id ?? "new-" + txDialog.type + (txDialog.accountId ?? "")}
+          accounts={accounts}
+          categories={categories}
+          editing={txDialog.editing}
+          defaults={{ type: txDialog.type, accountId: txDialog.accountId }}
+          onClose={() => setTxDialog(null)}
+          onSaved={fetchFinance}
+          onManageCategories={() => {
+            setTxDialog(null);
+            setShowCategoryModal(true);
+          }}
+        />
       )}
+      {transferDialog && <TransferDialog accounts={accounts} defaultFromId={transferDialog.fromId} onClose={() => setTransferDialog(null)} onSaved={fetchFinance} />}
     </div>
   );
 }

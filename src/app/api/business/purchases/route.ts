@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { PURCHASE_CATEGORIES } from "@/lib/businessMath";
+import { createEntry, defaultAccountId } from "@/lib/ledger";
 import { ValidationError, badRequest, date, must, notFound, num, oneOf, ownedId, readBody, str } from "@/lib/validate";
 
 export const dynamic = "force-dynamic";
@@ -131,16 +132,22 @@ export async function PATCH(req: NextRequest) {
       const amount = Number(purchase.actualCost ?? purchase.estimatedCost ?? 0);
       if (amount > 0) {
         const category = PURCHASE_CATEGORIES.find((c) => c.value === purchase.category)?.expenseCategory ?? "Other expense";
-        await prisma.financeTransaction.create({
-          data: {
-            userId: user.id,
-            businessId: purchase.businessId,
-            description: `Purchase: ${purchase.name}`,
-            amount: -Math.abs(amount),
-            type: "EXPENSE",
-            category,
-            date: purchase.purchasedAt ?? new Date(),
-          },
+        let accountId: string | null;
+        if (body.accountId === undefined) accountId = await defaultAccountId(user.id);
+        else {
+          const owned = await ownedId("financeAccount", user.id, body.accountId);
+          if (owned === undefined) return notFound("Account not found", noCacheHeaders);
+          accountId = owned;
+        }
+        await createEntry({
+          userId: user.id,
+          businessId: purchase.businessId,
+          description: `Purchase: ${purchase.name}`,
+          amount: -Math.abs(amount),
+          type: "EXPENSE",
+          category,
+          date: purchase.purchasedAt ?? new Date(),
+          accountId,
         });
         expenseLogged = true;
       }

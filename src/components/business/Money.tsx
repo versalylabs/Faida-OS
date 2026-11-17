@@ -6,6 +6,7 @@ import { offlineFetch } from "@/lib/offlineSync";
 import { formatKES } from "@/lib/utils";
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "@/lib/businessMath";
 import type { BusinessItem, FinanceOverview, TransactionItem } from "@/components/business/types";
+import { useAccounts } from "@/components/business/useAccounts";
 import { Badge, Card, ConfirmDelete, EmptyState, Field, Modal, Skeleton, Stat, dayLabel, ghostBtn, inputCls, primaryBtn } from "@/components/business/ui";
 
 const todayInput = () => new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" });
@@ -32,10 +33,21 @@ export function TransactionModal({
   const [category, setCategory] = useState(editing?.category ?? "");
   const [description, setDescription] = useState(editing?.description ?? "");
   const [date, setDate] = useState(editing ? new Date(editing.date).toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }) : todayInput());
+  const { accounts, loaded: accountsLoaded } = useAccounts();
+  const [accountId, setAccountId] = useState<string>(editing?.accountId ?? "");
+  const [applyToBalance, setApplyToBalance] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const clients = businesses.find((b) => b.id === businessId)?.clients ?? [];
   const categories = type === "INCOME" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
+
+  // A new entry starts on the default account, once the accounts have loaded
+  useEffect(() => {
+    if (!editing && accountsLoaded && !accountId) setAccountId(accounts.find((a) => a.isDefault)?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountsLoaded]);
+  const chosen = accounts.find((a) => a.id === accountId);
+  const legacyAssign = !!editing && !editing.accountId && !!accountId;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +64,8 @@ export function TransactionModal({
         description: description.trim(),
         date: new Date(`${date}T12:00:00+03:00`).toISOString(),
         clientId: type === "INCOME" || clientId ? clientId || null : null,
+        accountId: accountId || null,
+        ...(editing ? { applyToBalance: legacyAssign && applyToBalance } : {}),
       };
       const res = await offlineFetch("/api/business/finance", {
         method: editing ? "PATCH" : "POST",
@@ -138,6 +152,27 @@ export function TransactionModal({
               </option>
             ))}
           </select>
+        </Field>
+        <Field label={type === "INCOME" ? "Paid into account" : "Paid from account"}>
+          <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={inputCls}>
+            <option value="">No account (do not change a balance)</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name} · {formatKES(a.balance)}
+              </option>
+            ))}
+          </select>
+          {chosen && parseFloat(amount) > 0 && !editing && (
+            <p className="text-[10px] text-slate-500 mt-1 font-mono">
+              {chosen.name}: {formatKES(chosen.balance)} → {formatKES(chosen.balance + (type === "INCOME" ? 1 : -1) * parseFloat(amount))}
+            </p>
+          )}
+          {legacyAssign && (
+            <label className="flex items-start gap-2 mt-2 text-[11px] text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={applyToBalance} onChange={(e) => setApplyToBalance(e.target.checked)} className="mt-0.5 accent-blue-500" />
+              <span>Also update this account&apos;s balance (leave unticked if the balance already includes it).</span>
+            </label>
+          )}
         </Field>
         {error && <p className="text-xs text-rose-400">{error}</p>}
         <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
