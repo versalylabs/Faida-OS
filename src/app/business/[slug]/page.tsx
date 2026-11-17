@@ -13,6 +13,7 @@ import { DeliverablesSection } from "@/components/business/Deliverables";
 import { MoneySection } from "@/components/business/Money";
 import { PurchasesSection } from "@/components/business/Purchases";
 import { ActivitySection } from "@/components/business/Activity";
+import { KpiSection, KpiSummary, useKpis } from "@/components/business/Kpis";
 import { StratenPlan } from "@/components/business/StratenPlan";
 import { VersalyPlan } from "@/components/business/VersalyPlan";
 import { PortfolioSection } from "@/components/business/Portfolio";
@@ -20,10 +21,11 @@ import { VERSALY_PROFILE } from "@/lib/versalyPlaybook";
 import { EditBusinessModal } from "@/components/business/EditBusinessModal";
 import { Badge, Card, EmptyState, ProgressBar, Skeleton, Stat, dayLabel } from "@/components/business/ui";
 
-type Tab = "overview" | "clients" | "work" | "money" | "equipment" | "activity" | "plan" | "products";
+type Tab = "overview" | "kpis" | "clients" | "work" | "money" | "equipment" | "activity" | "plan" | "products";
 
 const TAB_LABEL: Record<Tab, string> = {
   overview: "Overview",
+  kpis: "KPIs",
   clients: "Clients",
   work: "Client work",
   money: "Money",
@@ -35,6 +37,23 @@ const TAB_LABEL: Record<Tab, string> = {
 
 const STRATEN_CLIENT_CATALOG: CatalogEntry[] = STRATEN_CATALOG.map((c) => ({ name: c.name, price: c.price, billing: c.billing, scope: c.scope }));
 
+/** KPI progress on the overview tab. Its own component so it only asks for this business's numbers. */
+function KpiOverviewCard({ businessId, onOpen }: { businessId: string; onOpen: () => void }) {
+  const { kpis, loading } = useKpis(businessId);
+  return (
+    <Card
+      title="KPIs this month"
+      action={
+        <button onClick={onOpen} className="text-[11px] text-blue-400 hover:underline cursor-pointer">
+          Update numbers
+        </button>
+      }
+    >
+      <KpiSummary kpis={kpis} loading={loading} limit={5} onOpen={onOpen} />
+    </Card>
+  );
+}
+
 export default function BusinessCompanyPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const { businesses, loading, error, reload } = useBusinessData();
@@ -45,10 +64,10 @@ export default function BusinessCompanyPage({ params }: { params: Promise<{ slug
   const isStraten = slug.toLowerCase() === "straten";
   const isVersaly = slug.toLowerCase() === "versaly";
   const tabs: Tab[] = isStraten
-    ? ["overview", "clients", "work", "money", "equipment", "activity", "plan"]
+    ? ["overview", "kpis", "clients", "work", "money", "equipment", "activity", "plan"]
     : isVersaly
-    ? ["overview", "clients", "products", "plan", "work", "money", "equipment", "activity"]
-    : ["overview", "clients", "work", "money", "equipment", "activity"];
+    ? ["overview", "kpis", "clients", "products", "plan", "work", "money", "equipment", "activity"]
+    : ["overview", "kpis", "clients", "work", "money", "equipment", "activity"];
 
   // Keep the chosen tab when the page is reloaded
   useEffect(() => {
@@ -186,6 +205,8 @@ export default function BusinessCompanyPage({ params }: { params: Promise<{ slug
                 )}
               </Card>
 
+              <KpiOverviewCard businessId={business?.id ?? ""} onOpen={() => choose("kpis")} />
+
               <Card title="Sales pipeline">
                 {loading ? (
                   <Skeleton className="h-16 w-full" />
@@ -301,6 +322,7 @@ export default function BusinessCompanyPage({ params }: { params: Promise<{ slug
         </div>
       )}
 
+      {tab === "kpis" && business && <KpiSection businessId={business.id} businessName={business.name} onChanged={reload} />}
       {tab === "clients" && business && (
         <ClientsSection business={business} businesses={businesses} catalog={isStraten ? STRATEN_CLIENT_CATALOG : undefined} onChanged={reload} />
       )}

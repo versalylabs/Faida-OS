@@ -201,15 +201,10 @@ export function StratenPlan({ business }: { business: BusinessItem }) {
         </p>
       </Card>
 
-      <Card title="This month against the plan's targets">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
-          <KpiRow label="Outreach contacts" actual={outreach} target={STRATEN_TARGETS.outreachPerMonth} hint="From your weekly sales activity log." />
-          <KpiRow label="Consultations / audits" actual={consultations} target={STRATEN_TARGETS.consultationsPerMonth} hint="From your weekly sales activity log." />
-          <KpiRow label="Paying customers (to date)" actual={paying} target={STRATEN_TARGETS.payingCustomers} />
-          <KpiRow label="Recurring customers" actual={recurring} target={STRATEN_TARGETS.recurringCustomers} hint="Active clients billed monthly or quarterly." />
-          <KpiRow label="Revenue collected this month" actual={business.monthIncome} target={STRATEN_TARGETS.launchRevenue} format={(n) => formatKES(n)} hint="From money in recorded for Straten. Launch target; the plan aims for KSh 80,000 by month 3." />
-        </div>
-        <p className="text-[11px] text-slate-500">These are the plan's management targets, not forecasts. Revenue never justifies unprofitable pricing.</p>
+      <Card title="Targets">
+        <p className="text-xs text-slate-300 leading-relaxed">
+          The plan's monthly targets (prospects researched, outreach, conversations, consultations, paying and recurring customers, satisfaction, revenue) are tracked in the <strong className="text-white">KPIs</strong> tab, where you can update them as you go and change any target.
+        </p>
       </Card>
 
       <Card title="Positioning">

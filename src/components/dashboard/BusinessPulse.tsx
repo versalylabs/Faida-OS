@@ -6,6 +6,7 @@ import { ArrowRight, Briefcase } from "lucide-react";
 import { formatKES } from "@/lib/utils";
 import { useBusinessData } from "@/components/business/useBusinessData";
 import { buildAttention } from "@/components/business/attention";
+import { useKpis } from "@/components/business/Kpis";
 import { Skeleton } from "@/components/business/ui";
 
 /**
@@ -14,6 +15,7 @@ import { Skeleton } from "@/components/business/ui";
  */
 export function BusinessPulse() {
   const { businesses, summary, loading, error, reload } = useBusinessData();
+  const { kpis } = useKpis();
 
   // Refresh when offline changes finish syncing, like the rest of the dashboard
   useEffect(() => {
@@ -72,6 +74,12 @@ export function BusinessPulse() {
                   {formatKES(b.mrr)} MRR · {b.clients.filter((c) => c.status === "ACTIVE").length} active
                 </div>
                 <div className={`text-[11px] font-mono ${b.monthNet < 0 ? "text-rose-300" : "text-slate-500"}`}>Net {formatKES(b.monthNet)} this month</div>
+                {(() => {
+                  const tracked = kpis.filter((k) => k.businessId === b.id && k.target > 0);
+                  if (tracked.length === 0) return null;
+                  const hit = tracked.filter((k) => (k.percent ?? 0) >= 100).length;
+                  return <div className="text-[11px] font-mono text-slate-500">KPIs: {hit} of {tracked.length} targets reached</div>;
+                })()}
               </Link>
             ))}
 

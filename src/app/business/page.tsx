@@ -10,6 +10,7 @@ import { buildAttention } from "@/components/business/attention";
 import { ClientModal } from "@/components/business/Clients";
 import { DeliverableModal, DeliverablesSection } from "@/components/business/Deliverables";
 import { TransactionModal } from "@/components/business/Money";
+import { KpiSummary, useKpis } from "@/components/business/Kpis";
 import { Card, EmptyState, ProgressBar, Skeleton, Stat } from "@/components/business/ui";
 
 type QuickAction = null | "client" | "deliverable" | "income" | "expense";
@@ -17,6 +18,7 @@ type QuickAction = null | "client" | "deliverable" | "income" | "expense";
 /** All businesses at a glance: money, clients, work and what needs attention. Every figure comes from your records. */
 export default function BusinessOverviewPage() {
   const { businesses, summary, loading, error, reload } = useBusinessData();
+  const { kpis, businesses: kpiBusinesses, loading: kpisLoading } = useKpis();
   const [action, setAction] = useState<QuickAction>(null);
   const attention = buildAttention(businesses);
   const defaultId = businesses[0]?.id ?? "";
@@ -121,6 +123,26 @@ export default function BusinessOverviewPage() {
                 </Link>
               );
             })}
+      </div>
+
+      {/* KPIs: what each business is measuring this month */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {kpisLoading
+          ? [0, 1].map((i) => <Skeleton key={i} className="h-40 w-full" />)
+          : kpiBusinesses.map((b) => (
+              <Card
+                key={b.id}
+                title={`${b.name} KPIs`}
+                icon={<span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />}
+                action={
+                  <Link href={`/business/${b.slug}#kpis`} className="text-[11px] text-blue-400 hover:underline">
+                    Update numbers
+                  </Link>
+                }
+              >
+                <KpiSummary kpis={kpis.filter((k) => k.businessId === b.id)} loading={false} limit={4} />
+              </Card>
+            ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

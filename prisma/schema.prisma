@@ -54,6 +54,7 @@ model User {
   businessWeeklyMetrics BusinessWeeklyMetric[]
   businessDeliverables  BusinessDeliverable[]
   businessPurchases     BusinessPurchase[]
+  businessKpis          BusinessKpi[]
   mealPlanItems         MealPlanItem[]
   mealIdeas             MealIdea[]
   energyCheckins        EnergyCheckin[]
@@ -809,6 +810,7 @@ model Business {
   deliverables  BusinessDeliverable[]
   transactions  FinanceTransaction[]
   purchases     BusinessPurchase[]
+  kpis          BusinessKpi[]
 }
 
 model BusinessClient {
@@ -905,6 +907,42 @@ model BusinessPurchase {
   user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, status])
+}
+
+// A number a business tracks (outreach contacts, consultations, paying customers...), with a target.
+model BusinessKpi {
+  id         String   @id @default(uuid())
+  userId     String?
+  businessId String
+  key        String   // stable id, e.g. "outreach"; unique within a business
+  name       String
+  unit       String   @default("COUNT") // COUNT, PERCENT, CURRENCY
+  period     String   @default("MONTH") // MONTH = this month's number, TOTAL = all months added up, LEVEL = latest figure
+  target     Float    @default(0)       // 0 means no target yet
+  autoKey    String?  // when set, the value is worked out from your clients or money instead of typed in
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs     BusinessKpiLog[]
+
+  @@unique([businessId, key])
+  @@index([userId])
+}
+
+// What was recorded for a KPI in one month ("2026-11").
+model BusinessKpiLog {
+  id        String   @id @default(uuid())
+  kpiId     String
+  month     String
+  value     Float    @default(0)
+  updatedAt DateTime @updatedAt
+
+  kpi BusinessKpi @relation(fields: [kpiId], references: [id], onDelete: Cascade)
+
+  @@unique([kpiId, month])
 }
 
 // -------------------------------------------------------------
