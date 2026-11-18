@@ -16,7 +16,7 @@ import {
   Save,
 } from "lucide-react";
 import { formatKES } from "@/lib/utils";
-import { offlineFetch, cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
+import { offlineFetch, cacheOfflineData, getCachedOfflineData, getActiveOfflineUser } from "@/lib/offlineSync";
 
 interface ShoppingItem {
   id: string;
@@ -26,7 +26,19 @@ interface ShoppingItem {
   preferredStore?: string | null;
   estimatedPrice?: number | null;
   isChecked: boolean;
+  isRecurring?: boolean;
+  updatedAt?: string | Date;
 }
+
+type ShoppingPlan = "MONTHLY" | "WISHLIST" | "UPCOMING";
+type ShoppingPlanMeta = { plan: ShoppingPlan; checkedAt?: number };
+const SHOPPING_PLAN_KEY = "faida_shopping_plan_v1";
+const shoppingPlanKey = () => `${SHOPPING_PLAN_KEY}:${getActiveOfflineUser() || "guest"}`;
+const PLAN_LABELS: Record<ShoppingPlan, string> = {
+  MONTHLY: "Monthly essentials",
+  WISHLIST: "Save for later",
+  UPCOMING: "Current purchases",
+};
 
 interface ShoppingCategory {
   id: string;
@@ -52,6 +64,8 @@ export default function ShoppingPage() {
   const [categories, setCategories] = useState<ShoppingCategory[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [isLoading, setIsLoading] = useState(true);
+  const [planFilter, setPlanFilter] = useState<ShoppingPlan | "ALL">("ALL");
+  const [itemPlans, setItemPlans] = useState<Record<string, ShoppingPlanMeta>>({});
 
   // New Item Form State
   const [name, setName] = useState("");
@@ -61,6 +75,16 @@ export default function ShoppingPage() {
   const [price, setPrice] = useState("");
   const [showAddForm, setShowAddForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newItemPlan, setNewItemPlan] = useState<ShoppingPlan>("MONTHLY");
+
+  const saveItemPlans = (next: Record<string, ShoppingPlanMeta>) => {
+    setItemPlans(next);
+    try {
+      localStorage.setItem(shoppingPlanKey(), JSON.stringify(next));
+    } catch {}
+  };
+
+  const getPlan = (item: ShoppingItem) => itemPlans[item.id]?.plan || (item.isRecurring ? "MONTHLY" : "UPCOMING");
 
   // Category Management Modal State
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -81,6 +105,7 @@ export default function ShoppingPage() {
   const [editItemCategory, setEditItemCategory] = useState("Groceries");
   const [editItemStore, setEditItemStore] = useState("");
   const [editItemPrice, setEditItemPrice] = useState("");
+  const [editItemPlan, setEditItemPlan] = useState<ShoppingPlan>("MONTHLY");
   const [isSavingItem, setIsSavingItem] = useState(false);
 
   const fetchItems = async () => {
@@ -88,8 +113,29 @@ export default function ShoppingPage() {
       const res = await offlineFetch("/api/shopping", { cache: "no-store", cacheKey: "shopping_items" });
       const data = await res.json();
       if (data.success && data.items) {
-        setItems(data.items);
-        cacheOfflineData("shopping_items", { success: true, items: data.items });
+        const plans: Record<string, ShoppingPlanMeta> = (() => {
+          try { return JSON.parse(localStorage.getItem(shoppingPlanKey()) || "{}"); } catch { return {}; }
+        })();
+        const now = Date.now();
+        const canApplyMonthlyReset = process.env.NODE_ENV !== "development";
+        const normalized = data.items.map((item: ShoppingItem) => {
+          const meta = plans[item.id];
+          const checkedAt = meta?.checkedAt || (item.isChecked && item.updatedAt ? new Date(item.updatedAt).getTime() : 0);
+          if (canApplyMonthlyReset && (meta?.plan || (item.isRecurring ? "MONTHLY" : "UPCOMING")) === "MONTHLY" && item.isChecked && Number.isFinite(checkedAt) && checkedAt > 0 && now - checkedAt >= 30 * 24 * 60 * 60 * 1000) {
+            delete plans[item.id];
+            offlineFetch("/api/shopping", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: item.id, isChecked: false }),
+              description: `Reset monthly item ${item.name}`,
+            }).catch(() => {});
+            return { ...item, isChecked: false };
+          }
+          return item;
+        });
+        saveItemPlans(plans);
+        setItems(normalized);
+        cacheOfflineData("shopping_items", { success: true, items: normalized });
       }
     } catch (e) {
       console.error("Failed to load shopping list:", e);
@@ -123,6 +169,7 @@ export default function ShoppingPage() {
   };
 
   useEffect(() => {
+    try { setItemPlans(JSON.parse(localStorage.getItem(shoppingPlanKey()) || "{}")); } catch {}
     // Show what we had last time straight away, then refresh it in the background
     const cachedItems = getCachedOfflineData<any>("shopping_items");
     if (cachedItems?.items) {
@@ -145,6 +192,10 @@ export default function ShoppingPage() {
 
   const handleToggleCheck = async (item: ShoppingItem) => {
     const nextChecked = !item.isChecked;
+    const nextPlans = { ...itemPlans };
+    const currentPlan = getPlan(item);
+    nextPlans[item.id] = { plan: currentPlan, ...(nextChecked ? { checkedAt: Date.now() } : {}) };
+    saveItemPlans(nextPlans);
     setItems((prev) => {
       const updated = prev.map((i) => (i.id === item.id ? { ...i, isChecked: nextChecked } : i));
       cacheOfflineData("shopping_items", { success: true, items: updated });
@@ -164,6 +215,9 @@ export default function ShoppingPage() {
   };
 
   const handleDelete = async (id: string) => {
+    const nextPlans = { ...itemPlans };
+    delete nextPlans[id];
+    saveItemPlans(nextPlans);
     setItems((prev) => {
       const updated = prev.filter((i) => i.id !== id);
       cacheOfflineData("shopping_items", { success: true, items: updated });
@@ -196,12 +250,17 @@ export default function ShoppingPage() {
           category: category || "Groceries",
           preferredStore: store,
           estimatedPrice: price ? parseFloat(price) : null,
+          isRecurring: newItemPlan === "MONTHLY",
         }),
       });
       const data = await res.json();
       if (data.success) {
+        if (data.item?.id) {
+          saveItemPlans({ ...itemPlans, [data.item.id]: { plan: newItemPlan } });
+        }
         setName("");
         setPrice("");
+        setNewItemPlan("MONTHLY");
         setShowAddForm(false);
         fetchItems();
         fetchCategories();
@@ -221,6 +280,7 @@ export default function ShoppingPage() {
     setEditItemCategory(item.category || "Groceries");
     setEditItemStore(item.preferredStore || "");
     setEditItemPrice(item.estimatedPrice ? String(item.estimatedPrice) : "");
+    setEditItemPlan(getPlan(item));
   };
 
   // Save Edited Item
@@ -240,10 +300,15 @@ export default function ShoppingPage() {
           category: editItemCategory,
           preferredStore: editItemStore,
           estimatedPrice: editItemPrice ? parseFloat(editItemPrice) : null,
+          isRecurring: editItemPlan === "MONTHLY",
         }),
       });
       const data = await res.json();
       if (data.success) {
+        saveItemPlans({
+          ...itemPlans,
+          [editingItem.id]: { ...itemPlans[editingItem.id], plan: editItemPlan },
+        });
         setEditingItem(null);
         fetchItems();
         fetchCategories();
@@ -350,7 +415,7 @@ export default function ShoppingPage() {
   const filteredItems = items.filter((i) => {
     if (selectedCategory === "ALL") return true;
     return i.category?.toLowerCase() === selectedCategory.toLowerCase();
-  });
+  }).filter((item) => planFilter === "ALL" || getPlan(item) === planFilter);
 
   const pendingItems = filteredItems.filter((i) => !i.isChecked);
   const completedItems = filteredItems.filter((i) => i.isChecked);
@@ -375,7 +440,7 @@ export default function ShoppingPage() {
             Smart Shopping List
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Organize supplies and groceries by custom categories (cereals, groceries, tech, etc.).
+            Keep monthly essentials, future wants and current purchases together.
           </p>
         </div>
 
@@ -399,6 +464,33 @@ export default function ShoppingPage() {
             <span>Add Item</span>
           </button>
         </div>
+      </div>
+
+      {/* Shopping plan sections */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          {(["ALL", "MONTHLY", "UPCOMING", "WISHLIST"] as const).map((plan) => {
+            const count = plan === "ALL" ? items.length : items.filter((item) => getPlan(item) === plan).length;
+            const label = plan === "ALL" ? "Everything" : PLAN_LABELS[plan];
+            return (
+              <button
+                key={plan}
+                type="button"
+                onClick={() => setPlanFilter(plan)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap cursor-pointer border ${
+                  planFilter === plan
+                    ? "bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/10"
+                    : "bg-slate-900/80 text-slate-400 hover:text-slate-200 border-slate-800"
+                }`}
+              >
+                {label} <span className="ml-1 text-[10px] font-mono opacity-75">{count}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Monthly essentials you mark as bought reset to your list after 30 days.
+        </p>
       </div>
 
       {/* Category Filter Tabs */}
@@ -494,6 +586,18 @@ export default function ShoppingPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] text-slate-400">Shopping plan</label>
+              <select
+                value={newItemPlan}
+                onChange={(e) => setNewItemPlan(e.target.value as ShoppingPlan)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-300 focus:outline-none"
+              >
+                <option value="MONTHLY">Monthly essential</option>
+                <option value="UPCOMING">Current purchase</option>
+                <option value="WISHLIST">Save for later</option>
+              </select>
+            </div>
             <div className="space-y-1">
               <label className="text-[11px] text-slate-400">Category</label>
               <select
@@ -940,6 +1044,19 @@ export default function ShoppingPage() {
                   required
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-medium">Shopping plan</label>
+                <select
+                  value={editItemPlan}
+                  onChange={(e) => setEditItemPlan(e.target.value as ShoppingPlan)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-100 focus:outline-none focus:border-blue-500"
+                >
+                  <option value="MONTHLY">Monthly essential</option>
+                  <option value="UPCOMING">Current purchase</option>
+                  <option value="WISHLIST">Save for later</option>
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

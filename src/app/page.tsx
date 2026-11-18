@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { formatKES } from "@/lib/utils";
-import { getCachedOfflineData, offlineFetch } from "@/lib/offlineSync";
+import { getActiveOfflineUser, getCachedOfflineData, offlineFetch } from "@/lib/offlineSync";
 import { BriefingCard } from "@/components/dashboard/BriefingCard";
 import { BusinessPulse } from "@/components/dashboard/BusinessPulse";
 import type { Briefing } from "@/lib/briefing";
@@ -268,14 +268,25 @@ export default function DashboardPage() {
 
       // 6. Smart Shopping
       if (shoppingData.success && shoppingData.items) {
-        const pending = shoppingData.items.filter((i: any) => !i.isChecked);
+        let planMetadata: Record<string, { plan?: string }> = {};
+        try {
+          const userId = getActiveOfflineUser();
+          if (userId) {
+            planMetadata = JSON.parse(localStorage.getItem(`faida_shopping_plan_v1:${userId}`) || "{}");
+          }
+        } catch {}
+        const currentList = shoppingData.items.filter((item: any) => {
+          const plan = planMetadata[item.id]?.plan || (item.isRecurring ? "MONTHLY" : "UPCOMING");
+          return plan === "UPCOMING";
+        });
+        const pending = currentList.filter((i: any) => !i.isChecked);
         const totalEst = pending.reduce(
           (acc: number, cur: any) => acc + (cur.estimatedPrice || 0),
           0
         );
         setShoppingSummary({
-          pendingCount: shoppingData.pendingCount ?? pending.length,
-          completedCount: shoppingData.completedCount ?? 0,
+          pendingCount: pending.length,
+          completedCount: currentList.filter((i: any) => i.isChecked).length,
           totalEstimated: totalEst,
           topItems: pending.slice(0, 4),
         });
@@ -913,7 +924,7 @@ export default function DashboardPage() {
               </div>
             ) : shoppingSummary.topItems.length === 0 ? (
               <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 text-xs text-slate-500 text-center">
-                Shopping list is clear! All supplies stocked.
+                Current purchase list is clear.
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -952,7 +963,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Custom categories enabled</span>
+            <span>Current purchases</span>
             <Link href="/shopping" className="text-emerald-400 hover:underline">
               Add items →
             </Link>

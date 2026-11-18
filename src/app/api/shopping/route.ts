@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { name, quantity, category, preferredStore, estimatedPrice } = body;
+    const { name, quantity, category, preferredStore, estimatedPrice, isRecurring } = body;
 
     const cleanName = must(str(name, { max: 200, required: true }), "Item name is required (max 200 characters)");
     const cleanQuantity = must(str(typeof quantity === "number" ? String(quantity) : quantity, { max: 40 }), "Quantity is invalid") ?? "1";
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
         category: cleanCategory,
         preferredStore: cleanStore,
         estimatedPrice: cleanPrice,
+        isRecurring: Boolean(isRecurring),
       },
     });
 
@@ -108,12 +109,13 @@ async function handleUpdate(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { id, isChecked, name, quantity, category, preferredStore, estimatedPrice } = body;
+    const { id, isChecked, name, quantity, category, preferredStore, estimatedPrice, isRecurring } = body;
 
     const itemId = must(idOf(id), "Item ID required");
 
     const dataToUpdate: any = {};
     if (isChecked !== undefined) dataToUpdate.isChecked = Boolean(isChecked);
+    if (isRecurring !== undefined) dataToUpdate.isRecurring = Boolean(isRecurring);
     if (name !== undefined) dataToUpdate.name = must(str(name, { max: 200, required: true }), "Item name is required (max 200 characters)");
     if (quantity !== undefined) dataToUpdate.quantity = must(str(typeof quantity === "number" ? String(quantity) : quantity, { max: 40 }), "Quantity is invalid") ?? "1";
     if (category !== undefined) dataToUpdate.category = must(str(category, { max: 80 }), "Category is too long") ?? "Groceries";
