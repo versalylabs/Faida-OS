@@ -5,6 +5,9 @@ import { spawnNextRecurrence } from "@/lib/recurrence";
 import { touchProject } from "@/lib/projectActivity";
 import { readBody, ValidationError, badRequest } from "@/lib/validate";
 import { BillError, payBill } from "@/lib/bills";
+import { lockPlan, usualBudgetMinutes } from "@/lib/planner/daily";
+import { formatClock } from "@/lib/planner/scheduler";
+import { zonedDateKey } from "@/lib/tz";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +35,31 @@ export async function POST(req: NextRequest) {
     // A planned block ("PLAN:<taskId>:<start>") acts on its task.
     const [rawSource, id] = ref.split(":");
     const source = rawSource === "PLAN" ? "TASK" : rawSource;
-    if (!id || !["done", "snooze", "tomorrow", "confirm", "paid"].includes(action)) return badRequest("Unknown notification action");
+    if (!id || !["done", "snooze", "tomorrow", "confirm", "paid", "lockplan"].includes(action)) return badRequest("Unknown notification action");
+
+    // The morning summary: lock in today's plan with the usual focus time, and say what it holds.
+    if (rawSource === "digest" && action === "lockplan") {
+      const dateKey = zonedDateKey(new Date());
+      const already = await prisma.dailyPlan.findUnique({ where: { userId_dateKey: { userId: user.id, dateKey } }, select: { id: true } });
+      if (already) return NextResponse.json({ success: true, confirm: true, message: "Today's plan is already locked in." }, { headers: NO_STORE });
+      const budgetMinutes = await usualBudgetMinutes(user.id);
+      const { plan } = await lockPlan(user.id, { budgetMinutes, startParam: null, endHour: 20 });
+      const blocks = plan.slots.filter((s) => s.kind === "TASK");
+      if (blocks.length === 0) {
+        await prisma.dailyPlan.deleteMany({ where: { userId: user.id, dateKey } });
+        return NextResponse.json({ success: true, confirm: true, message: "Nothing to plan today: no open tasks fit. Enjoy the space." }, { headers: NO_STORE });
+      }
+      const first = blocks[0];
+      const hours = Math.round((plan.focusMinutes / 60) * 10) / 10;
+      return NextResponse.json(
+        {
+          success: true,
+          confirm: true,
+          message: `Locked in: ${blocks.length} block${blocks.length === 1 ? "" : "s"}, ${hours}h of focus. First at ${formatClock(first.startMin)}: ${first.title}. You'll get a reminder as each starts.`,
+        },
+        { headers: NO_STORE }
+      );
+    }
 
     // A bill: "Paid" logs it and lines up the next one. A bill whose amount varies cannot be paid from here (409),
     // so the service worker opens the app instead.

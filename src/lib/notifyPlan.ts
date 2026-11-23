@@ -46,8 +46,8 @@ export const DEFAULT_PREFS: NotifyPrefs = {
 export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill";
 
 /** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
-export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid" | "join";
-export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid", join: "Join" };
+export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid" | "join" | "lockplan";
+export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid", join: "Join", lockplan: "Lock today's plan" };
 
 export interface PlannedNotification {
   key: string; // unique per item, kind and start time

@@ -138,6 +138,12 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
     const { items, overdue } = await getAgenda(userId, new Date(now.getTime() - 3600000), new Date(now.getTime() + 40 * 3600000), now);
     const planItems = await lockedPlanItems(userId, now);
     const firstPass = planNotifications([...items, ...planItems], prefs, now, new Set(), overdue);
+    // The morning summary offers to lock in today's plan, unless one is locked already.
+    const digest = firstPass.find((n) => n.kind === "digest");
+    if (digest) {
+      const locked = await prisma.dailyPlan.findUnique({ where: { userId_dateKey: { userId, dateKey: zonedDateKey(now) } }, select: { id: true } });
+      if (!locked) digest.actions = ["lockplan"];
+    }
     const pending = await prisma.financeTransaction.findMany({ where: { userId, needsReview: true }, select: { amount: true } });
     const review = planReview(
       {

@@ -261,8 +261,20 @@ self.addEventListener("notificationclick", (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ref: data.ref, action: event.action }),
       })
-        .then((res) => {
+        .then(async (res) => {
           if (!res.ok) throw new Error("action failed");
+          // Some actions answer with a short confirmation worth showing (e.g. what "Lock today's plan" locked in).
+          const json = await res.json().catch(() => ({}));
+          if (json && json.confirm && json.message) {
+            await self.registration.showNotification("Faida OS", {
+              body: json.message,
+              icon: "/icon-192.png",
+              badge: "/icon-192.png",
+              tag: "faida-confirm",
+              silent: true,
+              data: { url: event.action === "lockplan" ? "/planner" : target, ref: null, link: null },
+            });
+          }
         })
         .catch(() => openApp(target))
     );
