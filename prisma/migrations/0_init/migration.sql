@@ -673,18 +673,6 @@ CREATE TABLE "Business" (
 );
 
 -- CreateTable
-CREATE TABLE "BusinessPrivatePlan" (
-    "id" TEXT NOT NULL,
-    "userId" TEXT NOT NULL,
-    "businessId" TEXT NOT NULL,
-    "data" TEXT NOT NULL,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
-
-    CONSTRAINT "BusinessPrivatePlan_pkey" PRIMARY KEY ("id")
-);
-
--- CreateTable
 CREATE TABLE "BusinessClient" (
     "id" TEXT NOT NULL,
     "businessId" TEXT NOT NULL,
@@ -992,12 +980,6 @@ CREATE INDEX "EnergyCheckin_userId_createdAt_idx" ON "EnergyCheckin"("userId", "
 CREATE INDEX "EffortEvent_userId_createdAt_idx" ON "EffortEvent"("userId", "createdAt");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "BusinessPrivatePlan_businessId_key" ON "BusinessPrivatePlan"("businessId");
-
--- CreateIndex
-CREATE INDEX "BusinessPrivatePlan_userId_idx" ON "BusinessPrivatePlan"("userId");
-
--- CreateIndex
 CREATE INDEX "BusinessPurchase_userId_status_idx" ON "BusinessPurchase"("userId", "status");
 
 -- CreateIndex
@@ -1221,12 +1203,6 @@ ALTER TABLE "FileBlob" ADD CONSTRAINT "FileBlob_fileId_fkey" FOREIGN KEY ("fileI
 
 -- AddForeignKey
 ALTER TABLE "Business" ADD CONSTRAINT "Business_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "BusinessPrivatePlan" ADD CONSTRAINT "BusinessPrivatePlan_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "BusinessPrivatePlan" ADD CONSTRAINT "BusinessPrivatePlan_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "BusinessClient" ADD CONSTRAINT "BusinessClient_businessId_fkey" FOREIGN KEY ("businessId") REFERENCES "Business"("id") ON DELETE CASCADE ON UPDATE CASCADE;
