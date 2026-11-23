@@ -1,0 +1,82 @@
+# Weekly backup of the Faida OS database (every table, including uploaded files).
+#
+# This repository is PUBLIC and anyone signed in to GitHub can download workflow artifacts,
+# so the dump is encrypted (GPG, AES-256) before it is uploaded. Without the passphrase it is useless.
+#
+# One-time setup: Settings > Secrets and variables > Actions > New repository secret
+#   BACKUP_DATABASE_URL  the production connection string. With Neon use the DIRECT one
+#                        (host without "-pooler"); pg_dump does not work well through the pooler.
+#   BACKUP_PASSPHRASE    a long random passphrase. Keep a copy in your password manager:
+#                        without it no backup can be opened.
+#
+# Runs Sundays at 03:00 Nairobi time (00:00 UTC), and any time from the Actions tab ("Run workflow").
+# Each backup is kept for 90 days. How to restore: README.md > "Backups and restore".
+name: Faida OS backup
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faida-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check the secrets are set
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          missing=0
+          [ -n "$BACKUP_DATABASE_URL" ] || { echo "BACKUP_DATABASE_URL is not set in this repository's Actions secrets"; missing=1; }
+          [ -n "$BACKUP_PASSPHRASE" ] || { echo "BACKUP_PASSPHRASE is not set in this repository's Actions secrets"; missing=1; }
+          [ ${#BACKUP_PASSPHRASE} -ge 20 ] || { echo "BACKUP_PASSPHRASE must be at least 20 characters"; missing=1; }
+          exit $missing
+
+      - name: Dump the database
+        env:
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        # The PostgreSQL 18 client reads any older server version too.
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/backup"
+          docker run --rm -e BACKUP_DATABASE_URL -v "$RUNNER_TEMP/backup:/out" postgres:18-alpine \
+            sh -c 'pg_dump "$BACKUP_DATABASE_URL" --format=custom --compress=9 --no-owner --no-acl --file=/out/faida.dump'
+          # Sanity check: the dump must open and contain the app's tables.
+          tables=$(docker run --rm -v "$RUNNER_TEMP/backup:/out" postgres:18-alpine \
+            pg_restore --list /out/faida.dump | grep -c " TABLE DATA " || true)
+          echo "Tables with data in this backup: $tables"
+          if [ "$tables" -lt 10 ]; then echo "Backup looks incomplete ($tables tables)"; exit 1; fi
+          ls -lh "$RUNNER_TEMP/backup/faida.dump"
+
+      - name: Encrypt the dump
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/backup"
+          stamp=$(date -u +%Y-%m-%d)
+          printf '%s' "$BACKUP_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+            --symmetric --cipher-algo AES256 --output "faida-os-$stamp.dump.gpg" faida.dump
+          shred -u faida.dump
+          sha256sum "faida-os-$stamp.dump.gpg" > "faida-os-$stamp.dump.gpg.sha256"
+          ls -lh
+
+      - name: Keep the encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: faida-os-backup-${{ github.run_number }}
+          path: |
+            ${{ runner.temp }}/backup/*.gpg
+            ${{ runner.temp }}/backup/*.sha256
+          retention-days: 90
+          if-no-files-found: error
+          compression-level: 0

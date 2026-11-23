@@ -191,3 +191,41 @@ and **Business Finance**.
 
 Needs one database update (`npx prisma db push`) that adds `businessId`/`clientId` to transactions and the
 `BusinessPurchase` table. Run it before deploying code that uses them.
+
+## Backups and restore
+
+`.github/workflows/backup.yml` makes a full copy of the database every Sunday at 03:00 Nairobi time: every
+table, including uploaded files. The copy is encrypted (GPG, AES-256) before it is stored, because this
+repository is public and its workflow files can be downloaded by others. Each backup is kept for 90 days.
+
+**One-time setup** (repository Settings > Secrets and variables > Actions > New repository secret):
+
+| Secret | What to paste |
+|---|---|
+| `BACKUP_DATABASE_URL` | The production connection string. In Neon use the **direct** one (Connect > untick "Connection pooling"; the host has no `-pooler`). |
+| `BACKUP_PASSPHRASE` | A long random passphrase (20+ characters). Save it in your password manager: no backup can be opened without it. |
+
+Then open **Actions > Faida OS backup > Run workflow** once to check it works. The run lists how many tables it
+saved. Take an extra backup the same way before any risky change, such as `prisma db push`.
+
+**Restore** (try it once into a spare database so you know it works before you need it):
+
+1. **Actions > Faida OS backup**, open a run, download the `faida-os-backup-…` file and unzip it.
+2. Decrypt it (Git Bash on Windows already includes `gpg`):
+   ```bash
+   gpg --decrypt --output faida.dump faida-os-YYYY-MM-DD.dump.gpg
+   ```
+3. In Neon, create an empty database to restore into (Databases > New database, e.g. `faida_restore`), and copy
+   its direct connection string.
+4. Load the backup (needs the PostgreSQL client tools, or Docker):
+   ```bash
+   pg_restore --no-owner --no-acl --dbname "<connection string of faida_restore>" faida.dump
+   # or, with Docker:
+   docker run --rm -v "$PWD:/w" postgres:18-alpine pg_restore --no-owner --no-acl --dbname "<connection string>" /w/faida.dump
+   ```
+5. Check it locally (point `.env` at it and run `npm run dev`). To go live with it, set Vercel's `DATABASE_URL`
+   to the restored database and redeploy. Use the same `APP_SECRET` as before, or Developer Hub values and the
+   LMS key cannot be opened.
+
+For a mistake made in the last few hours, Neon's own restore (Branches > Restore) is faster. It only reaches
+back as far as your plan's history window, so the weekly backup is the long-term copy.
