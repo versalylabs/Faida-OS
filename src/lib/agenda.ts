@@ -9,7 +9,7 @@ import { isoWeekday, zonedDateKey, zonedNow, zonedTime } from "@/lib/tz";
  */
 
 export type AgendaCategory = "EVENT" | "REMINDER" | "TASK" | "ACADEMIC" | "CLASS" | "MAINTENANCE" | "BUSINESS";
-export type AgendaSource = "EVENT" | "REMINDER" | "TASK" | "CAT" | "CLASS" | "ZOOM" | "MAINTENANCE" | "DELIVERABLE";
+export type AgendaSource = "EVENT" | "REMINDER" | "TASK" | "CAT" | "CLASS" | "ZOOM" | "MAINTENANCE" | "DELIVERABLE" | "PLAN"; // PLAN: a block of a locked daily plan (reminders only)
 
 export interface AgendaItem {
   key: string;

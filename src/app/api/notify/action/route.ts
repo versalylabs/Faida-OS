@@ -28,7 +28,9 @@ export async function POST(req: NextRequest) {
     const body = await readBody(req);
     const ref = typeof body.ref === "string" ? body.ref : "";
     const action = typeof body.action === "string" ? body.action : "";
-    const [source, id] = ref.split(":");
+    // A planned block ("PLAN:<taskId>:<start>") acts on its task.
+    const [rawSource, id] = ref.split(":");
+    const source = rawSource === "PLAN" ? "TASK" : rawSource;
     if (!id || !["done", "snooze", "tomorrow"].includes(action)) return badRequest("Unknown notification action");
 
     const now = new Date();
@@ -48,6 +50,8 @@ export async function POST(req: NextRequest) {
       } else if (action === "tomorrow") {
         const due = task.dueDate ? new Date(task.dueDate.getTime() + DAY) : new Date(now.getTime() + DAY);
         await prisma.task.update({ where: { id }, data: { dueDate: due } });
+        // Logged like the planner's "Move to tomorrow", so today's plan drops it too.
+        await prisma.effortEvent.create({ data: { userId: user.id, type: "DEFER", taskId: id, minutes: task.estimatedMinutes || 0 } });
         message = `Moved to tomorrow: ${task.title}`;
       } else {
         await prisma.reminder.create({ data: { userId: user.id, taskId: id, title: task.title, dueAt: new Date(now.getTime() + HOUR) } });

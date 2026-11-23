@@ -17,6 +17,7 @@ export interface PlanTask {
   energyCost: number; // 1-10
   dueDate?: string | null; // ISO
   projectName?: string | null;
+  carriedOver?: boolean; // in yesterday's locked plan but not finished: goes first after due work
 }
 
 export interface BusyBlock {
@@ -42,6 +43,7 @@ export interface PlanSlot {
   part?: { index: number; total: number };
   isLastPart?: boolean;
   location?: string | null;
+  done?: boolean; // set when a locked plan is shown and the task has since been finished
 }
 
 export interface OverflowTask {
@@ -169,7 +171,7 @@ export function buildDayPlan(tasks: PlanTask[], busy: BusyBlock[], opts: PlanOpt
   const isDueToday = (t: PlanTask) => (t.dueDate ? new Date(t.dueDate).getTime() < opts.endOfDayMs : false);
   const isOverdue = (t: PlanTask) => (t.dueDate ? new Date(t.dueDate).getTime() < opts.endOfDayMs - 86400000 : false);
   const ordered = [...tasks].sort((a, b) => {
-    const rank = (t: PlanTask) => (isOverdue(t) ? 0 : isDueToday(t) ? 1 : 2);
+    const rank = (t: PlanTask) => (isOverdue(t) ? 0 : isDueToday(t) ? 1 : t.carriedOver ? 2 : 3);
     const dueA = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
     const dueB = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
     return (
@@ -242,6 +244,7 @@ export function buildDayPlan(tasks: PlanTask[], busy: BusyBlock[], opts: PlanOpt
       const why: string[] = [];
       if (isOverdue(task)) why.push("Overdue");
       else if (isDueToday(task)) why.push("Due today");
+      else if (task.carriedOver) why.push("Carried over from yesterday");
       else if (task.priority === "URGENT") why.push("Urgent");
       if (heavy && p.startMin < MORNING_END) why.push("Heavy, so placed in your morning");
       if (placedParts.length > 1) p.part = { index: i + 1, total: Math.max(parts, placedParts.length) };

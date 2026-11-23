@@ -65,7 +65,7 @@ export interface PlannedNotification {
  * reminders and client work. Classes, CATs and calendar events are left alone (tapping opens the app).
  */
 export function actionsFor(item: AgendaItem, kind: ReminderKind): NotifyAction[] {
-  const own = item.source === "TASK" || item.source === "REMINDER" || item.source === "DELIVERABLE";
+  const own = item.source === "TASK" || item.source === "REMINDER" || item.source === "DELIVERABLE" || item.source === "PLAN";
   if (!own || kind === "digest") return [];
   // Right now (or within the hour): finish it, or be reminded again shortly.
   if (kind === "due" || kind === "hour") return ["done", "snooze"];
@@ -88,7 +88,9 @@ function listTitles(items: AgendaItem[], max: number): string {
  */
 export function buildDigest(items: AgendaItem[], overdue: AgendaItem[], now: Date): { title: string; body: string } | null {
   const todayKey = zonedDateKey(now);
-  const today = items.filter((i) => !i.done && zonedDateKey(new Date(i.start)) === todayKey && i.source !== "MAINTENANCE");
+  const today = items.filter(
+    (i) => !i.done && zonedDateKey(new Date(i.start)) === todayKey && i.source !== "MAINTENANCE" && i.source !== "PLAN"
+  );
   const timed = today.filter((i) => !i.allDay).sort((a, b) => a.start.localeCompare(b.start));
   const due = today.filter((i) => i.allDay);
   const late = overdue.filter((i) => !i.done);
@@ -124,6 +126,8 @@ function categoryEnabled(item: AgendaItem, p: NotifyPrefs): boolean {
       return p.maintenance;
     case "DELIVERABLE":
       return p.business;
+    case "PLAN":
+      return p.tasks;
     case "TASK":
       return item.category === "ACADEMIC" ? p.academic : p.tasks;
     default:
@@ -183,6 +187,13 @@ export function planNotifications(
     const timedStart = !item.allDay;
     const dayKey = zonedDateKey(new Date(item.start));
     const detail = (extra: string) => [item.subtitle, extra].filter(Boolean).join(" · ");
+
+    // A block of the plan you locked in: "time to start", around the block's start (the sender runs every
+    // ~15 minutes, so the window is wide enough to be caught once).
+    if (item.source === "PLAN") {
+      if (nowMs >= start - 10 * 60000 && nowMs < start + 10 * 60000) add(item, "due", `Time to start: ${item.title}`, detail(clock(item.start)));
+      continue;
+    }
 
     // Your own reminders go off at the time you set, even in quiet hours.
     if (item.source === "REMINDER") {

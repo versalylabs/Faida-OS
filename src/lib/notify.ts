@@ -1,6 +1,8 @@
 import * as webpush from "web-push";
 import { prisma } from "@/lib/db";
-import { getAgenda } from "@/lib/agenda";
+import { getAgenda, type AgendaItem } from "@/lib/agenda";
+import { zonedDateKey, zonedTime } from "@/lib/tz";
+import { formatClock, type DayPlan } from "@/lib/planner/scheduler";
 import { ACTION_LABELS, DEFAULT_PREFS, planNotifications, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
 
 export interface PushTarget {
@@ -61,6 +63,43 @@ function payloadOf(n: PlannedNotification): string {
   });
 }
 
+/**
+ * The task blocks of today's locked plan, as agenda-style items so they get a "time to start" reminder.
+ * Finished, dropped and unknown tasks are skipped.
+ */
+async function lockedPlanItems(userId: string, now: Date): Promise<AgendaItem[]> {
+  const dateKey = zonedDateKey(now);
+  const saved = await prisma.dailyPlan.findUnique({ where: { userId_dateKey: { userId, dateKey } } });
+  if (!saved) return [];
+  const slots = (saved.plan as unknown as DayPlan).slots.filter((s) => s.kind === "TASK" && s.taskId);
+  if (slots.length === 0) return [];
+  const open = await prisma.task.findMany({
+    where: { userId, id: { in: slots.map((s) => s.taskId!) }, status: { notIn: ["DONE", "ARCHIVED"] } },
+    select: { id: true },
+  });
+  const openIds = new Set(open.map((t) => t.id));
+  return slots
+    .filter((s) => openIds.has(s.taskId!))
+    .map((s) => ({
+      key: `PLAN:${s.taskId}:${s.startMin}`,
+      id: s.taskId!,
+      source: "PLAN" as const,
+      category: "TASK" as const,
+      title: s.title,
+      subtitle: [`${s.endMin - s.startMin} min`, s.part ? `part ${s.part.index} of ${s.part.total}` : ""].filter(Boolean).join(", "),
+      start: zonedTime(dateKey, formatClock(s.startMin)).toISOString(),
+      end: zonedTime(dateKey, formatClock(s.endMin)).toISOString(),
+      allDay: false,
+      done: false,
+      priority: s.priority ?? null,
+      color: null,
+      href: "/planner",
+      url: null,
+      canToggle: false,
+      canEdit: false,
+    }));
+}
+
 export interface RunSummary {
   users: number;
   planned: number;
@@ -96,7 +135,8 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
     if (!prefs.enabled) continue;
 
     const { items, overdue } = await getAgenda(userId, new Date(now.getTime() - 3600000), new Date(now.getTime() + 40 * 3600000), now);
-    const firstPass = planNotifications(items, prefs, now, new Set(), overdue);
+    const planItems = await lockedPlanItems(userId, now);
+    const firstPass = planNotifications([...items, ...planItems], prefs, now, new Set(), overdue);
     if (firstPass.length === 0) continue;
 
     const sentRows = await prisma.notificationLog.findMany({

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarClock, Check, Coffee, GraduationCap, Loader2, MapPin, RefreshCw, Sparkles, Utensils, CalendarDays } from "lucide-react";
+import { CalendarClock, Check, CheckCircle2, Coffee, GraduationCap, Loader2, Lock, MapPin, RefreshCw, Sparkles, Unlock, Utensils, CalendarDays } from "lucide-react";
 import { formatClock, type DayPlan, type PlanSlot } from "@/lib/planner/scheduler";
 import { cacheOfflineData, getCachedOfflineData } from "@/lib/offlineSync";
 
 interface PlanResponse {
   success: boolean;
   plan: DayPlan;
+  locked: { at: string; budgetMinutes: number } | null;
   now: { minutes: number; dateLabel: string };
 }
 
@@ -72,6 +73,35 @@ export default function PlannerPage() {
     return () => clearInterval(t);
   }, [hours, load]);
 
+  const [locking, setLocking] = useState(false);
+
+  /** Lock in today's plan (or, when already locked, replan the rest of the day and keep it locked). */
+  const lockPlan = async (unlock = false) => {
+    setLocking(true);
+    try {
+      const res = await fetch("/api/planner", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(unlock ? { action: "unlock" } : { action: "lock", hours }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        flash("That did not save. Try again.");
+      } else if (unlock) {
+        flash("Unlocked. The plan rebuilds itself again on every visit.");
+        await load(hours, true);
+      } else {
+        setData(json);
+        cacheOfflineData(`planner_${hours}`, json);
+        flash(data?.locked ? "Rest of the day replanned." : "Locked in. You'll get a reminder as each block starts.");
+      }
+    } catch {
+      flash("You seem to be offline. Try again when you're back.");
+    } finally {
+      setLocking(false);
+    }
+  };
+
   const flash = (text: string) => {
     setMessage(text);
     setTimeout(() => setMessage(null), 4000);
@@ -102,7 +132,9 @@ export default function PlannerPage() {
   const plan = data?.plan;
   const nowMin = data?.now.minutes ?? 0;
 
-  const nextTaskSlot = useMemo(() => plan?.slots.find((s) => s.kind === "TASK"), [plan, tick]);
+  const locked = data?.locked ?? null;
+  // The next block still to do: not finished and not already over.
+  const nextTaskSlot = useMemo(() => plan?.slots.find((s) => s.kind === "TASK" && !s.done && s.endMin > nowMin), [plan, tick, nowMin]);
 
   const renderSlot = (slot: PlanSlot) => {
     const range = `${formatClock(slot.startMin)} – ${formatClock(slot.endMin)}`;
@@ -146,6 +178,16 @@ export default function PlannerPage() {
             </div>
           </div>
           {isNow && <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-300/20 text-amber-100 border border-amber-300/40 shrink-0">Now</span>}
+        </div>
+      );
+    }
+
+    if (slot.done) {
+      return (
+        <div key={slot.id} className="p-3.5 rounded-2xl bg-slate-950/30 border border-emerald-400/20 flex items-center gap-3">
+          <CheckCircle2 className="h-4 w-4 text-emerald-300 shrink-0" />
+          <span className="text-xs tabular-nums text-slate-400">{range}</span>
+          <span className="text-sm text-slate-300 line-through truncate">{slot.title}</span>
         </div>
       );
     }
@@ -214,21 +256,69 @@ export default function PlannerPage() {
             Built from right now, around your classes and events, with lunch and breaks protected. The heavy work goes in your morning.
           </p>
         </div>
-        <button
-          onClick={() => load(hours)}
-          disabled={isLoading}
-          className="press flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-900/70 border border-white/15 text-slate-100 text-sm font-medium cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw className={`h-4 w-4 text-sky-300 ${isLoading ? "animate-spin" : ""}`} />
-          Rebuild from now
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          {locked ? (
+            <>
+              <button
+                onClick={() => lockPlan()}
+                disabled={locking}
+                title="Keep what is behind you and plan the rest of the day again"
+                className="press flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-900/70 border border-white/15 text-slate-100 text-sm font-medium cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 text-sky-300 ${locking ? "animate-spin" : ""}`} />
+                Replan rest of day
+              </button>
+              <button
+                onClick={() => lockPlan(true)}
+                disabled={locking}
+                title="Stop following a fixed plan today"
+                className="press flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-full bg-slate-950/50 border border-white/10 text-slate-300 text-sm cursor-pointer disabled:opacity-50"
+              >
+                <Unlock className="h-4 w-4" />
+                Unlock
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => lockPlan()}
+                disabled={locking || !plan || plan.slots.every((s) => s.kind !== "TASK")}
+                title="Keep this plan for today and get a reminder as each block starts"
+                className="press flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-sky-400/20 border border-sky-300/50 text-sky-50 text-sm font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {locking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
+                Lock in this plan
+              </button>
+              <button
+                onClick={() => load(hours)}
+                disabled={isLoading}
+                className="press flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-slate-900/70 border border-white/15 text-slate-100 text-sm font-medium cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 text-sky-300 ${isLoading ? "animate-spin" : ""}`} />
+                Rebuild from now
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {locked && (
+        <div className="flex items-start gap-2 p-3 rounded-2xl bg-sky-400/10 border border-sky-300/30 text-sm text-sky-50">
+          <Lock className="h-4 w-4 text-sky-300 shrink-0 mt-0.5" />
+          <span>
+            Locked in at {new Date(locked.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} with {minutesLabel(locked.budgetMinutes)} of focus.
+            You&apos;ll get a reminder as each block starts. Anything not finished goes first in tomorrow&apos;s plan.
+          </span>
+        </div>
+      )}
 
       <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-white">Focus time you want today</div>
-            <div className="text-xs text-slate-300">Planned work never goes beyond this. Pick less on a low-energy day.</div>
+            <div className="text-xs text-slate-300">
+              Planned work never goes beyond this. Pick less on a low-energy day.{locked ? " A new choice applies when you replan." : ""}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {HOUR_CHOICES.map((h) => (

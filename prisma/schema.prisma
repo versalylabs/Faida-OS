@@ -12,12 +12,12 @@ generator client {
 // -------------------------------------------------------------
 
 model User {
-  id           String    @id @default(uuid())
-  email        String    @unique
+  id           String   @id @default(uuid())
+  email        String   @unique
   name         String?
   passwordHash String
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   sessions              Session[]
   entities              Entity[]
@@ -47,6 +47,7 @@ model User {
   lmsItems              LmsItem[]
   lmsActivities         LmsActivity[]
   pushSubscriptions     PushSubscription[]
+  dailyPlans            DailyPlan[]
   notificationPref      NotificationPref?
   notificationLogs      NotificationLog[]
   businesses            Business[]
@@ -69,16 +70,16 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model AuthRateLimit {
-  key             String   @id
-  count           Int      @default(0)
-  windowStartedAt DateTime @default(now())
+  key             String    @id
+  count           Int       @default(0)
+  windowStartedAt DateTime  @default(now())
   blockedUntil    DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
 // -------------------------------------------------------------
@@ -86,41 +87,41 @@ model AuthRateLimit {
 // -------------------------------------------------------------
 
 model Entity {
-  id          String   @id @default(uuid())
-  userId      String?
-  type        String   // TASK, PROJECT, NOTE, REMINDER, EVENT, LEARNING, FINANCE, SHOPPING, MAINTENANCE, ACADEMIC
-  title       String
-  content     String?  // Rich text or JSON payload
-  status      String?  // DRAFT, ACTIVE, COMPLETED, ARCHIVED
-  priority    String?  // LOW, MEDIUM, HIGH, URGENT
-  metadata    String?  // JSON string for arbitrary extensible metadata
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  archivedAt  DateTime?
+  id         String    @id @default(uuid())
+  userId     String?
+  type       String // TASK, PROJECT, NOTE, REMINDER, EVENT, LEARNING, FINANCE, SHOPPING, MAINTENANCE, ACADEMIC
+  title      String
+  content    String? // Rich text or JSON payload
+  status     String? // DRAFT, ACTIVE, COMPLETED, ARCHIVED
+  priority   String? // LOW, MEDIUM, HIGH, URGENT
+  metadata   String? // JSON string for arbitrary extensible metadata
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  archivedAt DateTime?
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   // Graph Relations
   outgoingRelations EntityRelation[] @relation("SourceEntity")
   incomingRelations EntityRelation[] @relation("TargetEntity")
 
   // Domain associations
-  task        Task?
-  project     Project?
-  note        Note?
-  reminder    Reminder?
-  activity    ActivityLog[]
+  task     Task?
+  project  Project?
+  note     Note?
+  reminder Reminder?
+  activity ActivityLog[]
 }
 
 model EntityRelation {
   id           String   @id @default(uuid())
   sourceId     String
   targetId     String
-  relationType String   // LINKS_TO, PARENT_OF, DEPENDS_ON, LEARNED_IN, USED_BY
+  relationType String // LINKS_TO, PARENT_OF, DEPENDS_ON, LEARNED_IN, USED_BY
   createdAt    DateTime @default(now())
 
-  sourceEntity Entity   @relation("SourceEntity", fields: [sourceId], references: [id], onDelete: Cascade)
-  targetEntity Entity   @relation("TargetEntity", fields: [targetId], references: [id], onDelete: Cascade)
+  sourceEntity Entity @relation("SourceEntity", fields: [sourceId], references: [id], onDelete: Cascade)
+  targetEntity Entity @relation("TargetEntity", fields: [targetId], references: [id], onDelete: Cascade)
 
   @@unique([sourceId, targetId, relationType])
 }
@@ -136,32 +137,32 @@ model Task {
   title            String
   description      String?
   priority         String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
-  status           String    @default("TODO")   // BACKLOG, TODO, IN_PROGRESS, DONE, ARCHIVED
+  status           String    @default("TODO") // BACKLOG, TODO, IN_PROGRESS, DONE, ARCHIVED
   dueDate          DateTime?
   scheduledDate    DateTime? // Allocated by Daily Planner
   estimatedMinutes Int       @default(30)
   actualMinutes    Int       @default(0)
   category         String?
-  recurrence       String?   // DAILY, WEEKLY, MONTHLY
+  recurrence       String? // DAILY, WEEKLY, MONTHLY
   projectId        String?
   milestoneId      String?
   courseId         String?
   isAcademic       Boolean   @default(false)
-  academicType     String?   // ASSIGNMENT, CAT_PREP, LAB, STUDY, EXAM_PREP
+  academicType     String? // ASSIGNMENT, CAT_PREP, LAB, STUDY, EXAM_PREP
   submissionUrl    String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  entity           Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  milestone        Milestone?        @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-  course           UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  subtasks         Subtask[]
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity         Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestone      Milestone?        @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  course         UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  subtasks       Subtask[]
+  reminders      Reminder[]
+  calendarEvents CalendarEvent[]
 
   @@index([milestoneId])
-  reminders        Reminder[]
-  calendarEvents   CalendarEvent[]
 }
 
 model Subtask {
@@ -171,32 +172,32 @@ model Subtask {
   isDone    Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 }
 
 model Reminder {
-  id              String    @id @default(uuid())
+  id              String   @id @default(uuid())
   userId          String?
-  entityId        String?   @unique
+  entityId        String?  @unique
   taskId          String?
   noteId          String?
   title           String
   description     String?
   dueAt           DateTime
-  isCompleted     Boolean   @default(false)
-  escalationState String    @default("UPCOMING") // UPCOMING, DUE_TODAY, OVERDUE
+  isCompleted     Boolean  @default(false)
+  escalationState String   @default("UPCOMING") // UPCOMING, DUE_TODAY, OVERDUE
   recurrence      String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  entity          Entity?   @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  task            Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  note            Note?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity Entity? @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  note   Note?   @relation(fields: [noteId], references: [id], onDelete: SetNull)
 }
 
 model CalendarEvent {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   userId         String?
   taskId         String?
   noteId         String?
@@ -207,13 +208,13 @@ model CalendarEvent {
   startTime      DateTime
   endTime        DateTime
   location       String?
-  isAllDay       Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  isAllDay       Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
-  task           Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  note           Note?     @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  note Note? @relation(fields: [noteId], references: [id], onDelete: SetNull)
 }
 
 // -------------------------------------------------------------
@@ -221,25 +222,25 @@ model CalendarEvent {
 // -------------------------------------------------------------
 
 model Project {
-  id              String          @id @default(uuid())
+  id              String    @id @default(uuid())
   userId          String?
-  entityId        String?         @unique
+  entityId        String?   @unique
   name            String
   description     String?
-  status          String          @default("ACTIVE") // PLANNING, ACTIVE, PAUSED, COMPLETED
-  progressPercent Int             @default(0)
+  status          String    @default("ACTIVE") // PLANNING, ACTIVE, PAUSED, COMPLETED
+  progressPercent Int       @default(0)
   targetDate      DateTime?
-  color           String?         @default("#3b82f6")
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  color           String?   @default("#3b82f6")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  user            User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  entity          Entity?         @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  tasks           Task[]
-  notes           Note[]
-  milestones      Milestone[]
-  credentials     DevCredential[]
-  files           FileAsset[]
+  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity      Entity?         @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  tasks       Task[]
+  notes       Note[]
+  milestones  Milestone[]
+  credentials DevCredential[]
+  files       FileAsset[]
 }
 
 model Milestone {
@@ -251,29 +252,29 @@ model Milestone {
   order     Int       @default(0)
   createdAt DateTime  @default(now())
 
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  tasks     Task[]
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
 }
 
 model Note {
-  id              String            @id @default(uuid())
-  userId          String?
-  entityId        String?           @unique
-  projectId       String?
-  courseId        String?
-  title           String
-  content         String            // Markdown body
-  category        String?
-  tags            String?           // Comma-separated or JSON
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  id        String   @id @default(uuid())
+  userId    String?
+  entityId  String?  @unique
+  projectId String?
+  courseId  String?
+  title     String
+  content   String // Markdown body
+  category  String?
+  tags      String? // Comma-separated or JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user            User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  entity          Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
-  project         Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  course          UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  reminders       Reminder[]
-  calendarEvents  CalendarEvent[]
+  user           User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity         Entity?           @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  project        Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  course         UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  reminders      Reminder[]
+  calendarEvents CalendarEvent[]
 }
 
 // -------------------------------------------------------------
@@ -283,19 +284,19 @@ model Note {
 model UniversityCourse {
   id            String    @id @default(uuid())
   userId        String?
-  code          String    // e.g. "BAC 2101", "COMP 201"
-  name          String    // e.g. "Database Systems"
+  code          String // e.g. "BAC 2101", "COMP 201"
+  name          String // e.g. "Database Systems"
   lecturer      String?
   lecturerEmail String?
-  semester      String?   // e.g. "Year 2 Sem 1"
+  semester      String? // e.g. "Year 2 Sem 1"
   color         String?   @default("#3b82f6")
   credits       Int       @default(3)
   status        String    @default("ACTIVE") // ACTIVE, COMPLETED, ARCHIVED
-  sourceId      String?   // Moodle course ID
+  sourceId      String? // Moodle course ID
   sourceSystem  String?   @default("MANUAL") // MOODLE, MANUAL, ICAL
   sourceUrl     String?
   lastSyncedAt  DateTime?
-  lmsCompletion Int?      // Moodle's own course-completion percentage, when the unit tracks it
+  lmsCompletion Int? // Moodle's own course-completion percentage, when the unit tracks it
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -309,41 +310,41 @@ model UniversityCourse {
 }
 
 model AcademicAssessment {
-  id                   String    @id @default(uuid())
+  id                   String   @id @default(uuid())
   userId               String?
   courseId             String
-  title                String    // e.g. "Database Systems CAT 1"
-  type                 String    @default("CAT") // CAT, EXAM, QUIZ, PRACTICAL, PRESENTATION
+  title                String // e.g. "Database Systems CAT 1"
+  type                 String   @default("CAT") // CAT, EXAM, QUIZ, PRACTICAL, PRESENTATION
   date                 DateTime
-  durationMinutes      Int       @default(60)
+  durationMinutes      Int      @default(60)
   weightPercent        Float?
   topicsCovered        String?
-  estimatedEffortHours Float     @default(4.0)
-  studyPlan            String?   // JSON string of suggested schedule
-  isCompleted          Boolean   @default(false)
+  estimatedEffortHours Float    @default(4.0)
+  studyPlan            String? // JSON string of suggested schedule
+  isCompleted          Boolean  @default(false)
   grade                String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  user                 User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course               UniversityCourse  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
 model AcademicClass {
   id        String   @id @default(uuid())
   userId    String?
   courseId  String
-  title     String   // e.g. "Lecture", "Lab Session"
-  dayOfWeek Int      // 1 (Mon) to 7 (Sun)
-  startTime String   // "10:00"
-  endTime   String   // "12:00"
-  location  String?  // e.g. "Computing Lab 3", "Zoom link"
+  title     String // e.g. "Lecture", "Lab Session"
+  dayOfWeek Int // 1 (Mon) to 7 (Sun)
+  startTime String // "10:00"
+  endTime   String // "12:00"
+  location  String? // e.g. "Computing Lab 3", "Zoom link"
   lecturer  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course    UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
 model AcademicMaterial {
@@ -352,7 +353,7 @@ model AcademicMaterial {
   courseId   String
   title      String
   type       String   @default("NOTES") // NOTES, SLIDES, SYLLABUS, ASSIGNMENT_BRIEF, PAST_PAPER
-  content    String?  // Extracted summary or text
+  content    String? // Extracted summary or text
   fileUrl    String?
   weekNumber Int?
   summary    String?
@@ -361,8 +362,8 @@ model AcademicMaterial {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user       User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course     UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course UniversityCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
 model AcademicAnnouncement {
@@ -375,8 +376,8 @@ model AcademicAnnouncement {
   sourceId    String?
   createdAt   DateTime @default(now())
 
-  user        User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course      UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
 // -------------------------------------------------------------
@@ -399,33 +400,33 @@ model LmsConnection {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // An assignment, quiz/CAT or class link that exists in the LMS.
 model LmsItem {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   userId        String
   courseId      String?
-  kind          String   // ASSIGNMENT, QUIZ, ZOOM
-  sourceId      String   // the LMS "course module" id
+  kind          String // ASSIGNMENT, QUIZ, ZOOM
+  sourceId      String // the LMS "course module" id
   title         String
   url           String?
   openAt        DateTime?
   dueAt         DateTime?
-  state         String   @default("TODO") // TODO, SUBMITTED, GRADED
+  state         String    @default("TODO") // TODO, SUBMITTED, GRADED
   gradeEarned   Float?
   gradeMax      Float?
-  dismissed     Boolean  @default(false)
+  dismissed     Boolean   @default(false)
   taskId        String?
   assessmentId  String?
-  firstSeenAt   DateTime @default(now())
-  lastSeenAt    DateTime @default(now())
-  lastChangedAt DateTime @default(now())
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  firstSeenAt   DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  lastChangedAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, kind, sourceId])
   @@index([userId, dueAt])
@@ -437,7 +438,7 @@ model LmsActivity {
   userId     String
   courseId   String?
   itemId     String?
-  type       String    // NEW_ITEM, SUBMITTED, GRADED, DUE_CHANGED, ANNOUNCEMENT, NEW_MATERIAL
+  type       String // NEW_ITEM, SUBMITTED, GRADED, DUE_CHANGED, ANNOUNCEMENT, NEW_MATERIAL
   title      String
   detail     String?
   url        String?
@@ -445,7 +446,7 @@ model LmsActivity {
   occurredAt DateTime  @default(now())
   readAt     DateTime?
 
-  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dedupeKey])
   @@index([userId, occurredAt])
@@ -467,7 +468,7 @@ model PushSubscription {
   lastSentAt   DateTime?
   createdAt    DateTime  @default(now())
 
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -478,12 +479,12 @@ model NotificationPref {
   userId      String   @unique
   enabled     Boolean  @default(true)
   nightBefore Boolean  @default(true)
-  nightHour   Int      @default(20)  // local hour of the evening-before reminder
+  nightHour   Int      @default(20) // local hour of the evening-before reminder
   hourBefore  Boolean  @default(true)
-  leadMinutes Int      @default(60)  // how long before the start the "soon" reminder goes out
-  morningHour Int      @default(8)   // local hour for "due today" on all-day items
-  quietStart  Int      @default(23)  // no notifications from this local hour...
-  quietEnd    Int      @default(6)   // ...until this one
+  leadMinutes Int      @default(60) // how long before the start the "soon" reminder goes out
+  morningHour Int      @default(8) // local hour for "due today" on all-day items
+  quietStart  Int      @default(23) // no notifications from this local hour...
+  quietEnd    Int      @default(6) // ...until this one
   events      Boolean  @default(true)
   academic    Boolean  @default(true)
   business    Boolean  @default(true)
@@ -494,18 +495,18 @@ model NotificationPref {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Every reminder that was sent, so none is ever sent twice.
 model NotificationLog {
-  id       String   @id @default(uuid())
-  userId   String
-  key      String
-  title    String
-  sentAt   DateTime @default(now())
+  id     String   @id @default(uuid())
+  userId String
+  key    String
+  title  String
+  sentAt DateTime @default(now())
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, key])
   @@index([userId, sentAt])
@@ -516,40 +517,40 @@ model NotificationLog {
 // -------------------------------------------------------------
 
 model LearningSubject {
-  id          String          @id @default(uuid())
+  id          String   @id @default(uuid())
   userId      String?
   name        String
   description String?
   icon        String?
-  progress    Int             @default(0)
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  progress    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  topics      LearningTopic[]
+  user   User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  topics LearningTopic[]
 }
 
 model LearningTopic {
-  id          String         @id @default(uuid())
+  id          String   @id @default(uuid())
   subjectId   String
   title       String
   description String?
-  status      String         @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  status      String   @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  subject     LearningSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-  sessions    StudySession[]
+  subject  LearningSubject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  sessions StudySession[]
 }
 
 model StudySession {
-  id              String        @id @default(uuid())
+  id              String   @id @default(uuid())
   topicId         String
   durationMinutes Int
   notes           String?
-  studiedAt       DateTime      @default(now())
+  studiedAt       DateTime @default(now())
 
-  topic           LearningTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  topic LearningTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
 }
 
 // -------------------------------------------------------------
@@ -557,24 +558,24 @@ model StudySession {
 // -------------------------------------------------------------
 
 model FinanceTransaction {
-  id          String   @id @default(uuid())
-  userId      String?
-  type        String   // INCOME, EXPENSE
-  amount      Float
-  category    String   // Food, Tech, Utilities, Rent, Salary, Freelance
-  description String
-  date        DateTime @default(now())
-  isRecurring Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  businessId  String?  // set when the money belongs to one of the businesses
-  clientId    String?  // the business client it came from or was spent for
-  accountId   String?  // the account whose balance this moved (null = recorded only, no balance change)
+  id            String   @id @default(uuid())
+  userId        String?
+  type          String // INCOME, EXPENSE
+  amount        Float
+  category      String // Food, Tech, Utilities, Rent, Salary, Freelance
+  description   String
+  date          DateTime @default(now())
+  isRecurring   Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  businessId    String? // set when the money belongs to one of the businesses
+  clientId      String? // the business client it came from or was spent for
+  accountId     String? // the account whose balance this moved (null = recorded only, no balance change)
   transferGroup String? // the two rows of one transfer between accounts share this id
 
-  user        User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  business    Business?       @relation(fields: [businessId], references: [id], onDelete: SetNull)
-  client      BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  account     FinanceAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  user     User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  business Business?       @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  client   BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  account  FinanceAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([businessId, date])
   @@index([accountId, date])
@@ -585,10 +586,10 @@ model Budget {
   userId       String?
   category     String   @default("Overall")
   monthlyLimit Float
-  monthYear    String?  // e.g. "2026-09"
+  monthYear    String? // e.g. "2026-09"
   createdAt    DateTime @default(now())
 
-  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model FinanceAccount {
@@ -603,7 +604,7 @@ model FinanceAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?                @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions FinanceTransaction[]
 }
 
@@ -611,11 +612,11 @@ model FinanceCategory {
   id        String   @id @default(uuid())
   userId    String?
   name      String
-  type      String   // INCOME, EXPENSE
+  type      String // INCOME, EXPENSE
   color     String?  @default("#64748b")
   createdAt DateTime @default(now())
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ShoppingItem {
@@ -623,7 +624,7 @@ model ShoppingItem {
   userId         String?
   name           String
   quantity       String?  @default("1")
-  category       String?  // Groceries, Tech, Home, Health
+  category       String? // Groceries, Tech, Home, Health
   preferredStore String?
   estimatedPrice Float?
   isChecked      Boolean  @default(false)
@@ -631,7 +632,7 @@ model ShoppingItem {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model ShoppingCategory {
@@ -643,7 +644,7 @@ model ShoppingCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
 }
@@ -652,7 +653,7 @@ model MaintenanceItem {
   id              String    @id @default(uuid())
   userId          String?
   title           String
-  area            String    // COMPUTER, HOME, PERSONAL_ADMIN, DEV
+  area            String // COMPUTER, HOME, PERSONAL_ADMIN, DEV
   frequencyDays   Int       @default(30)
   lastCompletedAt DateTime?
   nextDueAt       DateTime
@@ -660,7 +661,7 @@ model MaintenanceItem {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  user            User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 // -------------------------------------------------------------
@@ -671,15 +672,15 @@ model AutomationRule {
   id            String   @id @default(uuid())
   userId        String?
   name          String
-  triggerType   String   // TASK_COMPLETED, ITEM_OVERDUE, PROJECT_CREATED, SCHEDULE_DRIFT
-  conditions    String?  // JSON string
-  actionType    String   // CREATE_NOTIFICATION, UPDATE_ENTITY, RESCHEDULE, LOG_ACTIVITY
-  actionPayload String?  // JSON string
+  triggerType   String // TASK_COMPLETED, ITEM_OVERDUE, PROJECT_CREATED, SCHEDULE_DRIFT
+  conditions    String? // JSON string
+  actionType    String // CREATE_NOTIFICATION, UPDATE_ENTITY, RESCHEDULE, LOG_ACTIVITY
+  actionPayload String? // JSON string
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model JournalEntry {
@@ -690,22 +691,22 @@ model JournalEntry {
   completedTasksCount Int      @default(0)
   focusMinutes        Int      @default(0)
   learningMinutes     Int      @default(0)
-  rawMetrics          String?  // JSON string
+  rawMetrics          String? // JSON string
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  user                User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 // Lazy Mode: how much energy you said you had, and when
 model EnergyCheckin {
   id        String   @id @default(uuid())
   userId    String
-  level     Int      // 0-100
-  hour      Int      // 0-23, in the user's own time zone
+  level     Int // 0-100
+  hour      Int // 0-23, in the user's own time zone
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
@@ -714,24 +715,24 @@ model EnergyCheckin {
 model EffortEvent {
   id        String   @id @default(uuid())
   userId    String
-  type      String   // DEFER, DROP, BATCH, SPRINT
+  type      String // DEFER, DROP, BATCH, SPRINT
   taskId    String?
   minutes   Int      @default(0)
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
 }
 
 model ActivityLog {
-  id         String   @id @default(uuid())
-  entityId   String?
-  action     String   // CREATED, COMPLETED, UPDATED, DELETED, PLANNED, STUDIED
-  details    String?
-  timestamp  DateTime @default(now())
+  id        String   @id @default(uuid())
+  entityId  String?
+  action    String // CREATED, COMPLETED, UPDATED, DELETED, PLANNED, STUDIED
+  details   String?
+  timestamp DateTime @default(now())
 
-  entity     Entity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  entity Entity? @relation(fields: [entityId], references: [id], onDelete: SetNull)
 }
 
 // -------------------------------------------------------------
@@ -742,48 +743,48 @@ model DevCredential {
   id          String   @id @default(uuid())
   userId      String?
   projectId   String?
-  serviceName String   // e.g. "Supabase", "Vercel", "Local PostgreSQL", "Stripe API", "Moodle LMS"
+  serviceName String // e.g. "Supabase", "Vercel", "Local PostgreSQL", "Stripe API", "Moodle LMS"
   environment String   @default("development") // development, staging, production, local
-  keyName     String   // e.g. "DATABASE_URL", "NEXT_PUBLIC_SUPABASE_KEY", "MOODLE_TOKEN"
-  keyValue    String   // Secret or masked config value
+  keyName     String // e.g. "DATABASE_URL", "NEXT_PUBLIC_SUPABASE_KEY", "MOODLE_TOKEN"
+  keyValue    String // Secret or masked config value
   isSecret    Boolean  @default(true)
-  port        Int?     // Local port mapping e.g. 3000, 5432, 8080
-  url         String?  // Service dashboard or endpoint URL
+  port        Int? // Local port mapping e.g. 3000, 5432, 8080
+  url         String? // Service dashboard or endpoint URL
   notes       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  user    User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 }
 
 model FileAsset {
   id          String   @id @default(uuid())
   userId      String?
   name        String
-  filePath    String   // e.g. "docs/faida_architecture_v1.pdf"
-  fileType    String   // PDF, IMAGE, CODE, ARCHIVE, SPREADSHEET, DOCUMENT
-  fileSize    Int?     // Size in bytes
-  category    String   // PROJECT_ASSET, RECEIPT_INVOICE, LEARNING_RESOURCE, CODE_SNIPPET, PERSONAL_DOC
+  filePath    String // e.g. "docs/faida_architecture_v1.pdf"
+  fileType    String // PDF, IMAGE, CODE, ARCHIVE, SPREADSHEET, DOCUMENT
+  fileSize    Int? // Size in bytes
+  category    String // PROJECT_ASSET, RECEIPT_INVOICE, LEARNING_RESOURCE, CODE_SNIPPET, PERSONAL_DOC
   projectId   String?
-  tags        String?  // Comma-separated or keywords
+  tags        String? // Comma-separated or keywords
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  blob        FileBlob?
+  user    User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  project Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  blob    FileBlob?
 }
 
 // Private file contents, kept apart from FileAsset so list queries never load bytes.
 model FileBlob {
-  fileId    String    @id
+  fileId    String   @id
   data      Bytes
   mimeType  String
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  file      FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  file FileAsset @relation(fields: [fileId], references: [id], onDelete: Cascade)
 }
 
 // -------------------------------------------------------------
@@ -793,9 +794,9 @@ model FileBlob {
 model Business {
   id          String   @id @default(uuid())
   userId      String?
-  name        String   // "Versaly", "Straten"
-  slug        String   // "versaly", "straten"
-  type        String   // "Software Development Company", "Digital Marketing Agency"
+  name        String // "Versaly", "Straten"
+  slug        String // "versaly", "straten"
+  type        String // "Software Development Company", "Digital Marketing Agency"
   description String?
   color       String   @default("#3b82f6")
   mrr         Float    @default(0)
@@ -805,7 +806,7 @@ model Business {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user          User?                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User?                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   clients       BusinessClient[]
   weeklyMetrics BusinessWeeklyMetric[]
   deliverables  BusinessDeliverable[]
@@ -821,12 +822,12 @@ model BusinessPrivatePlan {
   id         String   @id @default(uuid())
   userId     String
   businessId String   @unique
-  data       String   // JSON payload; read only by authenticated business APIs
+  data       String // JSON payload; read only by authenticated business APIs
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -835,9 +836,9 @@ model BusinessClient {
   id            String    @id @default(uuid())
   businessId    String
   userId        String?
-  name          String    // "Highland Gardens Limited", "Linux Learning Centre"
-  industry      String?   // "Food Production (Hibiscus & Chamomile)", "ICT Training Institution"
-  scope         String?   // "Branding & Package Designing", "Graphic Design & Social Media Management"
+  name          String // "Highland Gardens Limited", "Linux Learning Centre"
+  industry      String? // "Food Production (Hibiscus & Chamomile)", "ICT Training Institution"
+  scope         String? // "Branding & Package Designing", "Graphic Design & Social Media Management"
   status        String    @default("ACTIVE") // ACTIVE, ONBOARDING, LEAD, PROPOSAL, COMPLETED, PAUSED
   contractType  String    @default("RETAINER") // RETAINER, ONE_TIME, MILESTONE
   contractValue Float     @default(0)
@@ -861,7 +862,7 @@ model BusinessWeeklyMetric {
   id                String   @id @default(uuid())
   businessId        String
   userId            String?
-  weekStartDate     String   // e.g. "2026-W42" or "2026-10-12"
+  weekStartDate     String // e.g. "2026-W42" or "2026-10-12"
   weekNumber        Int?
   year              Int?
   outreachSent      Int      @default(0) // Effort - target 500/week
@@ -889,7 +890,7 @@ model BusinessDeliverable {
   businessId  String
   clientId    String?
   userId      String?
-  title       String    // e.g. "Chamomile Tea Packaging Mockups", "Social Media Content Plan"
+  title       String // e.g. "Chamomile Tea Packaging Mockups", "Social Media Content Plan"
   description String?
   status      String    @default("PENDING") // PENDING, IN_PROGRESS, REVIEW, COMPLETED
   priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
@@ -932,18 +933,18 @@ model BusinessKpi {
   id         String   @id @default(uuid())
   userId     String?
   businessId String
-  key        String   // stable id, e.g. "outreach"; unique within a business
+  key        String // stable id, e.g. "outreach"; unique within a business
   name       String
   unit       String   @default("COUNT") // COUNT, PERCENT, CURRENCY
   period     String   @default("MONTH") // MONTH = this month's number, TOTAL = all months added up, LEVEL = latest figure
-  target     Float    @default(0)       // 0 means no target yet
-  autoKey    String?  // when set, the value is worked out from your clients or money instead of typed in
+  target     Float    @default(0) // 0 means no target yet
+  autoKey    String? // when set, the value is worked out from your clients or money instead of typed in
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs     BusinessKpiLog[]
 
   @@unique([businessId, key])
@@ -970,18 +971,18 @@ model BusinessKpiLog {
 model MealPlanItem {
   id          String   @id @default(uuid())
   userId      String?
-  dayOfWeek   String   // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
-  mealType    String   // BREAKFAST, LUNCH, SUPPER
-  title       String   // Meal dish name
-  description String?  // Ingredients, recipe notes, or sides
-  calories    Int?     // Calories (kcal)
-  prepTime    Int?     // Prep time in minutes
-  tags        String?  // e.g. "High Protein, Healthy, Fast"
+  dayOfWeek   String // MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, SATURDAY, SUNDAY
+  mealType    String // BREAKFAST, LUNCH, SUPPER
+  title       String // Meal dish name
+  description String? // Ingredients, recipe notes, or sides
+  calories    Int? // Calories (kcal)
+  prepTime    Int? // Prep time in minutes
+  tags        String? // e.g. "High Protein, Healthy, Fast"
   isCompleted Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dayOfWeek, mealType])
 }
@@ -998,5 +999,22 @@ model MealIdea {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A day plan you locked in on the Daily Planner. Kept so the day stays as planned (instead of being
+/// rebuilt on every visit), so planned blocks can send "time to start" reminders, and so whatever was
+/// planned but not finished is carried into the next day's plan first.
+model DailyPlan {
+  id            String   @id @default(uuid())
+  userId        String
+  dateKey       String // "YYYY-MM-DD" in the app's time zone
+  budgetMinutes Int // focus time chosen for the day
+  plan          Json // the DayPlan (slots, overflow, notes, totals) as locked in
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
 }
