@@ -51,6 +51,7 @@ model User {
   ingestKeys            IngestKey[]
   merchantRules         MerchantRule[]
   bills                 Bill[]
+  completionLogs        CompletionLog[]
   notificationPref      NotificationPref?
   notificationLogs      NotificationLog[]
   businesses            Business[]
@@ -1081,4 +1082,23 @@ model Bill {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, active, nextDueAt])
+}
+
+/// What you finished, kept after the finished task or client job itself is cleared away (24 hours after completion),
+/// so the weekly review can show what the week produced.
+model CompletionLog {
+  id          String   @id @default(uuid())
+  userId      String
+  kind        String // TASK, DELIVERABLE
+  sourceId    String // the task or deliverable id
+  title       String
+  minutes     Int? // estimated effort, for tasks
+  projectId   String?
+  businessId  String?
+  completedAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind, sourceId])
+  @@index([userId, completedAt])
 }

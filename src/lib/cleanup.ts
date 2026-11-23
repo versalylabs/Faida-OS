@@ -25,23 +25,51 @@ export async function purgeOldCompleted(userId: string): Promise<{ tasks: number
   try {
     const oldTasks = await prisma.task.findMany({
       where: { userId, status: "DONE", updatedAt: { lt: cutoff } },
-      select: { id: true, entityId: true },
+      select: { id: true, entityId: true, title: true, estimatedMinutes: true, projectId: true, updatedAt: true },
     });
     if (oldTasks.length > 0) {
+      // Remember what was finished before it goes (the weekly review reads this)
+      await prisma.completionLog.createMany({
+        data: oldTasks.map((t) => ({
+          userId,
+          kind: "TASK",
+          sourceId: t.id,
+          title: t.title.slice(0, 300),
+          minutes: t.estimatedMinutes || null,
+          projectId: t.projectId,
+          completedAt: t.updatedAt,
+        })),
+        skipDuplicates: true,
+      });
       await prisma.task.deleteMany({ where: { id: { in: oldTasks.map((t) => t.id) }, userId } });
       const entityIds = oldTasks.map((t) => t.entityId).filter((id): id is string => Boolean(id));
       if (entityIds.length > 0) await prisma.entity.deleteMany({ where: { id: { in: entityIds }, userId } });
     }
 
-    const deliverables = await prisma.businessDeliverable.deleteMany({
+    const doneWork = await prisma.businessDeliverable.findMany({
       where: {
         userId,
         status: "COMPLETED",
         OR: [{ completedAt: { lt: cutoff } }, { completedAt: null, updatedAt: { lt: cutoff } }],
       },
+      select: { id: true, title: true, businessId: true, completedAt: true, updatedAt: true },
     });
+    if (doneWork.length > 0) {
+      await prisma.completionLog.createMany({
+        data: doneWork.map((d) => ({
+          userId,
+          kind: "DELIVERABLE",
+          sourceId: d.id,
+          title: d.title.slice(0, 300),
+          businessId: d.businessId,
+          completedAt: d.completedAt ?? d.updatedAt,
+        })),
+        skipDuplicates: true,
+      });
+      await prisma.businessDeliverable.deleteMany({ where: { userId, id: { in: doneWork.map((d) => d.id) } } });
+    }
 
-    return { tasks: oldTasks.length, deliverables: deliverables.count };
+    return { tasks: oldTasks.length, deliverables: doneWork.length };
   } catch (error) {
     console.error("[cleanup] Could not clear old completed items:", error);
     return { tasks: 0, deliverables: 0 };

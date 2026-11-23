@@ -3,7 +3,8 @@ import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
 import { zonedDateKey, zonedTime } from "@/lib/tz";
 import { formatClock, type DayPlan } from "@/lib/planner/scheduler";
-import { ACTION_LABELS, DEFAULT_PREFS, planBills, planNotifications, planReview, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
+import { ACTION_LABELS, DEFAULT_PREFS, planBills, planNotifications, planReview, planWeekly, weeklyReviewWindow, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
+import { buildWeeklyReview, reviewHeadline, weekStartKey } from "@/lib/weeklyReview";
 
 export interface PushTarget {
   endpoint: string;
@@ -161,6 +162,15 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
       select: { id: true, name: true, amount: true, paybill: true, accountNo: true, nextDueAt: true, remindDaysBefore: true },
     });
     firstPass.push(...planBills(bills, prefs, now, new Set()));
+    // Sunday evening: the weekly review (built only inside its window, so ordinary runs stay light)
+    if (weeklyReviewWindow(prefs, now)) {
+      const weekKey = weekStartKey(now);
+      const alreadyWeekly = await prisma.notificationLog.findFirst({ where: { userId, key: `weekly:${weekKey}` }, select: { id: true } });
+      if (!alreadyWeekly) {
+        const weekly = planWeekly(weekKey, reviewHeadline(await buildWeeklyReview(userId, now)), new Set());
+        if (weekly) firstPass.push(weekly);
+      }
+    }
     if (firstPass.length === 0) continue;
 
     const sentRows = await prisma.notificationLog.findMany({

@@ -26,6 +26,7 @@ import {
   Briefcase,
   Building2,
   UtensilsCrossed,
+  CalendarRange,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaidaLogo } from "@/components/brand/FaidaLogo";
@@ -104,6 +105,7 @@ const navCategories: NavCategory[] = [
     title: "System & Insights",
     icon: Cpu,
     items: [
+      { name: "Weekly Review", href: "/review", icon: CalendarRange },
       { name: "Analytics & Journal", href: "/analytics", icon: BarChart3 },
       { name: "Developer Hub", href: "/developer", icon: Terminal },
     ],

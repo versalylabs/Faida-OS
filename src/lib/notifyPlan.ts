@@ -43,7 +43,7 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   classes: false,
 };
 
-export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill";
+export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill" | "weekly";
 
 /** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
 export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid" | "join" | "lockplan";
@@ -155,6 +155,21 @@ function clock(iso: string): string {
 
 function previousDayKey(dateKey: string): string {
   return new Date(Date.parse(`${dateKey}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
+
+/** Sunday 18:00-21:00 Nairobi (outside quiet hours): when the weekly review is sent. */
+export function weeklyReviewWindow(prefs: NotifyPrefs, now: Date): boolean {
+  if (!prefs.enabled) return false;
+  const z = zonedNow(now);
+  if (z.dayOfWeek !== 0 || inQuietHours(z.hour, prefs.quietStart, prefs.quietEnd)) return false;
+  return z.hour >= 18 && z.hour < 21;
+}
+
+/** The Sunday weekly review notification (once per week). */
+export function planWeekly(weekKey: string, headline: { title: string; body: string }, alreadySent: Set<string>): PlannedNotification | null {
+  const key = `weekly:${weekKey}`;
+  if (alreadySent.has(key)) return null;
+  return { key, kind: "weekly", itemKey: key, title: headline.title, body: headline.body, url: "/review", tag: key, actions: [] };
 }
 
 export interface BillDue {
