@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { createEntry, defaultAccountId } from "@/lib/ledger";
 import { getCurrentUser } from "@/lib/auth";
 import { classifyUniversalInput } from "@/lib/ai/classifier";
+import { splitCapture } from "@/lib/captureSplit";
+import { saveCapture, undoCapture, type SavedCapture, type UndoRef } from "@/lib/captureSave";
 import { ValidationError, badRequest, readBody } from "@/lib/validate";
 
+/**
+ * POST /api/capture  { input }
+ * One capture can hold several things ("Buy milk, call John 3pm, paid 500 lunch"): each is classified and saved
+ * on its own. The answer lists every item with what was created, so each one can be undone.
+ *
+ * POST /api/capture  { undo: { kind, ids, entityId } }  takes one captured item back out.
+ */
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser(req);
@@ -13,158 +20,42 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await readBody(req);
-    const { input } = body;
 
+    if (body.undo && typeof body.undo === "object") {
+      const u = body.undo as Partial<UndoRef>;
+      const kinds = ["task", "reminder", "event", "shopping", "note", "finance", "none"];
+      if (!u.kind || !kinds.includes(u.kind) || typeof u.entityId !== "string" || !Array.isArray(u.ids)) {
+        return badRequest("Nothing to undo");
+      }
+      await undoCapture(user.id, { kind: u.kind, entityId: u.entityId, ids: u.ids.filter((x) => typeof x === "string") });
+      return NextResponse.json({ success: true });
+    }
+
+    const { input } = body;
     if (!input || typeof input !== "string" || input.trim() === "") {
-      return NextResponse.json(
-        { success: false, error: "Input text is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Input text is required" }, { status: 400 });
     }
     if (input.length > 5000) {
-      return NextResponse.json(
-        { success: false, error: "Input is too long (max 5000 characters)" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Input is too long (max 5000 characters)" }, { status: 400 });
     }
 
-    // 1. Classify and extract intent via AI / Heuristic engine
-    const parsed = await classifyUniversalInput(input);
-
-    // 2. Persist to Unified Entity Graph
-    const entity = await prisma.entity.create({
-      data: {
-        userId: user.id,
-        type: parsed.type,
-        title: parsed.title,
-        content: parsed.details || input,
-        status: "ACTIVE",
-        priority: parsed.priority || "MEDIUM",
-        metadata: JSON.stringify(parsed),
-      },
-    });
-
-    // 3. Persist domain-specific records based on classified type
-    if (parsed.type === "TASK") {
-      let projectId: string | undefined;
-
-      // Find or link project if projectHint provided (scoped to user)
-      if (parsed.projectHint) {
-        let proj = await prisma.project.findFirst({
-          where: {
-            userId: user.id,
-            name: { contains: parsed.projectHint },
-          },
-        });
-        if (!proj) {
-          proj = await prisma.project.create({
-            data: {
-              userId: user.id,
-              name: parsed.projectHint,
-              description: `Project auto-created from capture: ${parsed.projectHint}`,
-            },
-          });
-        }
-        projectId = proj.id;
-      }
-
-      await prisma.task.create({
-        data: {
-          userId: user.id,
-          entityId: entity.id,
-          title: parsed.title,
-          description: parsed.details,
-          priority: parsed.priority || "MEDIUM",
-          dueDate: parsed.dueDate ? new Date(parsed.dueDate) : null,
-          estimatedMinutes: parsed.estimatedMinutes || 30,
-          projectId,
-        },
-      });
-    } else if (parsed.type === "REMINDER") {
-      await prisma.reminder.create({
-        data: {
-          userId: user.id,
-          entityId: entity.id,
-          title: parsed.title,
-          description: parsed.details,
-          dueAt: parsed.dueDate ? new Date(parsed.dueDate) : new Date(Date.now() + 86400000),
-          escalationState: "UPCOMING",
-        },
-      });
-    } else if (parsed.type === "EVENT") {
-      const start = parsed.startTime ? new Date(parsed.startTime) : new Date(Date.now() + 3600000);
-      const end = parsed.endTime ? new Date(parsed.endTime) : new Date(start.getTime() + 3600000);
-
-      await prisma.calendarEvent.create({
-        data: {
-          userId: user.id,
-          title: parsed.title,
-          description: parsed.details,
-          startTime: start,
-          endTime: end,
-        },
-      });
-    } else if (parsed.type === "SHOPPING") {
-      const items = parsed.shoppingItems && parsed.shoppingItems.length > 0
-        ? parsed.shoppingItems
-        : [parsed.title];
-
-      for (const itemName of items) {
-        await prisma.shoppingItem.create({
-          data: {
-            userId: user.id,
-            name: itemName,
-            category: parsed.category || "General",
-            estimatedPrice: parsed.amount || null,
-          },
-        });
-      }
-    } else if (parsed.type === "NOTE" || parsed.type === "KNOWLEDGE") {
-      await prisma.note.create({
-        data: {
-          userId: user.id,
-          entityId: entity.id,
-          title: parsed.title,
-          content: parsed.details || input,
-          category: parsed.category || "General",
-          tags: parsed.tags ? parsed.tags.join(", ") : undefined,
-        },
-      });
-    } else if (parsed.type === "FINANCE") {
-      // An amount is needed to record money; without one nothing is added to the ledger
-      if (parsed.amount && Math.abs(parsed.amount) > 0) {
-        const kind = parsed.transactionType === "INCOME" ? "INCOME" : "EXPENSE";
-        await createEntry({
-          userId: user.id,
-          description: parsed.title,
-          amount: kind === "EXPENSE" ? -Math.abs(parsed.amount) : Math.abs(parsed.amount),
-          type: kind,
-          category: parsed.category || "General",
-          accountId: await defaultAccountId(user.id),
-        });
-      }
+    const pieces = splitCapture(input);
+    const parsedPieces = await Promise.all(pieces.map((p) => classifyUniversalInput(p)));
+    const items: SavedCapture[] = [];
+    for (let i = 0; i < pieces.length; i++) {
+      items.push(await saveCapture(user.id, pieces[i], parsedPieces[i]));
     }
-
-    // 4. Record Activity Log for Auto Work Journal & Analytics
-    await prisma.activityLog.create({
-      data: {
-        entityId: entity.id,
-        action: "CAPTURED",
-        details: `Universal capture [${parsed.type}]: ${parsed.title}`,
-      },
-    });
 
     return NextResponse.json({
       success: true,
-      parsed,
-      entityId: entity.id,
+      items,
+      // Kept for older screens that read a single result
+      parsed: parsedPieces[0],
+      entityId: items[0]?.undo.entityId,
     });
   } catch (error: any) {
     if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error processing universal capture:", error);
-    return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: "Internal server error" }, { status: 500 });
   }
 }

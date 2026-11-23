@@ -62,9 +62,12 @@ function parseRelativeDateTime(text: string, now: Date = new Date()): { dueDate?
   const dayKey = new Date(Date.UTC(today.year, today.month - 1, today.day + addDays, 12)).toISOString().slice(0, 10);
 
   // Check specific time: e.g. "at 3pm", "at 3:30pm", "at 15:00", "at 3"
-  let hours = 9; // Default reminder or task due time is 09:00 if not specified
+  // Default time if none is given: 09:00, or the part of the day that was named
+  let hours = /\btonight\b/.test(lower) ? 20 : /\bevening\b/.test(lower) ? 18 : /\bafternoon\b/.test(lower) ? 14 : 9;
   let minutes = 0;
-  const timeMatch = lower.match(/(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+  // "at 3pm", "at 3:30", "@ 15:00", or a bare "3pm" / "3:30 pm" (a bare number needs am/pm)
+  const timeMatch =
+    lower.match(/(?:\bat|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i) || lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (timeMatch) {
     hours = parseInt(timeMatch[1], 10);
     minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
@@ -184,16 +187,21 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
     };
   }
 
-  // 4. REMINDER: "remind me to...", "remember to..."
+  // 4. REMINDER: "remind me to...", "remember to...", or a quick action with a time ("call John 3pm")
+  const timedAction =
+    /^(call|ring|phone|text|sms|whatsapp|email|message|ping|pay|send)\b/i.test(lower) &&
+    /(\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\bat\s+\d{1,2}|\btomorrow\b|\btonight\b|\bthis (morning|afternoon|evening)\b)/i.test(lower);
   if (
     lower.startsWith("remind me to") ||
     lower.startsWith("remember to") ||
-    lower.startsWith("reminder:")
+    lower.startsWith("reminder:") ||
+    timedAction
   ) {
-    const cleanTitle = trimmed
-      .replace(/^(remind me to|remember to|reminder:)\s+/i, "")
-      .replace(/\s+(next friday|next monday|tomorrow|at \d.*)$/i, "")
-      .trim();
+    // Drop the "when" words from the end ("... tomorrow at 9am"), however many there are
+    let cleanTitle = trimmed.replace(/^(remind me to|remember to|reminder:)\s+/i, "");
+    for (let i = 0; i < 3; i++) {
+      cleanTitle = cleanTitle.replace(/\s+(next \w+day|on \w+day|this (?:morning|afternoon|evening)|tomorrow|tonight|today|at \d.*|\d{1,2}(:\d{2})?\s*(am|pm))$/i, "").trim();
+    }
 
     const { dueDate } = parseRelativeDateTime(trimmed);
 

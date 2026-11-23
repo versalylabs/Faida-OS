@@ -16,6 +16,7 @@ import {
 import { formatKES, formatDate } from "@/lib/utils";
 
 import { offlineFetch } from "@/lib/offlineSync";
+import { CaptureResults, type CapturedItem } from "@/components/capture/CaptureResults";
 interface EntityItem {
   id: string;
   type: string;
@@ -37,6 +38,7 @@ export default function CapturePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
+  const [results, setResults] = useState<CapturedItem[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchEntities = async () => {
@@ -88,6 +90,7 @@ export default function CapturePage() {
 
     setIsCapturing(true);
     setFeedback(null);
+    setResults(null);
 
     try {
       const res = await offlineFetch("/api/capture", {
@@ -97,11 +100,15 @@ export default function CapturePage() {
       });
       const data = await res.json();
       if (data.success) {
-        setFeedback(`Captured as ${data.parsed.type}: "${data.parsed.title}"`);
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          setResults(data.items);
+        } else {
+          setFeedback(data.offlineQueued ? "Saved offline. It will be filed when you're back online." : "Captured.");
+          setTimeout(() => setFeedback(null), 4000);
+        }
         setInput("");
         setShared(false);
         await fetchEntities();
-        setTimeout(() => setFeedback(null), 4000);
       } else {
         setFeedback("Failed: " + data.error);
       }
@@ -124,6 +131,7 @@ export default function CapturePage() {
   };
 
   const quickExamples = [
+    "Buy milk, call John 3pm, paid 500 lunch",
     "Remind me to renew domain next Friday at 9am",
     "Meeting with James tomorrow at 3pm",
     "Buy toothpaste and HDMI cable",
@@ -217,6 +225,8 @@ export default function CapturePage() {
             )}
           </button>
         </div>
+
+        {results && <CaptureResults items={results} onUndone={fetchEntities} />}
 
         {shared && !feedback && (
           <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2">

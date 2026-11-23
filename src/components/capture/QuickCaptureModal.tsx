@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Sparkles, ArrowRight, X, Check, Loader2 } from "lucide-react";
 
 import { offlineFetch } from "@/lib/offlineSync";
+import { CaptureResults, type CapturedItem } from "@/components/capture/CaptureResults";
 interface QuickCaptureModalProps {
   isOpen?: boolean;
   onClose?: () => void;
@@ -15,6 +16,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
   const [text, setText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [results, setResults] = useState<CapturedItem[] | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isModalOpen = controlledIsOpen !== undefined ? controlledIsOpen : internalOpen;
@@ -24,6 +26,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
     setInternalOpen(false);
     setText("");
     setFeedback(null);
+    setResults(null);
   };
 
   useEffect(() => {
@@ -56,6 +59,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
 
     setIsSubmitting(true);
     setFeedback(null);
+    setResults(null);
 
     try {
       const res = await offlineFetch("/api/capture", {
@@ -66,12 +70,15 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
 
       const data = await res.json();
       if (data.success) {
-        setFeedback(`Saved as ${data.parsed.type}: "${data.parsed.title}"`);
         setText("");
         if (onCaptured) onCaptured();
-        setTimeout(() => {
-          handleClose();
-        }, 1200);
+        if (Array.isArray(data.items) && data.items.length > 0) {
+          // Stays open so each item can be undone; Esc or the X closes it.
+          setResults(data.items);
+        } else {
+          setFeedback(data.offlineQueued ? "Saved offline. It will be filed when you're back online." : "Saved.");
+          setTimeout(() => handleClose(), 1200);
+        }
       } else {
         setFeedback("Error: " + (data.error || "Failed to capture"));
       }
@@ -136,6 +143,12 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
             </button>
           </div>
 
+          {results && (
+            <div className="mt-3">
+              <CaptureResults items={results} onUndone={onCaptured} />
+            </div>
+          )}
+
           {/* Feedback indicator */}
           {feedback && (
             <div className="mt-3 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 flex items-center gap-2 animate-in fade-in">
@@ -147,7 +160,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
           {/* Helper Tips */}
           <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-[10px] sm:text-[11px] text-slate-500">
             <span className="truncate">
-              Examples: <strong className="text-slate-400">&quot;Spent KES 2,500 on groceries&quot;</strong>
+              Several at once: <strong className="text-slate-400">&quot;Buy milk, call John 3pm, paid 500 lunch&quot;</strong>
             </span>
             <span className="hidden sm:flex items-center gap-1 font-mono shrink-0">
               <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-[9px]">ESC</kbd> to close
