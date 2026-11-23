@@ -1,7 +1,7 @@
 import * as webpush from "web-push";
 import { prisma } from "@/lib/db";
 import { getAgenda } from "@/lib/agenda";
-import { DEFAULT_PREFS, planNotifications, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
+import { ACTION_LABELS, DEFAULT_PREFS, planNotifications, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
 
 export interface PushTarget {
   endpoint: string;
@@ -50,7 +50,15 @@ export async function getPrefs(userId: string): Promise<NotifyPrefs> {
 }
 
 function payloadOf(n: PlannedNotification): string {
-  return JSON.stringify({ title: n.title, body: n.body, url: n.url, tag: n.tag });
+  return JSON.stringify({
+    title: n.title,
+    body: n.body,
+    url: n.url,
+    tag: n.tag,
+    // The service worker sends the chosen button back to /api/notify/action with this item reference.
+    ref: n.itemKey,
+    actions: n.actions.map((a) => ({ action: a, title: ACTION_LABELS[a] })),
+  });
 }
 
 export interface RunSummary {
@@ -87,8 +95,8 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
     const prefs = await getPrefs(userId);
     if (!prefs.enabled) continue;
 
-    const { items } = await getAgenda(userId, new Date(now.getTime() - 3600000), new Date(now.getTime() + 40 * 3600000), now);
-    const firstPass = planNotifications(items, prefs, now, new Set());
+    const { items, overdue } = await getAgenda(userId, new Date(now.getTime() - 3600000), new Date(now.getTime() + 40 * 3600000), now);
+    const firstPass = planNotifications(items, prefs, now, new Set(), overdue);
     if (firstPass.length === 0) continue;
 
     const sentRows = await prisma.notificationLog.findMany({
@@ -112,7 +120,7 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
         const result = await send(
           { endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } },
           payloadOf(n),
-          { ttl: n.kind === "hour" ? 3600 : 6 * 3600, urgency: n.kind === "hour" || n.kind === "due" ? "high" : "normal" }
+          { ttl: n.kind === "hour" ? 3600 : 6 * 3600, urgency: n.kind === "hour" || n.kind === "due" || n.kind === "digest" ? "high" : "normal" }
         );
         if (result.ok) {
           delivered = true;

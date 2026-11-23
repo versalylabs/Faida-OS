@@ -43,7 +43,11 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   classes: false,
 };
 
-export type ReminderKind = "night" | "hour" | "due" | "morning";
+export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest";
+
+/** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
+export type NotifyAction = "done" | "snooze" | "tomorrow";
+export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow" };
 
 export interface PlannedNotification {
   key: string; // unique per item, kind and start time
@@ -53,6 +57,54 @@ export interface PlannedNotification {
   body: string;
   url: string;
   tag: string;
+  actions: NotifyAction[];
+}
+
+/**
+ * Which buttons a reminder offers. Only things you own can be changed from a notification: tasks, your
+ * reminders and client work. Classes, CATs and calendar events are left alone (tapping opens the app).
+ */
+export function actionsFor(item: AgendaItem, kind: ReminderKind): NotifyAction[] {
+  const own = item.source === "TASK" || item.source === "REMINDER" || item.source === "DELIVERABLE";
+  if (!own || kind === "digest") return [];
+  // Right now (or within the hour): finish it, or be reminded again shortly.
+  if (kind === "due" || kind === "hour") return ["done", "snooze"];
+  // The evening before or the morning of: finish it, or push it a day.
+  return ["done", "tomorrow"];
+}
+
+function sameDayTime(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Nairobi", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+}
+
+function listTitles(items: AgendaItem[], max: number): string {
+  const names = items.slice(0, max).map((i) => i.title);
+  return names.join(", ") + (items.length > max ? ` +${items.length - max} more` : "");
+}
+
+/**
+ * One morning message instead of a ping per item: what is on today, what is due, and what slipped.
+ * Returns null on an empty day.
+ */
+export function buildDigest(items: AgendaItem[], overdue: AgendaItem[], now: Date): { title: string; body: string } | null {
+  const todayKey = zonedDateKey(now);
+  const today = items.filter((i) => !i.done && zonedDateKey(new Date(i.start)) === todayKey && i.source !== "MAINTENANCE");
+  const timed = today.filter((i) => !i.allDay).sort((a, b) => a.start.localeCompare(b.start));
+  const due = today.filter((i) => i.allDay);
+  const late = overdue.filter((i) => !i.done);
+  if (timed.length === 0 && due.length === 0 && late.length === 0) return null;
+
+  const counts = [
+    timed.length ? `${timed.length} scheduled` : "",
+    due.length ? `${due.length} due` : "",
+    late.length ? `${late.length} overdue` : "",
+  ].filter(Boolean);
+  const lines: string[] = [];
+  for (const i of timed.slice(0, 3)) lines.push(`${sameDayTime(i.start)} ${i.title}`);
+  if (timed.length > 3) lines.push(`+${timed.length - 3} more later`);
+  if (due.length) lines.push(`Due: ${listTitles(due, 3)}`);
+  if (late.length) lines.push(`Overdue: ${listTitles(late, 2)}`);
+  return { title: `Today: ${counts.join(" · ")}`, body: lines.join("\n") };
 }
 
 const HOUR = 3600000;
@@ -92,7 +144,13 @@ function previousDayKey(dateKey: string): string {
   return new Date(Date.parse(`${dateKey}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
 }
 
-export function planNotifications(items: AgendaItem[], prefs: NotifyPrefs, now: Date, alreadySent: Set<string>): PlannedNotification[] {
+export function planNotifications(
+  items: AgendaItem[],
+  prefs: NotifyPrefs,
+  now: Date,
+  alreadySent: Set<string>,
+  overdue: AgendaItem[] = []
+): PlannedNotification[] {
   if (!prefs.enabled) return [];
   const nowMs = now.getTime();
   const { hour } = zonedNow(now);
@@ -102,8 +160,22 @@ export function planNotifications(items: AgendaItem[], prefs: NotifyPrefs, now: 
   const add = (item: AgendaItem, kind: ReminderKind, title: string, body: string) => {
     const key = `${item.key}:${kind}:${new Date(item.start).getTime()}`;
     if (alreadySent.has(key) || out.some((o) => o.key === key)) return;
-    out.push({ key, kind, itemKey: item.key, title, body, url: item.href || "/calendar", tag: key });
+    out.push({ key, kind, itemKey: item.key, title, body, url: item.href || "/calendar", tag: key, actions: actionsFor(item, kind) });
   };
+
+  // The morning summary, at the "morning" hour (it replaces one ping per all-day item).
+  const todayKey = zonedDateKey(now);
+  const morningStart = zonedTime(todayKey, `${String(prefs.morningHour).padStart(2, "0")}:00`).getTime();
+  const inMorningWindow = !quiet && nowMs >= morningStart && nowMs < morningStart + 4 * HOUR;
+  const digestKey = `digest:${todayKey}`;
+  let digestSent = alreadySent.has(digestKey);
+  if (inMorningWindow && !digestSent) {
+    const digest = buildDigest(items.filter((i) => categoryEnabled(i, prefs) || i.source === "CLASS" || i.source === "ZOOM"), overdue, now);
+    if (digest) {
+      out.push({ key: digestKey, kind: "digest", itemKey: digestKey, title: digest.title, body: digest.body, url: "/", tag: digestKey, actions: [] });
+      digestSent = true;
+    }
+  }
 
   for (const item of items) {
     if (item.done || !categoryEnabled(item, prefs)) continue;
@@ -141,8 +213,8 @@ export function planNotifications(items: AgendaItem[], prefs: NotifyPrefs, now: 
       }
     }
 
-    // The morning of a day-long item (a date with no time).
-    if (!timedStart && !quiet) {
+    // The morning of a day-long item (a date with no time), unless the morning summary already covers today.
+    if (!timedStart && !quiet && !(digestSent && dayKey === todayKey)) {
       const morning = zonedTime(dayKey, `${String(prefs.morningHour).padStart(2, "0")}:00`).getTime();
       if (nowMs >= morning && nowMs < morning + 4 * HOUR) add(item, "morning", `Due today: ${item.title}`, detail(""));
     }

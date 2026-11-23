@@ -217,8 +217,9 @@ self.addEventListener("fetch", (event) => {
 });
 
 // ---- push notifications -------------------------------------------------------------------------
-// The server sends { title, body, url, tag } when a reminder is due. Showing the notification here works
-// even when Faida OS is closed.
+// The server sends { title, body, url, tag, ref, actions } when a reminder is due. Showing the notification
+// here works even when Faida OS is closed. `actions` are buttons (Done, Snooze 1h, Tomorrow); `ref` names
+// the task, reminder or client work they act on.
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -232,24 +233,47 @@ self.addEventListener("push", (event) => {
       icon: "/icon-192.png",
       badge: "/icon-192.png",
       tag: data.tag || undefined,
-      data: { url: data.url || "/calendar" },
+      actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : [],
+      data: { url: data.url || "/calendar", ref: data.ref || null },
     })
   );
 });
 
-// Tapping a notification opens (or focuses) the app on the right page.
+// Tapping a notification opens (or focuses) the app on the right page. Tapping a button (Done, Snooze 1h,
+// Tomorrow) applies it on the server without opening anything; if that fails (signed out, offline) the app
+// opens on the item instead so nothing is silently lost.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
-  event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
-      for (const w of windows) {
-        if ("focus" in w) {
-          if ("navigate" in w) w.navigate(target).catch(() => {});
-          return w.focus();
-        }
-      }
-      return self.clients.openWindow(target);
-    })
-  );
+  const data = event.notification.data || {};
+  const target = new URL(data.url || "/", self.location.origin).href;
+
+  if (event.action && data.ref) {
+    event.waitUntil(
+      fetch("/api/notify/action", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ref: data.ref, action: event.action }),
+      })
+        .then((res) => {
+          if (!res.ok) throw new Error("action failed");
+        })
+        .catch(() => openApp(target))
+    );
+    return;
+  }
+
+  event.waitUntil(openApp(target));
 });
+
+function openApp(target) {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    for (const w of windows) {
+      if ("focus" in w) {
+        if ("navigate" in w) w.navigate(target).catch(() => {});
+        return w.focus();
+      }
+    }
+    return self.clients.openWindow(target);
+  });
+}

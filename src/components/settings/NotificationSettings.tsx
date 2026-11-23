@@ -313,8 +313,8 @@ export function NotificationSettings() {
                     </select>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    “Due today” on all-day items at
-                    <select value={p.morningHour} onChange={(e) => update({ morningHour: Number(e.target.value) })} className={select} aria-label="Morning reminder time">
+                    Morning summary (today’s plan, what’s due, what’s overdue) at
+                    <select value={p.morningHour} onChange={(e) => update({ morningHour: Number(e.target.value) })} className={select} aria-label="Morning summary time">
                       {hours.filter((h) => h >= 5 && h <= 12).map((h) => (
                         <option key={h} value={h}>
                           {hourLabel(h)}
@@ -322,7 +322,7 @@ export function NotificationSettings() {
                       ))}
                     </select>
                   </div>
-                  <p className="sm:col-span-2 text-slate-400">Quiet hours hold back the evening-before and morning messages. “Shortly before” messages and your own reminders always arrive.</p>
+                  <p className="sm:col-span-2 text-slate-400">Quiet hours hold back the evening-before and morning messages. “Shortly before” messages and your own reminders always arrive. On phones and laptops that support it, reminders for tasks, your reminders and client work have buttons: Done, Snooze 1h or Tomorrow.</p>
                 </div>
               </div>
             </div>
