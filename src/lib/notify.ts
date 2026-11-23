@@ -3,8 +3,9 @@ import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
 import { zonedDateKey, zonedTime } from "@/lib/tz";
 import { formatClock, type DayPlan } from "@/lib/planner/scheduler";
-import { ACTION_LABELS, DEFAULT_PREFS, planBills, planNotifications, planReview, planWeekly, weeklyReviewWindow, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
+import { ACTION_LABELS, DEFAULT_PREFS, closeDayWindow, planBills, planCloseDay, planNotifications, planReview, planWeekly, weeklyReviewWindow, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
 import { buildWeeklyReview, reviewHeadline, weekStartKey } from "@/lib/weeklyReview";
+import { dayStats } from "@/lib/closeDay";
 
 export interface PushTarget {
   endpoint: string;
@@ -162,6 +163,15 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
       select: { id: true, name: true, amount: true, paybill: true, accountNo: true, nextDueAt: true, remindDaysBefore: true },
     });
     firstPass.push(...planBills(bills, prefs, now, new Set()));
+    // Late evening: close the day (only worked out inside its window)
+    if (closeDayWindow(prefs, now)) {
+      const closeKey = `closeday:${zonedDateKey(now)}`;
+      const sentClose = await prisma.notificationLog.findFirst({ where: { userId, key: closeKey }, select: { id: true } });
+      if (!sentClose) {
+        const close = planCloseDay(await dayStats(userId, now), now, new Set());
+        if (close) firstPass.push(close);
+      }
+    }
     // Sunday evening: the weekly review (built only inside its window, so ordinary runs stay light)
     if (weeklyReviewWindow(prefs, now)) {
       const weekKey = weekStartKey(now);

@@ -6,6 +6,7 @@ import { touchProject } from "@/lib/projectActivity";
 import { readBody, ValidationError, badRequest } from "@/lib/validate";
 import { BillError, payBill } from "@/lib/bills";
 import { lockPlan, usualBudgetMinutes } from "@/lib/planner/daily";
+import { rollOpenToTomorrow } from "@/lib/closeDay";
 import { formatClock } from "@/lib/planner/scheduler";
 import { zonedDateKey } from "@/lib/tz";
 
@@ -35,7 +36,16 @@ export async function POST(req: NextRequest) {
     // A planned block ("PLAN:<taskId>:<start>") acts on its task.
     const [rawSource, id] = ref.split(":");
     const source = rawSource === "PLAN" ? "TASK" : rawSource;
-    if (!id || !["done", "snooze", "tomorrow", "confirm", "paid", "lockplan"].includes(action)) return badRequest("Unknown notification action");
+    if (!id || !["done", "snooze", "tomorrow", "confirm", "paid", "lockplan", "rollover"].includes(action)) return badRequest("Unknown notification action");
+
+    // Close the day: move today's open work to tomorrow morning
+    if (rawSource === "closeday" && action === "rollover") {
+      const moved = await rollOpenToTomorrow(user.id);
+      return NextResponse.json(
+        { success: true, confirm: true, message: moved ? `Moved ${moved} task${moved === 1 ? "" : "s"} to tomorrow 09:00. Sleep well.` : "Nothing left to move. Sleep well." },
+        { headers: NO_STORE }
+      );
+    }
 
     // The morning summary: lock in today's plan with the usual focus time, and say what it holds.
     if (rawSource === "digest" && action === "lockplan") {

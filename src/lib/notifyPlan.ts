@@ -43,11 +43,11 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   classes: false,
 };
 
-export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill" | "weekly";
+export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill" | "weekly" | "closeday";
 
 /** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
-export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid" | "join" | "lockplan";
-export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid", join: "Join", lockplan: "Lock today's plan" };
+export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid" | "join" | "lockplan" | "rollover";
+export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid", join: "Join", lockplan: "Lock today's plan", rollover: "Roll to tomorrow" };
 
 export interface PlannedNotification {
   key: string; // unique per item, kind and start time
@@ -155,6 +155,44 @@ function clock(iso: string): string {
 
 function previousDayKey(dateKey: string): string {
   return new Date(Date.parse(`${dateKey}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
+
+/** Close the day: from an hour after the evening hour (21:00 by default) for two hours, outside quiet hours. */
+export function closeDayWindow(prefs: NotifyPrefs, now: Date): boolean {
+  if (!prefs.enabled || !prefs.tasks) return false;
+  const { hour } = zonedNow(now);
+  if (inQuietHours(hour, prefs.quietStart, prefs.quietEnd)) return false;
+  const start = (prefs.nightHour + 1) % 24;
+  return hour >= start && hour < start + 2;
+}
+
+/**
+ * The close-the-day message: what got done and what is still open, with "Roll to tomorrow" when anything is.
+ * Nothing is sent on a day with nothing done and nothing open.
+ */
+export function planCloseDay(
+  stats: { done: number; open: { title: string }[] },
+  now: Date,
+  alreadySent: Set<string>
+): PlannedNotification | null {
+  const key = `closeday:${zonedDateKey(now)}`;
+  if (alreadySent.has(key) || (stats.done === 0 && stats.open.length === 0)) return null;
+  const n = stats.open.length;
+  const doneText = `${stats.done} done`;
+  if (n === 0) {
+    return { key, kind: "closeday", itemKey: key, title: `Day closed: ${doneText}, nothing left open`, body: "Good day. Rest well.", url: "/review", tag: key, actions: [] };
+  }
+  const names = stats.open.slice(0, 3).map((t) => t.title).join(", ") + (n > 3 ? ` +${n - 3} more` : "");
+  return {
+    key,
+    kind: "closeday",
+    itemKey: key,
+    title: `Close the day: ${doneText}, ${n} still open`,
+    body: `${names}. Roll ${n === 1 ? "it" : "them"} to tomorrow morning?`,
+    url: "/planner",
+    tag: key,
+    actions: ["rollover"],
+  };
 }
 
 /** Sunday 18:00-21:00 Nairobi (outside quiet hours): when the weekly review is sent. */

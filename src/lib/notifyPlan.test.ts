@@ -98,3 +98,26 @@ describe("evening and weekly windows", () => {
     expect(weeklyReviewWindow(DEFAULT_PREFS, new Date("2026-11-28T15:30:00Z"))).toBe(false);
   });
 });
+
+describe("close the day", () => {
+  it("is sent 21:00-23:00 Nairobi by default, not before and not in quiet hours", async () => {
+    const { closeDayWindow } = await import("@/lib/notifyPlan");
+    expect(closeDayWindow(DEFAULT_PREFS, new Date("2026-11-24T17:50:00Z"))).toBe(false); // 20:50
+    expect(closeDayWindow(DEFAULT_PREFS, new Date("2026-11-24T18:05:00Z"))).toBe(true); // 21:05
+    expect(closeDayWindow(DEFAULT_PREFS, new Date("2026-11-24T19:55:00Z"))).toBe(true); // 22:55
+    expect(closeDayWindow(DEFAULT_PREFS, new Date("2026-11-24T20:05:00Z"))).toBe(false); // 23:05, quiet
+    expect(closeDayWindow({ ...DEFAULT_PREFS, tasks: false }, new Date("2026-11-24T18:05:00Z"))).toBe(false);
+  });
+
+  it("offers Roll to tomorrow only when something is still open, once a day", async () => {
+    const { planCloseDay } = await import("@/lib/notifyPlan");
+    const now = new Date("2026-11-24T18:05:00Z");
+    const open = planCloseDay({ done: 4, open: [{ title: "Essay" }, { title: "Call bank" }] }, now, new Set())!;
+    expect(open.title).toBe("Close the day: 4 done, 2 still open");
+    expect(open.body).toBe("Essay, Call bank. Roll them to tomorrow morning?");
+    expect(open.actions).toEqual(["rollover"]);
+    expect(planCloseDay({ done: 5, open: [] }, now, new Set())).toMatchObject({ title: "Day closed: 5 done, nothing left open", actions: [] });
+    expect(planCloseDay({ done: 0, open: [] }, now, new Set())).toBeNull();
+    expect(planCloseDay({ done: 4, open: [{ title: "Essay" }] }, now, new Set(["closeday:2026-11-24"]))).toBeNull();
+  });
+});
