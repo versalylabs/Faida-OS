@@ -27,6 +27,10 @@ import {
   Building2,
   UtensilsCrossed,
   CalendarRange,
+  CalendarDays,
+  Sun,
+  House,
+  Ellipsis,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FaidaLogo } from "@/components/brand/FaidaLogo";
@@ -43,74 +47,69 @@ interface NavCategory {
   id: string;
   title: string;
   icon: any;
+  href?: string; // a single page: no sub-items
   items: NavItem[];
 }
 
+/**
+ * Eight entries: the four places used every day are one tap away, the rest fold into small groups.
+ * A group opens by itself when you are on one of its pages.
+ */
 const navCategories: NavCategory[] = [
+  { id: "today", title: "Today", icon: Sun, href: "/today", items: [] },
+  { id: "capture", title: "Capture", icon: Sparkles, href: "/capture", items: [] },
   {
-    id: "overview",
-    title: "Mission Control",
-    icon: Compass,
+    id: "plan",
+    title: "Plan",
+    icon: Calendar,
     items: [
-      { name: "Command Center", href: "/", icon: LayoutDashboard },
-      { name: "University", href: "/university", icon: GraduationCap, badge: "BSc" },
-      { name: "Universal Capture", href: "/capture", icon: Sparkles, badge: "⚡" },
+      { name: "Daily Planner", href: "/planner", icon: Calendar },
+      { name: "Calendar", href: "/calendar", icon: CalendarDays },
+      { name: "Tasks", href: "/tasks", icon: CheckSquare },
     ],
   },
+  { id: "university", title: "University", icon: GraduationCap, href: "/university", items: [] },
   {
     id: "business",
-    title: "Business & Ventures",
-    icon: Building2,
+    title: "Business",
+    icon: Briefcase,
     items: [
-      { name: "Business Overview", href: "/business", icon: Briefcase },
+      { name: "Overview", href: "/business", icon: Briefcase },
       { name: "Straten", href: "/business/straten", icon: Building2 },
       { name: "VersalyLabs", href: "/business/versaly", icon: Building2 },
       { name: "Business Finance", href: "/business/finance", icon: Wallet },
     ],
   },
+  { id: "money", title: "Money", icon: Wallet, href: "/finance", items: [] },
   {
-    id: "execution",
-    title: "Execution & Planning",
-    icon: Calendar,
+    id: "home",
+    title: "Home",
+    icon: House,
     items: [
-      { name: "Daily Planner", href: "/planner", icon: Calendar },
-      { name: "Scheduler & Calendar", href: "/calendar", icon: Calendar },
-      { name: "Tasks & Todos", href: "/tasks", icon: CheckSquare },
-    ],
-  },
-  {
-    id: "brain",
-    title: "Second Brain",
-    icon: Brain,
-    items: [
-      { name: "Projects", href: "/projects", icon: FolderGit2 },
-      { name: "Notes & Knowledge", href: "/notes", icon: BookOpen },
-      { name: "Learning Hub", href: "/learning", icon: GraduationCap },
-      { name: "Files & Assets", href: "/files", icon: FolderArchive },
-    ],
-  },
-  {
-    id: "operations",
-    title: "Life Operations",
-    icon: Wallet,
-    items: [
-      { name: "Finance (KES)", href: "/finance", icon: Wallet },
-      { name: "Smart Shopping", href: "/shopping", icon: ShoppingCart },
-      { name: "Weekly Menu", href: "/menu", icon: UtensilsCrossed, badge: "Meals" },
+      { name: "Shopping", href: "/shopping", icon: ShoppingCart },
+      { name: "Weekly Menu", href: "/menu", icon: UtensilsCrossed },
       { name: "Maintenance", href: "/maintenance", icon: Wrench },
     ],
   },
   {
-    id: "system",
-    title: "System & Insights",
-    icon: Cpu,
+    id: "more",
+    title: "More",
+    icon: Ellipsis,
     items: [
       { name: "Weekly Review", href: "/review", icon: CalendarRange },
+      { name: "Projects", href: "/projects", icon: FolderGit2 },
+      { name: "Notes & Knowledge", href: "/notes", icon: BookOpen },
+      { name: "Learning Hub", href: "/learning", icon: Brain },
+      { name: "Files", href: "/files", icon: FolderArchive },
+      { name: "Overview dashboard", href: "/", icon: LayoutDashboard },
       { name: "Analytics & Journal", href: "/analytics", icon: BarChart3 },
       { name: "Developer Hub", href: "/developer", icon: Terminal },
     ],
   },
 ];
+
+/** A page belongs to an entry when it is that page or one of its sub-pages (e.g. /projects/123). */
+const matches = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -134,7 +133,7 @@ export function Sidebar() {
   // Auto-expand category if active route is inside it
   useEffect(() => {
     for (const cat of navCategories) {
-      if (cat.items.some((item) => item.href === pathname)) {
+      if (cat.items.some((item) => matches(pathname, item.href))) {
         setCollapsedCategories((prev) => ({ ...prev, [cat.id]: false }));
       }
     }
@@ -165,7 +164,7 @@ export function Sidebar() {
       >
         {/* Brand Header */}
         <div className="h-16 px-5 flex items-center justify-between border-b border-white/10 shrink-0">
-          <FaidaLogo size="md" showText={true} showSubtitle={true} href="/" />
+          <FaidaLogo size="md" showText={true} showSubtitle={true} href="/today" />
 
           {/* Close button on mobile */}
           <button
@@ -177,11 +176,29 @@ export function Sidebar() {
         </div>
 
       {/* Navigation List with Categorized Dropdowns */}
-      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-3.5">
+      <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
         {navCategories.map((category) => {
-          const isCollapsed = collapsedCategories[category.id] ?? false;
-          const hasActiveChild = category.items.some((item) => item.href === pathname);
+          const hasActiveChild = category.items.some((item) => matches(pathname, item.href));
+          const isCollapsed = collapsedCategories[category.id] ?? !hasActiveChild;
           const CategoryIcon = category.icon;
+
+          // A single page: one row, no group
+          if (category.href) {
+            const isActive = matches(pathname, category.href);
+            return (
+              <Link
+                key={category.id}
+                href={category.href}
+                className={cn(
+                  "group flex items-center gap-2.5 px-3 py-2.5 text-[14px] font-medium rounded-xl transition-all duration-200 border border-transparent",
+                  isActive ? "glass-active text-white font-semibold" : "text-slate-200 hover:text-white hover:bg-white/10 hover:border-white/10"
+                )}
+              >
+                <CategoryIcon className={cn("h-4 w-4 shrink-0", isActive ? "text-[#a9f3e3]" : "text-slate-400 group-hover:text-slate-100")} />
+                <span className="flex-1 truncate">{category.title}</span>
+              </Link>
+            );
+          }
 
           return (
             <div key={category.id} className="space-y-1">
@@ -189,13 +206,12 @@ export function Sidebar() {
               <button
                 type="button"
                 onClick={() => toggleCategory(category.id)}
-                className="w-full flex items-center justify-between px-2.5 py-1 rounded-xl text-slate-400 hover:text-slate-100 transition-colors group cursor-pointer"
+                aria-expanded={!isCollapsed}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-slate-200 hover:text-white hover:bg-white/10 transition-colors group cursor-pointer"
               >
-                <div className="flex items-center gap-1.5">
-                  <CategoryIcon className="h-3 w-3 text-slate-500 group-hover:text-slate-300" />
-                  <span className="text-[11px] font-semibold tracking-wide text-slate-400 group-hover:text-slate-100">
-                    {category.title}
-                  </span>
+                <div className="flex items-center gap-2.5">
+                  <CategoryIcon className={cn("h-4 w-4", hasActiveChild ? "text-[#a9f3e3]" : "text-slate-400 group-hover:text-slate-100")} />
+                  <span className="text-[14px] font-medium">{category.title}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   {hasActiveChild && isCollapsed && (
@@ -211,9 +227,9 @@ export function Sidebar() {
 
               {/* Sub-items list */}
               {!isCollapsed && (
-                <div className="space-y-0.5 pt-0.5">
+                <div className="space-y-0.5 pt-0.5 pl-3 ml-2 border-l border-white/10">
                   {category.items.map((item) => {
-                    const isActive = pathname === item.href;
+                    const isActive = matches(pathname, item.href);
                     const Icon = item.icon;
                     return (
                       <Link
