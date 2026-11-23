@@ -40,6 +40,12 @@ function isDateOnly(d: Date): boolean {
   return utc || (z.hour === 0 && z.minute === 0);
 }
 
+/** The first web link in a piece of text, if any (meeting links are usually pasted into location or notes). */
+function meetingLink(text: string | null | undefined): string | null {
+  const m = text?.match(/https?:\/\/[^\s<>"')]+/i);
+  return m ? m[0] : null;
+}
+
 export async function getAgenda(userId: string, from: Date, to: Date, now: Date = new Date()) {
   const { startOfDay } = zonedNow(now);
 
@@ -211,7 +217,8 @@ export async function getAgenda(userId: string, from: Date, to: Date, now: Date 
       priority: null,
       color: null,
       href: null,
-      url: null,
+      // A meeting link pasted as the location (Zoom, Google Meet, Teams) can be joined from the reminder.
+      url: meetingLink(e.location) ?? meetingLink(e.description),
       canToggle: false,
       canEdit: true,
       raw: e as unknown as Record<string, unknown>,

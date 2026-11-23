@@ -59,6 +59,7 @@ function payloadOf(n: PlannedNotification): string {
     tag: n.tag,
     // The service worker sends the chosen button back to /api/notify/action with this item reference.
     ref: n.itemKey,
+    link: n.link ?? null,
     actions: n.actions.map((a) => ({ action: a, title: ACTION_LABELS[a] })),
   });
 }

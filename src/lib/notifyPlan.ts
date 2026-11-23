@@ -46,8 +46,8 @@ export const DEFAULT_PREFS: NotifyPrefs = {
 export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill";
 
 /** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
-export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid";
-export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid" };
+export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid" | "join";
+export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid", join: "Join" };
 
 export interface PlannedNotification {
   key: string; // unique per item, kind and start time
@@ -58,6 +58,7 @@ export interface PlannedNotification {
   url: string;
   tag: string;
   actions: NotifyAction[];
+  link?: string | null; // a meeting link the "Join" button opens
 }
 
 /**
@@ -65,12 +66,20 @@ export interface PlannedNotification {
  * reminders and client work. Classes, CATs and calendar events are left alone (tapping opens the app).
  */
 export function actionsFor(item: AgendaItem, kind: ReminderKind): NotifyAction[] {
+  // A class, live session or meeting with a link: join it straight from the reminder.
+  if (joinLink(item) && (kind === "hour" || kind === "due")) return ["join"];
   const own = item.source === "TASK" || item.source === "REMINDER" || item.source === "DELIVERABLE" || item.source === "PLAN";
   if (!own || kind === "digest") return [];
   // Right now (or within the hour): finish it, or be reminded again shortly.
   if (kind === "due" || kind === "hour") return ["done", "snooze"];
   // The evening before or the morning of: finish it, or push it a day.
   return ["done", "tomorrow"];
+}
+
+/** The meeting link of a class, live session or event, when it has one. */
+export function joinLink(item: AgendaItem): string | null {
+  if (!["CLASS", "ZOOM", "EVENT", "CAT"].includes(item.source)) return null;
+  return item.url && /^https?:\/\//i.test(item.url) ? item.url : null;
 }
 
 function sameDayTime(iso: string): string {
@@ -253,7 +262,7 @@ export function planNotifications(
   const add = (item: AgendaItem, kind: ReminderKind, title: string, body: string) => {
     const key = `${item.key}:${kind}:${new Date(item.start).getTime()}`;
     if (alreadySent.has(key) || out.some((o) => o.key === key)) return;
-    out.push({ key, kind, itemKey: item.key, title, body, url: item.href || "/calendar", tag: key, actions: actionsFor(item, kind) });
+    out.push({ key, kind, itemKey: item.key, title, body, url: item.href || "/calendar", tag: key, actions: actionsFor(item, kind), link: joinLink(item) });
   };
 
   // The morning summary, at the "morning" hour (it replaces one ping per all-day item).

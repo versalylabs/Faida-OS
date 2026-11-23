@@ -234,7 +234,7 @@ self.addEventListener("push", (event) => {
       badge: "/icon-192.png",
       tag: data.tag || undefined,
       actions: Array.isArray(data.actions) ? data.actions.slice(0, 2) : [],
-      data: { url: data.url || "/calendar", ref: data.ref || null },
+      data: { url: data.url || "/calendar", ref: data.ref || null, link: data.link || null },
     })
   );
 });
@@ -246,6 +246,12 @@ self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
   const target = new URL(data.url || "/", self.location.origin).href;
+
+  // "Join": open the class or meeting link (Zoom, Meet, Teams) directly.
+  if (event.action === "join" && data.link) {
+    event.waitUntil(self.clients.openWindow(data.link));
+    return;
+  }
 
   if (event.action && data.ref) {
     event.waitUntil(
