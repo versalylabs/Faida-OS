@@ -94,6 +94,8 @@ Visit `http://localhost:3000` and create your account on the sign-in screen.
 | `DATABASE_URL` | Yes | PostgreSQL connection string (Neon pooled string recommended). |
 | `APP_TIME_ZONE` | No | IANA time zone used for "today", due dates and the energy curve. Defaults to `Africa/Nairobi`. |
 | `GEMINI_API_KEY` | No | Google Gemini key for smarter capture classification and chat. The app runs without it. |
+| `APP_SECRET` | Recommended | Long random string that encrypts Developer Hub values and the LMS key. Set it once and never change it. Without it the database URL is used, so rotating the database password would make those values unreadable. Generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. |
+| `ALLOW_REGISTRATION` | No | Sign-up closes automatically once the first (owner) account exists. Set to `true` only to let someone else create an account. |
 
 Sessions are random server-side tokens stored (hashed) in the database, so no signing secret is needed.
 

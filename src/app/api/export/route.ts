@@ -18,7 +18,8 @@ const SKIP = new Set(["Session", "AuthRateLimit", "FileBlob", "User"]);
 
 /**
  * GET /api/export: everything that belongs to the signed-in user as one JSON file, a personal backup you can
- * keep. Note that Developer Hub credentials are included exactly as stored, so keep the file private.
+ * keep. Developer Hub values and the LMS key are included as stored, which is encrypted: they can only be read
+ * back by this server (with the same APP_SECRET). Keep the file private all the same.
  */
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser(req);

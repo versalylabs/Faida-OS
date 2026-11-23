@@ -9,8 +9,33 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_MAX_AGE, isSecureRequest } from "@/lib/auth";
 
+/**
+ * Faida OS is a personal system: once the owner's account exists, nobody else can sign up
+ * (strangers would otherwise get storage in your database and use your AI quota).
+ * Set ALLOW_REGISTRATION=true in the hosting environment to open sign-up deliberately.
+ */
+async function registrationOpen(): Promise<boolean> {
+  if (process.env.ALLOW_REGISTRATION === "true") return true;
+  return (await prisma.user.count()) === 0;
+}
+
+export async function GET() {
+  try {
+    return NextResponse.json({ open: await registrationOpen() }, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ open: false }, { headers: { "Cache-Control": "no-store" } });
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
+    if (!(await registrationOpen())) {
+      return NextResponse.json(
+        { error: "Sign-up is closed. This Faida OS already has its owner." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json();
     const { email, password, name } = body ?? {};
 

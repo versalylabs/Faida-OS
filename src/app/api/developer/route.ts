@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { ValidationError, badRequest, must, notFound, num, ownedId, readBody, str } from "@/lib/validate";
+import { isSealed, open, seal } from "@/lib/secretBox";
+
+// Values are stored encrypted. Lists only carry secret values masked; the plain value is sent only
+// when asked for by id (?reveal=id1,id2), never cached.
+const PURPOSE = "dev-credential-v1";
+const NO_STORE = { "Cache-Control": "private, no-store" };
+
+/** Plain value of a stored keyValue. Rows saved before encryption (plain text) are sealed on sight. */
+async function plainValue(id: string, stored: string): Promise<string> {
+  if (!isSealed(stored)) {
+    await prisma.devCredential.update({ where: { id }, data: { keyValue: seal(stored, PURPOSE) } });
+    return stored;
+  }
+  const { value, current } = open(stored, PURPOSE);
+  // Sealed with an older server secret: move it to the preferred one.
+  if (!current) await prisma.devCredential.update({ where: { id }, data: { keyValue: seal(value, PURPOSE) } });
+  return value;
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,6 +29,25 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
+
+    const reveal = searchParams.get("reveal");
+    if (reveal) {
+      const ids = reveal.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 200);
+      const rows = await prisma.devCredential.findMany({
+        where: { userId: user.id, id: { in: ids } },
+        select: { id: true, keyValue: true },
+      });
+      const values: Record<string, string> = {};
+      for (const row of rows) {
+        try {
+          values[row.id] = await plainValue(row.id, row.keyValue);
+        } catch (e) {
+          console.error("Developer credential cannot be opened:", row.id, e);
+        }
+      }
+      return NextResponse.json({ success: true, values }, { headers: NO_STORE });
+    }
+
     const projectId = searchParams.get("projectId");
     const environment = searchParams.get("environment");
 
@@ -18,7 +55,7 @@ export async function GET(req: NextRequest) {
     if (projectId) where.projectId = projectId;
     if (environment) where.environment = environment;
 
-    const credentials = await prisma.devCredential.findMany({
+    const stored = await prisma.devCredential.findMany({
       where,
       include: {
         project: {
@@ -27,6 +64,20 @@ export async function GET(req: NextRequest) {
       },
       orderBy: [{ environment: "asc" }, { serviceName: "asc" }],
     });
+
+    const credentials = [];
+    for (const c of stored) {
+      let value = "";
+      let unreadable = false;
+      try {
+        value = await plainValue(c.id, c.keyValue);
+      } catch (e) {
+        // Sealed with a server secret that is no longer configured.
+        console.error("Developer credential cannot be opened:", c.id, e);
+        unreadable = true;
+      }
+      credentials.push({ ...c, keyValue: c.isSecret ? "" : value, masked: c.isSecret, unreadable });
+    }
 
     const projects = await prisma.project.findMany({
       where: { userId: user.id },
@@ -54,7 +105,7 @@ export async function GET(req: NextRequest) {
       credentials,
       projects,
       portAllocations,
-    });
+    }, { headers: NO_STORE });
   } catch (error: any) {
     if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error fetching developer credentials:", error);
@@ -100,7 +151,7 @@ export async function POST(req: NextRequest) {
         userId: user.id,
         serviceName: cleanService,
         keyName: cleanKeyName.toUpperCase(),
-        keyValue: cleanKeyValue,
+        keyValue: seal(cleanKeyValue, PURPOSE),
         environment: cleanEnv.toLowerCase(),
         isSecret: Boolean(isSecret),
         port: cleanPort,
@@ -115,7 +166,10 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, credential: created });
+    return NextResponse.json({
+      success: true,
+      credential: { ...created, keyValue: created.isSecret ? "" : cleanKeyValue, masked: created.isSecret },
+    });
   } catch (error: any) {
     if (error instanceof ValidationError) return badRequest(error.message);
     console.error("Error creating developer credential:", error);

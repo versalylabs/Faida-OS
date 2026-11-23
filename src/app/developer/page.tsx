@@ -22,7 +22,9 @@ interface Credential {
   serviceName: string;
   environment: string;
   keyName: string;
-  keyValue: string;
+  keyValue: string; // empty for secrets: the plain value is fetched only when revealed or copied
+  masked?: boolean;
+  unreadable?: boolean;
   isSecret: boolean;
   port?: number | null;
   url?: string | null;
@@ -51,6 +53,8 @@ export default function DeveloperHubPage() {
   const [selectedEnv, setSelectedEnv] = useState<string>("ALL");
   const [selectedProject, setSelectedProject] = useState<string>("ALL");
   const [revealedIds, setRevealedIds] = useState<{ [id: string]: boolean }>({});
+  // Plain secret values fetched on demand; kept only in memory for this visit.
+  const [secretValues, setSecretValues] = useState<{ [id: string]: string }>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedEnv, setCopiedEnv] = useState(false);
 
@@ -87,19 +91,56 @@ export default function DeveloperHubPage() {
     fetchCredentials();
   }, []);
 
-  const toggleReveal = (id: string) => {
-    setRevealedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  /** Plain values for these credentials, asking the server only for secrets not yet fetched. */
+  const valuesFor = async (list: Credential[]): Promise<{ [id: string]: string }> => {
+    const known: { [id: string]: string } = { ...secretValues };
+    const missing = list.filter((c) => c.masked && known[c.id] === undefined).map((c) => c.id);
+    if (missing.length > 0) {
+      const res = await fetch(`/api/developer?reveal=${encodeURIComponent(missing.join(","))}`, { cache: "no-store" });
+      const data = await res.json();
+      if (data.success) {
+        Object.assign(known, data.values);
+        setSecretValues(known);
+      }
+    }
+    const out: { [id: string]: string } = {};
+    for (const c of list) out[c.id] = c.masked ? known[c.id] ?? "" : c.keyValue;
+    return out;
   };
 
-  const copyToClipboard = (id: string, text: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+  const toggleReveal = async (c: Credential) => {
+    if (!revealedIds[c.id]) {
+      try {
+        await valuesFor([c]);
+      } catch (e) {
+        console.error(e);
+        return;
+      }
+    }
+    setRevealedIds((prev) => ({ ...prev, [c.id]: !prev[c.id] }));
   };
 
-  const exportDotEnv = () => {
+  const copyToClipboard = async (c: Credential) => {
+    try {
+      const values = await valuesFor([c]);
+      await navigator.clipboard.writeText(values[c.id] ?? "");
+      setCopiedId(c.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const exportDotEnv = async () => {
+    let values: { [id: string]: string };
+    try {
+      values = await valuesFor(filteredCredentials);
+    } catch (e) {
+      console.error(e);
+      return;
+    }
     const lines = filteredCredentials.map(
-      (c) => `${c.keyName}=${c.keyValue} # ${c.serviceName}`
+      (c) => `${c.keyName}=${values[c.id] ?? ""} # ${c.serviceName}`
     );
     const envContent = `# Exported from Faida OS Developer Hub (${selectedEnv})\n` + lines.join("\n");
     navigator.clipboard.writeText(envContent);
@@ -350,14 +391,18 @@ export default function DeveloperHubPage() {
                   <div className="flex-1 max-w-md">
                     <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800/80 rounded-xl px-3 py-2">
                       <div className="flex-1 font-mono text-xs text-slate-300 truncate">
-                        {c.isSecret && !isRevealed
+                        {c.unreadable
+                          ? "Cannot be opened (server secret changed)"
+                          : c.isSecret && !isRevealed
                           ? "••••••••••••••••••••••••••••"
+                          : c.masked
+                          ? secretValues[c.id] ?? ""
                           : c.keyValue}
                       </div>
 
                       {c.isSecret && (
                         <button
-                          onClick={() => toggleReveal(c.id)}
+                          onClick={() => toggleReveal(c)}
                           className="text-slate-500 hover:text-slate-300 p-1 cursor-pointer"
                           title={isRevealed ? "Hide Secret" : "Reveal Secret"}
                         >
@@ -370,7 +415,7 @@ export default function DeveloperHubPage() {
                       )}
 
                       <button
-                        onClick={() => copyToClipboard(c.id, c.keyValue)}
+                        onClick={() => copyToClipboard(c)}
                         className="text-slate-400 hover:text-white p-1 cursor-pointer"
                         title="Copy Value"
                       >

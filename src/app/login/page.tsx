@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Mail, User as UserIcon, ArrowRight, ShieldCheck, AlertCircle, Loader2 } from "lucide-react";
 import { FaidaLogoIcon } from "@/components/brand/FaidaLogo";
@@ -9,6 +9,15 @@ import { setActiveOfflineUser } from "@/lib/offlineSync";
 export default function LoginPage() {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
+  // Sign-up closes once the owner's account exists; only offer it while it is open.
+  const [signupOpen, setSignupOpen] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/register", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setSignupOpen(Boolean(d?.open)))
+      .catch(() => setSignupOpen(false));
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -72,6 +81,7 @@ export default function LoginPage() {
         {/* Auth Card */}
         <div className="glass-panel rounded-[2rem] p-6 sm:p-8">
           {/* Mode Tabs */}
+          {signupOpen && (
           <div className="flex rounded-full bg-slate-950/60 p-1 border border-white/10 mb-6">
             <button
               type="button"
@@ -102,6 +112,7 @@ export default function LoginPage() {
               Create account
             </button>
           </div>
+          )}
 
           {/* Error Message */}
           {error && (
@@ -190,6 +201,7 @@ export default function LoginPage() {
           </form>
 
           {/* Footer message */}
+          {signupOpen && (
           <div className="mt-6 text-center text-xs text-slate-500">
             {isLogin ? (
               <p>
@@ -215,6 +227,7 @@ export default function LoginPage() {
               </p>
             )}
           </div>
+          )}
         </div>
 
         {/* Security badge */}

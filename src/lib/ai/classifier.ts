@@ -1,3 +1,5 @@
+import { APP_TIME_ZONE, zonedNow, zonedTime } from "@/lib/tz";
+
 export type DetectedEntityType =
   | "TASK"
   | "REMINDER"
@@ -31,49 +33,53 @@ export interface ParsedEntityResult {
 // Date/Time Parsing Helpers
 // -------------------------------------------------------------
 
-function parseRelativeDateTime(text: string): { dueDate?: Date; startTime?: Date; endTime?: Date } {
+/**
+ * Works out the day and time in the app's time zone (Africa/Nairobi by default). The server runs in
+ * UTC, so plain Date.setHours() would put "at 3pm" at 3 pm UTC, which is 6 pm in Nairobi.
+ */
+function parseRelativeDateTime(text: string, now: Date = new Date()): { dueDate?: Date; startTime?: Date; endTime?: Date } {
   const lower = text.toLowerCase();
-  const now = new Date();
-  let targetDate = new Date(now);
+  const today = zonedNow(now);
+  let addDays = 0;
 
   // Check tomorrow
-  if (lower.includes("tomorrow")) {
-    targetDate.setDate(targetDate.getDate() + 1);
-  }
+  if (lower.includes("tomorrow")) addDays = 1;
 
-  // Check next weekday (e.g., "next friday", "next monday")
+  // Check next weekday (e.g., "next friday", "on monday")
   const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   for (let i = 0; i < weekdays.length; i++) {
     const dayName = weekdays[i];
     if (lower.includes(`next ${dayName}`) || lower.includes(`on ${dayName}`)) {
-      const currentDay = targetDate.getDay();
+      const currentDay = (today.dayOfWeek + addDays) % 7;
       let diff = i - currentDay;
       if (diff <= 0) diff += 7;
-      targetDate.setDate(targetDate.getDate() + diff);
+      addDays += diff;
       break;
     }
   }
 
+  // Calendar day in the app's zone (noon UTC keeps date arithmetic clear of midnight edges)
+  const dayKey = new Date(Date.UTC(today.year, today.month - 1, today.day + addDays, 12)).toISOString().slice(0, 10);
+
   // Check specific time: e.g. "at 3pm", "at 3:30pm", "at 15:00", "at 3"
+  let hours = 9; // Default reminder or task due time is 09:00 if not specified
+  let minutes = 0;
   const timeMatch = lower.match(/(?:at|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
   if (timeMatch) {
-    let hours = parseInt(timeMatch[1], 10);
-    const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    hours = parseInt(timeMatch[1], 10);
+    minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
     const meridian = timeMatch[3]?.toLowerCase();
 
     if (meridian === "pm" && hours < 12) hours += 12;
     if (meridian === "am" && hours === 12) hours = 0;
     if (!meridian && hours < 7) hours += 12; // default 3 -> 15:00
-
-    targetDate.setHours(hours, minutes, 0, 0);
-  } else {
-    // Default reminder or task due time is 09:00 if not specified
-    targetDate.setHours(9, 0, 0, 0);
+    hours = Math.min(hours, 23);
+    minutes = Math.min(minutes, 59);
   }
 
+  const targetDate = zonedTime(dayKey, `${hours}:${minutes}`);
   const start = new Date(targetDate);
-  const end = new Date(targetDate);
-  end.setHours(end.getHours() + 1); // 1 hour event default
+  const end = new Date(targetDate.getTime() + 60 * 60 * 1000); // 1 hour event default
 
   return {
     dueDate: targetDate,
@@ -297,7 +303,7 @@ Extract:
 - type: TASK | REMINDER | EVENT | SHOPPING | NOTE | KNOWLEDGE | FINANCE | LEARNING
 - details: any additional content
 - priority: LOW | MEDIUM | HIGH | URGENT
-- dueDate: ISO 8601 string if mentioned (relative to current date ${new Date().toISOString()})
+- dueDate: ISO 8601 string if mentioned (current time ${new Date().toISOString()}; the user is in the ${APP_TIME_ZONE} time zone, so "3pm" means 3 pm there; give the UTC instant)
 - startTime: ISO 8601 string if event
 - endTime: ISO 8601 string if event
 - estimatedMinutes: integer if task
