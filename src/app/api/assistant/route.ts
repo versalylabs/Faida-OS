@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser, isAuthRateLimited, recordAuthFailure } from "@/lib/auth";
-import { askFaida } from "@/lib/ai/agent";
+import { askFaida, confirmAction } from "@/lib/ai/agent";
 import { configuredProviders } from "@/lib/ai/llm";
 import { ValidationError, badRequest, readBody } from "@/lib/validate";
 
@@ -25,6 +25,13 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await readBody(req);
+
+    // The user tapped Confirm on a change Faida AI proposed
+    if (typeof body.confirm === "string") {
+      const r = await confirmAction(user.id, body.confirm);
+      return NextResponse.json({ success: r.ok, reply: r.reply, error: r.ok ? undefined : r.reply, actionExecuted: r.actionExecuted }, { headers: noStore });
+    }
+
     const { message, history } = body;
 
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -58,6 +65,7 @@ export async function POST(req: NextRequest) {
         success: true,
         reply: res.reply,
         actionExecuted: res.actionExecuted,
+        pending: res.pending,
         toolsUsed: res.toolsUsed,
         engine: res.engine,
         notice: res.notice,

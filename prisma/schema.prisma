@@ -115,6 +115,8 @@ model Entity {
   note     Note?
   reminder Reminder?
   activity ActivityLog[]
+
+  @@index([userId, createdAt])
 }
 
 model EntityRelation {
@@ -167,6 +169,8 @@ model Task {
   calendarEvents CalendarEvent[]
 
   @@index([milestoneId])
+  @@index([userId, status])
+  @@index([userId, dueDate])
 }
 
 model Subtask {
@@ -198,6 +202,8 @@ model Reminder {
   entity Entity? @relation(fields: [entityId], references: [id], onDelete: Cascade)
   task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
   note   Note?   @relation(fields: [noteId], references: [id], onDelete: SetNull)
+
+  @@index([userId, dueAt])
 }
 
 model CalendarEvent {
@@ -219,6 +225,8 @@ model CalendarEvent {
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
   task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
   note Note? @relation(fields: [noteId], references: [id], onDelete: SetNull)
+
+  @@index([userId, startTime])
 }
 
 // -------------------------------------------------------------
@@ -245,6 +253,8 @@ model Project {
   milestones  Milestone[]
   credentials DevCredential[]
   files       FileAsset[]
+
+  @@index([userId, status])
 }
 
 model Milestone {
@@ -279,6 +289,8 @@ model Note {
   course         UniversityCourse? @relation(fields: [courseId], references: [id], onDelete: SetNull)
   reminders      Reminder[]
   calendarEvents CalendarEvent[]
+
+  @@index([userId, updatedAt])
 }
 
 // -------------------------------------------------------------
@@ -587,6 +599,7 @@ model FinanceTransaction {
   @@index([businessId, date])
   @@index([accountId, date])
   @@index([userId, needsReview])
+  @@index([userId, date])
 }
 
 model Budget {
@@ -641,6 +654,8 @@ model ShoppingItem {
   updatedAt      DateTime @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model ShoppingCategory {
@@ -670,6 +685,8 @@ model MaintenanceItem {
   updatedAt       DateTime  @updatedAt
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 // -------------------------------------------------------------
@@ -910,6 +927,8 @@ model BusinessDeliverable {
   business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   client   BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   user     User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, dueDate])
 }
 
 // Things a business needs to buy (a camera for Straten, a laptop, software...), before and after buying.

@@ -2,6 +2,7 @@ import { chat, LlmUnavailableError, isLlmConfigured, type ChatMessage } from "@/
 import { toolByName, toolsFor } from "@/lib/ai/agentTools";
 import type { ToolActionPayload } from "@/lib/ai/tools";
 import { askFaidaAssistant } from "@/lib/ai/assistant";
+import { CONFIRM_TOOLS, signAction, verifyAction, type PendingAction } from "@/lib/ai/confirm";
 
 /**
  * Faida AI. A free chat model reads the message, decides which tools to call (look something up or make
@@ -17,6 +18,7 @@ export interface AgentResult {
   provider?: string;
   model?: string;
   notice?: string;
+  pending?: PendingAction[]; // changes waiting for the user's Confirm tap
 }
 
 const MAX_ROUNDS = 4;
@@ -73,6 +75,7 @@ export async function runAgent(userId: string, userMessage: string, history: { r
 
   const toolsUsed: string[] = [];
   let action: ToolActionPayload | undefined;
+  const pending: PendingAction[] = [];
   let writes = 0;
   let provider: string | undefined;
   let model: string | undefined;
@@ -87,8 +90,9 @@ export async function runAgent(userId: string, userMessage: string, history: { r
     if (!calls || calls.length === 0) {
       const text = cleanAnswer(reply.message.content);
       return {
-        reply: text || "Done.",
+        reply: text || (pending.length ? "Tap Confirm below and I'll do it." : "Done."),
         actionExecuted: action,
+        pending: pending.length ? pending : undefined,
         toolsUsed: [...new Set(toolsUsed)],
         engine: "ai",
         provider,
@@ -116,6 +120,18 @@ export async function runAgent(userId: string, userMessage: string, history: { r
         }
         try {
           if (tool.write) writes++;
+          // Money and "done" changes wait for the user: show them, do not make them.
+          if (CONFIRM_TOOLS.has(tool.spec.function.name)) {
+            const p = signAction(userId, tool.spec.function.name, args);
+            pending.push(p);
+            toolsUsed.push(tool.spec.function.name);
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: compact({ status: "waiting_for_user_confirmation", change: p.summary, note: "Not done yet. Tell the user to tap Confirm below. Never say it is done." }),
+            });
+            continue;
+          }
           const out = await tool.run(userId, args);
           toolsUsed.push(tool.spec.function.name);
           if (out.action) action = out.action;
@@ -139,11 +155,25 @@ export async function runAgent(userId: string, userMessage: string, history: { r
   return {
     reply: cleanAnswer(final.message.content) || "I gathered what I could but could not finish. Try asking in smaller steps.",
     actionExecuted: action,
+    pending: pending.length ? pending : undefined,
     toolsUsed: [...new Set(toolsUsed)],
     engine: "ai",
     provider: final.provider,
     model: final.model,
   };
+}
+
+/** Carries out a change the user confirmed in the chat. */
+export async function confirmAction(userId: string, token: string): Promise<{ ok: boolean; reply: string; actionExecuted?: ToolActionPayload }> {
+  const verified = verifyAction(token, userId);
+  if (!verified) return { ok: false, reply: "That confirmation has expired. Ask me again." };
+  const tool = toolByName(verified.tool);
+  if (!tool) return { ok: false, reply: "I can't do that any more. Ask me again." };
+  const out = await tool.run(userId, verified.args);
+  const data = (out.data ?? {}) as Record<string, any>;
+  if (data.error) return { ok: false, reply: String(data.error) };
+  const said = data.result ?? data.message ?? (data.updated ? `Updated ${data.updated}.` : null);
+  return { ok: true, reply: typeof said === "string" && said ? said : "Done.", actionExecuted: out.action };
 }
 
 /** The entry point for the chat: AI when available, the basic keyword assistant otherwise. */

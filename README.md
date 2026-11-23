@@ -74,8 +74,11 @@ npm install
 cp .env.example .env
 # Edit .env and set DATABASE_URL to a PostgreSQL connection string.
 
-# 4. Create the tables in that database
-npx prisma db push
+# 4. Create the tables in that database (applies every migration in prisma/migrations)
+npx prisma migrate deploy
+
+# Run the unit tests (no database needed)
+npm test
 
 # 5. Start the development server
 npm run dev
@@ -83,7 +86,7 @@ npm run dev
 
 Visit `http://localhost:3000` and create your account on the sign-in screen.
 
-> **Use a separate database for development.** `prisma db push` and everything you do in the app writes to
+> **Use a separate database for development.** Migrations and everything you do in the app write to
 > whatever `DATABASE_URL` points at. With Neon, create a **branch** of your project (Branches → New branch) and use
 > that branch's connection string locally, so testing never touches production data.
 
@@ -105,12 +108,29 @@ Sessions are random server-side tokens stored (hashed) in the database, so no si
 
 1. Push your code to GitHub and import the repository into **[Vercel](https://vercel.com)**.
 2. Add the `DATABASE_URL` environment variable (Production; add to Preview only if it points at a non-production database).
-3. Apply schema changes to the production database **before** deploying code that needs them:
-   ```bash
-   npx prisma db push
-   ```
-   (Run it locally with `DATABASE_URL` set to the production string. Vercel does not run it for you. Prefer additive changes so the previous deployment keeps working during the rollout.)
+3. Database changes go through migrations (see "Changing the database" below). Apply them to production
+   **before** deploying code that needs them. Vercel does not run them for you.
 4. Deploy. The build command (`prisma generate && next build`) runs automatically.
+
+### Changing the database
+
+Every change to `prisma/schema.prisma` gets a migration in `prisma/migrations/` (the history starts at `0_init`,
+which is the production schema of 24 Nov 2026).
+
+1. Edit `prisma/schema.prisma`, then write the migration. Either run `npx prisma migrate dev --name what_changed`
+   against a development branch, or generate the SQL without a database:
+   ```bash
+   npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script --shadow-database-url <dev-branch-url>
+   ```
+   and save it as `prisma/migrations/<YYYYMMDDHHMMSS>_what_changed/migration.sql`.
+2. Push the migration, then run **Actions → Database migrate → Run workflow → deploy**. It takes an encrypted
+   backup, applies pending migrations, and fails if production still differs from the schema.
+   (**check** is read-only: it shows pending migrations and any difference.)
+3. Push the code that uses the change.
+
+Prefer additive changes (new tables and columns, new indexes) so the running app keeps working in between.
+
+Every push also runs **Faida OS checks** (type-check and unit tests).
 
 Notes:
 - **File uploads** are stored privately in the database (limit 4 MB per file, matching Vercel's request-size cap) and are served only to the signed-in owner. Nothing is written to the server's filesystem.
@@ -189,8 +209,7 @@ and **Business Finance**.
   cash accounts and the purchases list (equipment, software). Marking a purchase as bought can record the expense.
   Business money is stored with the rest of your finances, so the Finance page always agrees.
 
-Needs one database update (`npx prisma db push`) that adds `businessId`/`clientId` to transactions and the
-`BusinessPurchase` table. Run it before deploying code that uses them.
+(These tables are part of the `0_init` migration.)
 
 ## Backups and restore
 
@@ -206,7 +225,7 @@ repository is public and its workflow files can be downloaded by others. Each ba
 | `BACKUP_PASSPHRASE` | A long random passphrase (20+ characters). Save it in your password manager: no backup can be opened without it. |
 
 Then open **Actions > Faida OS backup > Run workflow** once to check it works. The run lists how many tables it
-saved. Take an extra backup the same way before any risky change, such as `prisma db push`.
+saved. Take an extra backup the same way before any risky change (the "Database migrate" workflow does this for you).
 
 **Restore** (try it once into a spare database so you know it works before you need it):
 

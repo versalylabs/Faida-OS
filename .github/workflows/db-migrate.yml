@@ -1,0 +1,68 @@
+# Database changes, the safe way. Run it from the Actions tab ("Database migrate" > Run workflow).
+#
+#   check   (default) read-only: lists pending migrations and prints any difference between the production
+#           database and prisma/schema.prisma. Changes nothing.
+#   deploy  takes an encrypted backup first, applies pending migrations from prisma/migrations, then fails
+#           loudly if production still differs from prisma/schema.prisma.
+#
+# Uses the BACKUP_DATABASE_URL secret (the direct, non-pooled Neon connection string).
+# Order for a change the app depends on: push the migration, run "deploy", then push the code that uses it.
+name: Database migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "check (read-only) or deploy (backup, then apply migrations)"
+        type: choice
+        options: [check, deploy]
+        default: check
+
+permissions:
+  contents: read
+
+concurrency:
+  group: faida-db-migrate
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: ${{ inputs.action == 'deploy' }}
+    uses: ./.github/workflows/backup.yml
+    secrets: inherit
+
+  migrate:
+    needs: [backup]
+    if: ${{ always() && (inputs.action == 'check' || needs.backup.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Check the secret is set
+        run: '[ -n "$DATABASE_URL" ] || { echo "BACKUP_DATABASE_URL is not set in this repository''s Actions secrets"; exit 1; }'
+
+      - name: Migration status
+        run: npx prisma migrate status || true
+
+      - name: Apply pending migrations
+        if: ${{ inputs.action == 'deploy' }}
+        run: npx prisma migrate deploy
+
+      - name: Differences between production and prisma/schema.prisma
+        run: |
+          set +e
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --script --exit-code > diff.sql
+          code=$?
+          set -e
+          if [ "$code" = "0" ]; then echo "Production matches prisma/schema.prisma."; exit 0; fi
+          echo "SQL that would bring production in line with prisma/schema.prisma:"
+          cat diff.sql
+          if [ "${{ inputs.action }}" = "deploy" ]; then echo "Production still differs after deploy."; exit 1; fi

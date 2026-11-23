@@ -34,6 +34,7 @@ interface Message {
   actionExecuted?: ActionExecuted;
   toolsUsed?: string[];
   notice?: string;
+  pending?: { token: string; summary: string; state?: "waiting" | "busy" | "done" | "cancelled" | "failed" }[];
 }
 
 const TOOL_LABELS: Record<string, string> = {
@@ -99,6 +100,42 @@ export function FaidaAIChatDrawer() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  /** Confirm or cancel a change Faida AI proposed (money and "done" changes wait for a tap). */
+  const resolvePending = async (messageId: string, index: number, confirm: boolean) => {
+    const setState = (state: "waiting" | "busy" | "done" | "cancelled" | "failed") =>
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId && m.pending ? { ...m, pending: m.pending.map((p, i) => (i === index ? { ...p, state } : p)) } : m))
+      );
+    const target = messages.find((m) => m.id === messageId)?.pending?.[index];
+    if (!target) return;
+    if (!confirm) {
+      setState("cancelled");
+      return;
+    }
+    setState("busy");
+    try {
+      const res = await fetch("/api/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: target.token }),
+      });
+      const data = await res.json();
+      setState(data.success ? "done" : "failed");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-confirm`,
+          role: "assistant",
+          content: data.success ? `Done. ${data.reply || ""}`.trim() : data.error || "That did not go through.",
+          actionExecuted: data.actionExecuted,
+        },
+      ]);
+      if (data.success) router.refresh();
+    } catch {
+      setState("waiting");
+    }
+  };
+
   useEffect(() => {
     if (isOpen) scrollToBottom();
   }, [messages, isOpen]);
@@ -143,6 +180,7 @@ export function FaidaAIChatDrawer() {
             actionExecuted: data.actionExecuted,
             toolsUsed: Array.isArray(data.toolsUsed) ? data.toolsUsed : undefined,
             notice: typeof data.notice === "string" ? data.notice : undefined,
+            pending: Array.isArray(data.pending) ? data.pending.map((p: { token: string; summary: string }) => ({ ...p, state: "waiting" as const })) : undefined,
           },
         ]);
         // If an OS action was executed, refresh page data smoothly
@@ -311,6 +349,34 @@ export function FaidaAIChatDrawer() {
                         <Rich text={m.content} />
                       </div>
                       {m.actionExecuted && renderActionCard(m.actionExecuted)}
+                      {!isUser &&
+                        m.pending?.map((p, i) => (
+                          <div key={i} className="mt-2 p-2.5 rounded-xl bg-slate-900/80 border border-amber-400/30 space-y-2">
+                            <div className="text-[11px] text-amber-100">{p.summary}</div>
+                            {p.state === "waiting" || p.state === "busy" ? (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => resolvePending(m.id, i, true)}
+                                  disabled={p.state === "busy"}
+                                  className="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-semibold cursor-pointer disabled:opacity-60"
+                                >
+                                  {p.state === "busy" ? "Saving…" : "Confirm"}
+                                </button>
+                                <button
+                                  onClick={() => resolvePending(m.id, i, false)}
+                                  disabled={p.state === "busy"}
+                                  className="px-3 py-1 rounded-lg bg-slate-800 border border-slate-600 text-slate-200 text-[11px] cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] text-slate-400">
+                                {p.state === "done" ? "Confirmed" : p.state === "cancelled" ? "Cancelled: nothing was changed" : "Did not go through"}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       {!isUser && m.toolsUsed && m.toolsUsed.length > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1">
                           {m.toolsUsed.map((t) => (
