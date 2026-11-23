@@ -11,6 +11,18 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "portrait-primary",
     // Lets the installed desktop app receive the LMS's sign-in reply (University > Connect LMS).
     protocol_handlers: [{ protocol: "web+faida", url: "/lms/sso#uri=%s" }],
+    // Faida OS shows up in the phone's Share menu: shared text, links or an M-Pesa SMS land in Capture.
+    share_target: {
+      action: "/capture",
+      method: "GET",
+      params: { title: "title", text: "text", url: "url" },
+    },
+    // Long-press the app icon for these.
+    shortcuts: [
+      { name: "Capture", short_name: "Capture", description: "Add a task, reminder, note or expense", url: "/capture", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Add expense", short_name: "Expense", description: "Log money spent", url: "/capture?q=Spent%20KES%20", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+      { name: "Today's plan", short_name: "Today", description: "What to do now", url: "/planner", icons: [{ src: "/icon-192.png", sizes: "192x192", type: "image/png" }] },
+    ],
     background_color: "#0a1130",
     theme_color: "#05070f",
     icons: [

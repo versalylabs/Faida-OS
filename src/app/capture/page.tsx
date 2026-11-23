@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Sparkles,
   ArrowRight,
@@ -36,6 +36,8 @@ export default function CapturePage() {
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [shared, setShared] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchEntities = async () => {
     try {
@@ -55,6 +57,31 @@ export default function CapturePage() {
     fetchEntities();
   }, []);
 
+  // Arriving from the phone's Share menu (?title=&text=&url=) or a home-screen shortcut (?q=):
+  // fill the box so it can be checked, then capture with one tap.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefill = params.get("q");
+    const parts = [params.get("title"), params.get("text"), params.get("url")]
+      .map((v) => (v || "").replace(/\s+/g, " ").trim())
+      .filter(Boolean);
+    // Apps often repeat the link inside the text, or the title inside the text: keep each piece once.
+    const pieces = parts.filter((p, i) => !parts.some((other, j) => j !== i && other.length > p.length && other.includes(p)));
+    const fromShare = [...new Set(pieces)].join(" ").slice(0, 2000);
+    const text = fromShare || prefill || "";
+    if (!text) return;
+    setInput(text);
+    setShared(Boolean(fromShare));
+    // Keep the address clean so a refresh does not fill the box again.
+    window.history.replaceState(null, "", window.location.pathname);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
+
   const handleCapture = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isCapturing) return;
@@ -72,6 +99,7 @@ export default function CapturePage() {
       if (data.success) {
         setFeedback(`Captured as ${data.parsed.type}: "${data.parsed.title}"`);
         setInput("");
+        setShared(false);
         await fetchEntities();
         setTimeout(() => setFeedback(null), 4000);
       } else {
@@ -165,6 +193,7 @@ export default function CapturePage() {
       <form onSubmit={handleCapture} className="space-y-3">
         <div className="relative flex items-center">
           <input
+            ref={inputRef}
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -188,6 +217,13 @@ export default function CapturePage() {
             )}
           </button>
         </div>
+
+        {shared && !feedback && (
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2">
+            <Sparkles className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+            <span>Shared into Faida. Check it, then tap Capture (an M-Pesa message is logged as money in or out).</span>
+          </div>
+        )}
 
         {feedback && (
           <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 animate-in fade-in flex items-center gap-2">
