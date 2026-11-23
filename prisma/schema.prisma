@@ -50,6 +50,7 @@ model User {
   dailyPlans            DailyPlan[]
   ingestKeys            IngestKey[]
   merchantRules         MerchantRule[]
+  bills                 Bill[]
   notificationPref      NotificationPref?
   notificationLogs      NotificationLog[]
   businesses            Business[]
@@ -1052,4 +1053,32 @@ model MerchantRule {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, merchant])
+}
+
+/// A bill that comes round again (rent, KPLC tokens, Wi-Fi, subscriptions). Reminders go out before it is due and
+/// every morning while it is overdue; "Paid" logs the expense and lines up the next one. A forwarded M-Pesa paybill
+/// SMS that matches the bill marks it paid by itself.
+model Bill {
+  id               String    @id @default(uuid())
+  userId           String
+  name             String
+  amount           Float? // null when it varies (e.g. KPLC tokens): you enter it when you pay
+  category         String    @default("Bills")
+  paybill          String? // M-Pesa business (paybill) or till number
+  accountNo        String? // the paybill account number
+  frequency        String    @default("MONTHLY") // WEEKLY, MONTHLY, QUARTERLY, YEARLY, ONCE
+  anchorDay        Int? // day of the month it falls due (kept so a bill due on the 31st stays at month end)
+  nextDueAt        DateTime // 09:00 Nairobi time on the due day
+  remindDaysBefore Int       @default(2)
+  accountId        String? // the money account it is paid from
+  businessId       String? // set when it is a business cost
+  active           Boolean   @default(true)
+  lastPaidAt       DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active, nextDueAt])
 }

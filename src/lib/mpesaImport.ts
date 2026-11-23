@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { createEntry, createTransfer } from "@/lib/ledger";
 import { defaultCategory, describe, merchantKey, parseMpesa, type MpesaMessage } from "@/lib/mpesa";
+import { matchBill, payBill } from "@/lib/bills";
 
 /**
  * M-Pesa auto-import: the phone forwards each M-Pesa SMS to /api/ingest/mpesa with a private key, and it is
@@ -72,6 +73,27 @@ export async function importMpesa(userId: string, text: string): Promise<ImportR
         });
         await logFee(userId, msg, accountId, date);
         return { status: "logged", description, amount: msg.amount, category: "Transfer", remembered: false };
+      }
+    }
+
+    // A payment to one of your bills: logged as that bill and the bill is marked paid.
+    if (msg.kind === "PAYBILL" || msg.kind === "TILL") {
+      const bill = await matchBill(userId, msg, date);
+      if (bill) {
+        await createEntry({
+          userId,
+          description: `Bill: ${bill.name}${msg.account ? ` (acc ${msg.account})` : ""}`,
+          amount: -msg.amount,
+          type: "EXPENSE",
+          category: bill.category,
+          date,
+          accountId: bill.accountId ?? accountId,
+          businessId: bill.businessId,
+          externalRef: msg.code,
+        });
+        await payBill(userId, bill.id, { alreadyLogged: true, date });
+        await logFee(userId, msg, bill.accountId ?? accountId, date);
+        return { status: "logged", description: `Bill paid: ${bill.name}`, amount: msg.amount, category: bill.category, remembered: true };
       }
     }
 

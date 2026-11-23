@@ -43,11 +43,11 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   classes: false,
 };
 
-export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review";
+export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review" | "bill";
 
 /** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
-export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm";
-export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct" };
+export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm" | "paid";
+export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct", paid: "Paid" };
 
 export interface PlannedNotification {
   key: string; // unique per item, kind and start time
@@ -146,6 +146,62 @@ function clock(iso: string): string {
 
 function previousDayKey(dateKey: string): string {
   return new Date(Date.parse(`${dateKey}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
+
+export interface BillDue {
+  id: string;
+  name: string;
+  amount: number | null;
+  paybill: string | null;
+  accountNo: string | null;
+  nextDueAt: Date;
+  remindDaysBefore: number;
+}
+
+/**
+ * Bill reminders, at the morning hour: from `remindDaysBefore` days ahead, on the day, and every morning while the
+ * bill is overdue (a bill is never logged as paid by itself). "Paid" logs it; a bill whose amount varies has no
+ * button, so tapping opens Finance to enter the amount.
+ */
+export function planBills(bills: BillDue[], prefs: NotifyPrefs, now: Date, alreadySent: Set<string>): PlannedNotification[] {
+  if (!prefs.enabled || !prefs.reminders) return [];
+  const { hour } = zonedNow(now);
+  if (inQuietHours(hour, prefs.quietStart, prefs.quietEnd)) return [];
+  const todayKey = zonedDateKey(now);
+  const morning = zonedTime(todayKey, `${String(prefs.morningHour).padStart(2, "0")}:00`).getTime();
+  if (now.getTime() < morning || now.getTime() >= morning + 4 * HOUR) return [];
+
+  const kes = (n: number) => `KES ${Math.round(n).toLocaleString("en-KE")}`;
+  const out: PlannedNotification[] = [];
+  for (const b of bills) {
+    const days = Math.round(
+      (Date.parse(`${zonedDateKey(b.nextDueAt)}T12:00:00Z`) - Date.parse(`${todayKey}T12:00:00Z`)) / 86400000
+    );
+    if (days > b.remindDaysBefore) continue;
+    const key = `bill:${b.id}:${b.nextDueAt.getTime()}:${todayKey}`;
+    if (alreadySent.has(key)) continue;
+    const amount = b.amount ? ` · ${kes(b.amount)}` : "";
+    const title =
+      days < 0
+        ? `Overdue: ${b.name}${amount} (${-days} day${days === -1 ? "" : "s"})`
+        : days === 0
+          ? `Due today: ${b.name}${amount}`
+          : days === 1
+            ? `Due tomorrow: ${b.name}${amount}`
+            : `${b.name} due in ${days} days${amount}`;
+    const payTo = [b.paybill ? `Paybill/till ${b.paybill}` : "", b.accountNo ? `acc ${b.accountNo}` : ""].filter(Boolean).join(" · ");
+    out.push({
+      key,
+      kind: "bill",
+      itemKey: `BILL:${b.id}`,
+      title,
+      body: [payTo, b.amount ? "Tap Paid once it is paid." : "Open to enter what you paid."].filter(Boolean).join(". "),
+      url: "/finance#bills",
+      tag: `bill:${b.id}`,
+      actions: b.amount ? ["paid"] : [],
+    });
+  }
+  return out;
 }
 
 /**

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
 import { zonedDateKey, zonedTime } from "@/lib/tz";
 import { formatClock, type DayPlan } from "@/lib/planner/scheduler";
-import { ACTION_LABELS, DEFAULT_PREFS, planNotifications, planReview, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
+import { ACTION_LABELS, DEFAULT_PREFS, planBills, planNotifications, planReview, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
 
 export interface PushTarget {
   endpoint: string;
@@ -149,6 +149,11 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
       new Set()
     );
     if (review) firstPass.push(review);
+    const bills = await prisma.bill.findMany({
+      where: { userId, active: true, nextDueAt: { lte: new Date(now.getTime() + 15 * 86400000) } },
+      select: { id: true, name: true, amount: true, paybill: true, accountNo: true, nextDueAt: true, remindDaysBefore: true },
+    });
+    firstPass.push(...planBills(bills, prefs, now, new Set()));
     if (firstPass.length === 0) continue;
 
     const sentRows = await prisma.notificationLog.findMany({
@@ -172,7 +177,7 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
         const result = await send(
           { endpoint: d.endpoint, keys: { p256dh: d.p256dh, auth: d.auth } },
           payloadOf(n),
-          { ttl: n.kind === "hour" ? 3600 : 6 * 3600, urgency: n.kind === "hour" || n.kind === "due" || n.kind === "digest" ? "high" : "normal" }
+          { ttl: n.kind === "hour" ? 3600 : 6 * 3600, urgency: n.kind === "hour" || n.kind === "due" || n.kind === "digest" || n.kind === "bill" ? "high" : "normal" }
         );
         if (result.ok) {
           delivered = true;

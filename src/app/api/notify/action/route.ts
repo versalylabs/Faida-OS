@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { spawnNextRecurrence } from "@/lib/recurrence";
 import { touchProject } from "@/lib/projectActivity";
 import { readBody, ValidationError, badRequest } from "@/lib/validate";
+import { BillError, payBill } from "@/lib/bills";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,19 @@ export async function POST(req: NextRequest) {
     // A planned block ("PLAN:<taskId>:<start>") acts on its task.
     const [rawSource, id] = ref.split(":");
     const source = rawSource === "PLAN" ? "TASK" : rawSource;
-    if (!id || !["done", "snooze", "tomorrow", "confirm"].includes(action)) return badRequest("Unknown notification action");
+    if (!id || !["done", "snooze", "tomorrow", "confirm", "paid"].includes(action)) return badRequest("Unknown notification action");
+
+    // A bill: "Paid" logs it and lines up the next one. A bill whose amount varies cannot be paid from here (409),
+    // so the service worker opens the app instead.
+    if (source === "BILL" && action === "paid") {
+      try {
+        const r = await payBill(user.id, id);
+        return NextResponse.json({ success: true, message: `Paid: ${r.name}` }, { headers: NO_STORE });
+      } catch (e) {
+        if (e instanceof BillError) return NextResponse.json({ success: false, error: e.message }, { status: 409, headers: NO_STORE });
+        throw e;
+      }
+    }
 
     // The evening M-Pesa check: "All correct" marks everything logged so far as checked.
     if (source === "REVIEW" && action === "confirm") {
