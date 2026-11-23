@@ -22,6 +22,7 @@ import { offlineFetch } from "@/lib/offlineSync";
 import { AccountsSection } from "@/components/finance/AccountsSection";
 import { BudgetCards } from "@/components/finance/BudgetCards";
 import { TransactionDialog } from "@/components/finance/TransactionDialog";
+import { MpesaReview } from "@/components/finance/MpesaReview";
 import { TransferDialog } from "@/components/finance/TransferDialog";
 import { TransactionFeed, type FeedKind } from "@/components/finance/TransactionFeed";
 import type { FinAccount, FinCategory, FinTransaction } from "@/components/finance/shared";
@@ -495,6 +496,9 @@ export default function FinancePage() {
           </button>
         </div>
       </div>
+
+      {/* Money logged from forwarded M-Pesa SMS, waiting to be checked */}
+      <MpesaReview onChanged={fetchFinance} />
 
       {/* ACCOUNTS FIRST: what you hold right now */}
       <AccountsSection

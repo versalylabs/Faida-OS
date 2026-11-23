@@ -25,6 +25,8 @@ export interface EntryInput {
   businessId?: string | null;
   clientId?: string | null;
   accountId?: string | null;
+  externalRef?: string | null; // e.g. the M-Pesa code; unique per user
+  needsReview?: boolean; // logged automatically, waiting for you to check it
 }
 
 export class LedgerError extends Error {}
@@ -57,6 +59,8 @@ export async function createEntry(input: EntryInput) {
         businessId: input.businessId ?? null,
         clientId: input.clientId ?? null,
         accountId: input.accountId ?? null,
+        externalRef: input.externalRef ?? null,
+        needsReview: input.needsReview === true,
       },
     });
     if (input.accountId) {
@@ -135,7 +139,15 @@ export async function deleteEntry(userId: string, id: string): Promise<number> {
 }
 
 /** Moves money between two of the user's accounts. It is not income and not spending. */
-export async function createTransfer(input: { userId: string; fromId: string; toId: string; amount: number; date?: Date; note?: string | null }) {
+export async function createTransfer(input: {
+  userId: string;
+  fromId: string;
+  toId: string;
+  amount: number;
+  date?: Date;
+  note?: string | null;
+  externalRef?: string | null; // stored on the outgoing row
+}) {
   if (input.fromId === input.toId) throw new LedgerError("Choose two different accounts");
   if (!(input.amount > 0)) throw new LedgerError("The amount must be more than 0");
   return prisma.$transaction(async (db) => {
@@ -146,7 +158,7 @@ export async function createTransfer(input: { userId: string; fromId: string; to
     const note = input.note ? `: ${input.note}` : "";
     await db.financeTransaction.createMany({
       data: [
-        { userId: input.userId, description: `Transfer to ${to.name}${note}`, amount: -input.amount, type: TRANSFER, category: "Transfer", date: when, accountId: from.id, transferGroup: group },
+        { userId: input.userId, description: `Transfer to ${to.name}${note}`, amount: -input.amount, type: TRANSFER, category: "Transfer", date: when, accountId: from.id, transferGroup: group, externalRef: input.externalRef ?? null },
         { userId: input.userId, description: `Transfer from ${from.name}${note}`, amount: input.amount, type: TRANSFER, category: "Transfer", date: when, accountId: to.id, transferGroup: group },
       ],
     });

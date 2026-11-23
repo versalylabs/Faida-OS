@@ -43,11 +43,11 @@ export const DEFAULT_PREFS: NotifyPrefs = {
   classes: false,
 };
 
-export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest";
+export type ReminderKind = "night" | "hour" | "due" | "morning" | "digest" | "review";
 
 /** Buttons on the notification. Phones show at most two, so each reminder gets the two that matter most. */
-export type NotifyAction = "done" | "snooze" | "tomorrow";
-export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow" };
+export type NotifyAction = "done" | "snooze" | "tomorrow" | "confirm";
+export const ACTION_LABELS: Record<NotifyAction, string> = { done: "Done", snooze: "Snooze 1h", tomorrow: "Tomorrow", confirm: "All correct" };
 
 export interface PlannedNotification {
   key: string; // unique per item, kind and start time
@@ -146,6 +146,39 @@ function clock(iso: string): string {
 
 function previousDayKey(dateKey: string): string {
   return new Date(Date.parse(`${dateKey}T12:00:00Z`) - 86400000).toISOString().slice(0, 10);
+}
+
+/**
+ * The evening check of money logged automatically from M-Pesa: one message at the evening hour when anything
+ * is waiting, with an "All correct" button.
+ */
+export function planReview(
+  pending: { count: number; out: number; in: number },
+  prefs: NotifyPrefs,
+  now: Date,
+  alreadySent: Set<string>
+): PlannedNotification | null {
+  if (!prefs.enabled || pending.count === 0) return null;
+  const { hour } = zonedNow(now);
+  if (inQuietHours(hour, prefs.quietStart, prefs.quietEnd)) return null;
+  const todayKey = zonedDateKey(now);
+  const evening = zonedTime(todayKey, `${String(prefs.nightHour).padStart(2, "0")}:00`).getTime();
+  const nowMs = now.getTime();
+  if (nowMs < evening || nowMs >= evening + 3 * HOUR) return null;
+  const key = `review:${todayKey}`;
+  if (alreadySent.has(key)) return null;
+  const kes = (n: number) => `KES ${Math.round(n).toLocaleString("en-KE")}`;
+  const parts = [pending.out > 0 ? `Out ${kes(pending.out)}` : "", pending.in > 0 ? `In ${kes(pending.in)}` : ""].filter(Boolean);
+  return {
+    key,
+    kind: "review",
+    itemKey: "REVIEW:all",
+    title: `M-Pesa: ${pending.count} to check`,
+    body: `${parts.join(" · ")}. Tap All correct if they look right, or open to change a category.`,
+    url: "/finance#review",
+    tag: key,
+    actions: ["confirm"],
+  };
 }
 
 export function planNotifications(

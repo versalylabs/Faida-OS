@@ -48,6 +48,8 @@ model User {
   lmsActivities         LmsActivity[]
   pushSubscriptions     PushSubscription[]
   dailyPlans            DailyPlan[]
+  ingestKeys            IngestKey[]
+  merchantRules         MerchantRule[]
   notificationPref      NotificationPref?
   notificationLogs      NotificationLog[]
   businesses            Business[]
@@ -571,14 +573,18 @@ model FinanceTransaction {
   clientId      String? // the business client it came from or was spent for
   accountId     String? // the account whose balance this moved (null = recorded only, no balance change)
   transferGroup String? // the two rows of one transfer between accounts share this id
+  externalRef   String? // the M-Pesa transaction code (e.g. "QH12AB3CD"), so a forwarded SMS is never logged twice
+  needsReview   Boolean  @default(false) // logged automatically (M-Pesa auto-import) and not yet checked by you
 
   user     User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
   business Business?       @relation(fields: [businessId], references: [id], onDelete: SetNull)
   client   BusinessClient? @relation(fields: [clientId], references: [id], onDelete: SetNull)
   account  FinanceAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
+  @@unique([userId, externalRef])
   @@index([businessId, date])
   @@index([accountId, date])
+  @@index([userId, needsReview])
 }
 
 model Budget {
@@ -1017,4 +1023,33 @@ model DailyPlan {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dateKey])
+}
+
+/// A private key that lets your phone send M-Pesa SMS to Faida without signing in (Settings > M-Pesa auto-import).
+/// Only a hash is stored; the key itself is shown once when it is created.
+model IngestKey {
+  id         String    @id @default(uuid())
+  userId     String
+  keyHash    String    @unique
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Merchant memory: once you file a payee (e.g. "JAVA HOUSE") under a category, later payments to it are filed the same way.
+model MerchantRule {
+  id         String   @id @default(uuid())
+  userId     String
+  merchant   String // normalised payee name, e.g. "java house"
+  category   String
+  businessId String? // set when payments to this merchant belong to one of your businesses
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, merchant])
 }

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
 import { zonedDateKey, zonedTime } from "@/lib/tz";
 import { formatClock, type DayPlan } from "@/lib/planner/scheduler";
-import { ACTION_LABELS, DEFAULT_PREFS, planNotifications, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
+import { ACTION_LABELS, DEFAULT_PREFS, planNotifications, planReview, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
 
 export interface PushTarget {
   endpoint: string;
@@ -137,6 +137,18 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
     const { items, overdue } = await getAgenda(userId, new Date(now.getTime() - 3600000), new Date(now.getTime() + 40 * 3600000), now);
     const planItems = await lockedPlanItems(userId, now);
     const firstPass = planNotifications([...items, ...planItems], prefs, now, new Set(), overdue);
+    const pending = await prisma.financeTransaction.findMany({ where: { userId, needsReview: true }, select: { amount: true } });
+    const review = planReview(
+      {
+        count: pending.length,
+        out: pending.filter((t) => t.amount < 0).reduce((a, t) => a - t.amount, 0),
+        in: pending.filter((t) => t.amount > 0).reduce((a, t) => a + t.amount, 0),
+      },
+      prefs,
+      now,
+      new Set()
+    );
+    if (review) firstPass.push(review);
     if (firstPass.length === 0) continue;
 
     const sentRows = await prisma.notificationLog.findMany({

@@ -15,6 +15,7 @@ export function middleware(request: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron/") || // checks its own secret
+    pathname === "/api/ingest/mpesa" || // checks its own private key (phone auto-forward)
     pathname === "/favicon.ico" ||
     pathname === "/icon.svg" ||
     pathname === "/sw.js" ||
