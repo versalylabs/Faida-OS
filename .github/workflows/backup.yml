@@ -48,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/backup"
-          docker run --rm -e BACKUP_DATABASE_URL -v "$RUNNER_TEMP/backup:/out" postgres:18-alpine \
+          docker run --rm --user "$(id -u):$(id -g)" -e BACKUP_DATABASE_URL -v "$RUNNER_TEMP/backup:/out" postgres:18-alpine \
             sh -c 'pg_dump "$BACKUP_DATABASE_URL" --format=custom --compress=9 --no-owner --no-acl --file=/out/faida.dump'
           # Sanity check: the dump must open and contain the app's tables.
           tables=$(docker run --rm -v "$RUNNER_TEMP/backup:/out" postgres:18-alpine \
