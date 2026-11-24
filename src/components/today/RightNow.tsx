@@ -163,8 +163,16 @@ export function RightNow({ data, reload, compact = false }: { data: TodayData; r
             <Link href="/tasks" className="press flex items-center gap-2 px-3 py-2 rounded-2xl bg-slate-900/60 border border-white/10 text-xs text-slate-100">
               <CheckSquare className="h-3.5 w-3.5 text-emerald-300" />
               {dueToday ? `${dueToday} due today` : "Nothing due today"}
-              {data.overdue ? <span className="text-rose-200">· {data.overdue} overdue</span> : null}
             </Link>
+            {data.overdue > 0 && (
+              <Link
+                href="/calendar?review=overdue"
+                className="press flex items-center gap-2 px-3 py-2 rounded-2xl bg-slate-900/60 border border-rose-300/40 text-xs text-rose-50"
+              >
+                <CheckSquare className="h-3.5 w-3.5 text-rose-300" />
+                {data.overdue} overdue · review
+              </Link>
+            )}
             {money.toCheck > 0 && (
               <Link href="/finance#review" className="press flex items-center gap-2 px-3 py-2 rounded-2xl bg-slate-900/60 border border-amber-300/30 text-xs text-slate-100">
                 <Smartphone className="h-3.5 w-3.5 text-amber-300" />

@@ -155,7 +155,12 @@ export default function TodayPage() {
         {/* Due */}
         <section className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2.5">
           <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-            <CheckSquare className="h-4 w-4 text-emerald-300" /> Due today{data.overdue ? ` · ${data.overdue} overdue` : ""}
+            <CheckSquare className="h-4 w-4 text-emerald-300" /> Due today
+            {data.overdue > 0 && (
+              <Link href="/calendar?review=overdue" className="text-xs font-normal text-rose-200 underline underline-offset-2">
+                {data.overdue} overdue · review
+              </Link>
+            )}
           </h2>
           {data.tasks.length === 0 ? (
             <p className="text-xs text-slate-400">Nothing due today. Nice.</p>

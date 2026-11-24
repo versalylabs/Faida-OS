@@ -22,12 +22,16 @@ import {
   Sparkles,
   ExternalLink,
   AlertTriangle,
+  ArrowRight,
+  Video,
+  Receipt,
 } from "lucide-react";
 import Link from "next/link";
 
 import { offlineFetch, isOnline } from "@/lib/offlineSync";
 import { addDaysKey, dayKey, lateLabel, timeInputValue, timeLabel, weekStartKey, whenLabel, zonedInstant } from "@/lib/dates";
 import type { AgendaCategory, AgendaItem } from "@/lib/agenda";
+import { joinLink } from "@/lib/notifyPlan";
 
 interface ConnectedTask {
   id: string;
@@ -52,8 +56,12 @@ const CATEGORY: Record<AgendaCategory, { label: string; dot: string; chip: strin
   CLASS: { label: "Classes", dot: "bg-cyan-400", chip: "bg-cyan-500/20 text-cyan-200 border-cyan-500/30", card: "border-cyan-500/30" },
   MAINTENANCE: { label: "Maintenance", dot: "bg-orange-400", chip: "bg-orange-500/20 text-orange-200 border-orange-500/30", card: "border-orange-500/30" },
   BUSINESS: { label: "Business", dot: "bg-fuchsia-400", chip: "bg-fuchsia-500/20 text-fuchsia-200 border-fuchsia-500/30", card: "border-fuchsia-500/30" },
+  PLAN: { label: "Plan", dot: "bg-sky-300", chip: "bg-sky-400/15 text-sky-100 border-sky-300/30 border-dashed", card: "border-sky-300/30 border-dashed" },
+  MONEY: { label: "Bills", dot: "bg-lime-400", chip: "bg-lime-500/15 text-lime-100 border-lime-400/30", card: "border-lime-400/30" },
 };
-const CATEGORY_ORDER: AgendaCategory[] = ["EVENT", "TASK", "ACADEMIC", "CLASS", "REMINDER", "MAINTENANCE", "BUSINESS"];
+const CATEGORY_ORDER: AgendaCategory[] = ["EVENT", "PLAN", "TASK", "ACADEMIC", "CLASS", "REMINDER", "MONEY", "MAINTENANCE", "BUSINESS"];
+/** Items that "Tomorrow" can move (a bill is paid, not moved; a class or CAT has a fixed time). */
+const MOVABLE = new Set(["TASK", "REMINDER", "DELIVERABLE", "MAINTENANCE"]);
 
 type Status = "DONE" | "PAST" | "NOW" | "UPCOMING" | "OVERDUE" | "DUE TODAY" | "ALL DAY";
 const STATUS_CLASS: Record<Status, string> = {
@@ -71,7 +79,7 @@ function statusOf(i: AgendaItem, nowMs: number, todayKey: string): Status {
   if (i.done) return "DONE";
   const start = new Date(i.start).getTime();
   const key = dayKey(new Date(i.start));
-  const timedSource = i.source === "EVENT" || i.source === "CLASS" || i.source === "ZOOM" || i.source === "CAT";
+  const timedSource = i.source === "EVENT" || i.source === "CLASS" || i.source === "ZOOM" || i.source === "CAT" || i.source === "PLAN";
   if (timedSource) {
     if (i.allDay) return key === todayKey ? "ALL DAY" : key < todayKey ? "PAST" : "UPCOMING";
     const end = i.end ? new Date(i.end).getTime() : start;
@@ -86,7 +94,7 @@ function statusOf(i: AgendaItem, nowMs: number, todayKey: string): Status {
 
 function timeOf(i: AgendaItem): string {
   if (i.allDay) return "All day";
-  return i.end && (i.source === "EVENT" || i.source === "CLASS" || i.source === "ZOOM" || i.source === "CAT")
+  return i.end && (i.source === "EVENT" || i.source === "CLASS" || i.source === "ZOOM" || i.source === "CAT" || i.source === "PLAN")
     ? `${timeLabel(i.start)} – ${timeLabel(i.end)}`
     : timeLabel(i.start);
 }
@@ -106,7 +114,6 @@ export default function CalendarPage() {
   const [availableTasks, setAvailableTasks] = useState<ConnectedTask[]>([]);
   const [availableNotes, setAvailableNotes] = useState<ConnectedNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [briefingOpen, setBriefingOpen] = useState(true);
 
   // Add / edit modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -125,6 +132,12 @@ export default function CalendarPage() {
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string; itemType: "EVENT" | "REMINDER" } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Side panel (a sheet on phones): the selected day, or every overdue item
+  const [panel, setPanel] = useState<null | "day" | "overdue">(null);
+  const [moving, setMoving] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [pickersLoaded, setPickersLoaded] = useState(false);
 
   const monthKey = cursor.slice(0, 7);
 
@@ -134,28 +147,18 @@ export default function CalendarPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      setBriefingOpen(localStorage.getItem("faida_cal_briefing") !== "closed");
-    } catch {}
+    if (new URLSearchParams(window.location.search).get("review") === "overdue") setPanel("overdue");
   }, []);
 
   const loadData = useCallback(
     async (patient = false) => {
       const wait = patient ? { waitMs: 25000 } : {};
       try {
-        const [agendaRes, calRes] = await Promise.all([
-          offlineFetch(`/api/agenda?month=${monthKey}`, { cache: "no-store", ...wait }),
-          offlineFetch(`/api/calendar?month=${monthKey}`, { cache: "no-store", ...wait }),
-        ]);
+        const agendaRes = await offlineFetch(`/api/agenda?month=${monthKey}`, { cache: "no-store", ...wait });
         const agenda = await agendaRes.json();
         if (agenda.success) {
           setItems(agenda.items || []);
           setOverdue(agenda.overdue || []);
-        }
-        const cal = await calRes.json();
-        if (cal.success) {
-          setAvailableTasks(cal.availableTasks || []);
-          setAvailableNotes(cal.availableNotes || []);
         }
       } catch (e) {
         console.error("Failed to load calendar data:", e);
@@ -170,6 +173,47 @@ export default function CalendarPage() {
     loadData();
   }, [loadData]);
 
+  /** The task and note pickers of the add/edit form, loaded the first time the form opens. */
+  const ensurePickers = async () => {
+    if (pickersLoaded) return;
+    try {
+      const res = await offlineFetch(`/api/calendar?month=${monthKey}`, { cache: "no-store" });
+      const cal = await res.json();
+      if (cal.success) {
+        setAvailableTasks(cal.availableTasks || []);
+        setAvailableNotes(cal.availableNotes || []);
+        setPickersLoaded(true);
+      }
+    } catch {}
+  };
+
+  const flash = (text: string) => {
+    setMessage(text);
+    setTimeout(() => setMessage(null), 4000);
+  };
+
+  /** Move items to tomorrow (same time of day). One item, or every movable overdue item at once. */
+  const moveTomorrow = async (list: AgendaItem[], label: string) => {
+    const keys = list.filter((i) => MOVABLE.has(i.source)).map((i) => i.key);
+    if (keys.length === 0) return;
+    setMoving(label);
+    setOverdue((o) => o.filter((x) => !keys.includes(x.key)));
+    try {
+      const res = await offlineFetch("/api/agenda", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "tomorrow", keys }),
+      });
+      const json = await res.json();
+      flash(json.offlineQueued ? "Saved offline. It moves when you are back online." : `Moved ${json.moved ?? keys.length} to tomorrow.`);
+    } catch {
+      flash("That did not save. Try again.");
+    } finally {
+      setMoving(null);
+      if (isOnline()) loadData(true);
+    }
+  };
+
   // ---- navigation ------------------------------------------------------------------------------
   const goPrev = () => {
     if (viewMode === "WEEK") {
@@ -180,6 +224,7 @@ export default function CalendarPage() {
       const [y, m] = cursor.split("-").map(Number);
       const prev = m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, "0")}-01`;
       setCursor(prev);
+      setSelectedDay(prev.slice(0, 7) === todayKey.slice(0, 7) ? todayKey : prev);
     }
   };
   const goNext = () => {
@@ -191,6 +236,7 @@ export default function CalendarPage() {
       const [y, m] = cursor.split("-").map(Number);
       const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
       setCursor(next);
+      setSelectedDay(next.slice(0, 7) === todayKey.slice(0, 7) ? todayKey : next);
     }
   };
   const goToday = () => {
@@ -239,6 +285,7 @@ export default function CalendarPage() {
     const count = new Date(Date.UTC(y, m, 0)).getUTCDate();
     const cells: (string | null)[] = Array(startOffset).fill(null);
     for (let d = 1; d <= count; d++) cells.push(`${monthKey}-${String(d).padStart(2, "0")}`);
+    while (cells.length % 7 !== 0) cells.push(null); // a full last row
     return cells;
   }, [monthKey]);
 
@@ -258,8 +305,13 @@ export default function CalendarPage() {
     setItemLocation("");
     setSelectedTaskId("");
     setSelectedNoteId("");
+    setIsAllDay(false);
+    setItemTime("09:00");
+    setItemEndTime("10:00");
+    setSaveError(null);
     setItemDate(dateKey || selectedDay || todayKey);
     setShowAddModal(true);
+    ensurePickers();
   };
 
   const openEdit = (raw: any, type: "EVENT" | "REMINDER") => {
@@ -279,7 +331,9 @@ export default function CalendarPage() {
       setItemDate(dayKey(new Date(raw.dueAt)));
       setItemTime(timeInputValue(raw.dueAt));
     }
+    setSaveError(null);
     setShowAddModal(true);
+    ensurePickers();
   };
 
   const openItem = (i: AgendaItem) => {
@@ -294,8 +348,15 @@ export default function CalendarPage() {
     setIsSubmitting(true);
     try {
       // What was typed is Nairobi time; send the real instant so it never shifts by the server's time zone.
-      const startISO = zonedInstant(itemDate, itemTime).toISOString();
-      const endISO = zonedInstant(itemDate, itemEndTime).toISOString();
+      const allDayEvent = modalItemType === "EVENT" && isAllDay;
+      const startISO = zonedInstant(itemDate, allDayEvent ? "00:00" : itemTime).toISOString();
+      const endISO = zonedInstant(itemDate, allDayEvent ? "23:59" : itemEndTime).toISOString();
+      if (modalItemType === "EVENT" && !allDayEvent && itemEndTime <= itemTime) {
+        setSaveError("The end time must be after the start time.");
+        setIsSubmitting(false);
+        return;
+      }
+      setSaveError(null);
       const body: any = {
         itemType: modalItemType,
         title: title.trim(),
@@ -330,9 +391,12 @@ export default function CalendarPage() {
         setSelectedTaskId("");
         setSelectedNoteId("");
         if (isOnline()) loadData(true);
+      } else {
+        setSaveError(data.error || "That did not save. Check the details and try again.");
       }
     } catch (err) {
       console.error("Failed to save calendar item:", err);
+      setSaveError("That did not save. Try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -355,7 +419,7 @@ export default function CalendarPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: i.id, itemType: "REMINDER", isCompleted: nextDone }),
         });
-      } else if (i.source === "TASK") {
+      } else if (i.source === "TASK" || i.source === "PLAN") {
         await offlineFetch(`/api/tasks/${i.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -398,17 +462,10 @@ export default function CalendarPage() {
     }
   };
 
-  const closeBriefing = () => {
-    setBriefingOpen(false);
-    try {
-      localStorage.setItem("faida_cal_briefing", "closed");
-    } catch {}
-  };
-  const openBriefing = () => {
-    setBriefingOpen(true);
-    try {
-      localStorage.removeItem("faida_cal_briefing");
-    } catch {}
+  /** Choosing a day: wide screens open it in the side panel; phones show it under the calendar. */
+  const pickDay = (k: string) => {
+    setSelectedDay(k);
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) setPanel("day");
   };
 
   // ---- small pieces ------------------------------------------------------------------------------
@@ -452,7 +509,40 @@ export default function CalendarPage() {
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {i.url && (
+          {joinLink(i) && (
+            <a
+              href={joinLink(i)!}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-sky-500/20 border border-sky-300/40 text-[11px] text-sky-50"
+            >
+              <Video className="h-3 w-3" /> Join
+            </a>
+          )}
+          {i.source === "BILL" && (
+            <Link
+              href="/finance#bills"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-lime-500/15 border border-lime-400/40 text-[11px] text-lime-50"
+            >
+              <Receipt className="h-3 w-3" /> Pay
+            </Link>
+          )}
+          {MOVABLE.has(i.source) && !i.done && statusOf(i, now.getTime(), todayKey) === "OVERDUE" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                moveTomorrow([i], i.key);
+              }}
+              disabled={moving !== null}
+              className="flex items-center gap-1 px-2 py-1 rounded-full bg-slate-800 border border-slate-600 text-[11px] text-slate-100 disabled:opacity-50"
+              title="Move to tomorrow, same time"
+            >
+              Tomorrow <ArrowRight className="h-3 w-3" />
+            </button>
+          )}
+          {i.url && !joinLink(i) && (
             <a
               href={i.url}
               target="_blank"
@@ -493,6 +583,35 @@ export default function CalendarPage() {
     );
   };
 
+  const DayHeader = () => (
+    <div className="flex items-start justify-between gap-2 min-w-0 flex-1">
+      <div className="min-w-0">
+        <h2 className="text-sm font-bold text-white">{dayLabel(selectedDay)}</h2>
+        <p className="text-[11px] text-slate-400">
+          {selectedItems.length} on this day · {new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${selectedDay}T12:00:00Z`))}
+        </p>
+      </div>
+      <button
+        onClick={() => openAdd(selectedDay)}
+        aria-label="Add to this day"
+        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs text-slate-100 bg-slate-800 border border-slate-700 shrink-0"
+      >
+        <Plus className="h-3.5 w-3.5" /> Add
+      </button>
+    </div>
+  );
+
+  const DayList = () =>
+    selectedItems.length === 0 ? (
+      <p className="text-xs text-slate-300 py-6 text-center border border-dashed border-slate-800 rounded-xl">Nothing on this day. A free day to get ahead.</p>
+    ) : (
+      <div className="space-y-2">
+        {selectedItems.map((i) => (
+          <Row key={i.key} i={i} />
+        ))}
+      </div>
+    );
+
   const Chip = ({ i }: { i: AgendaItem }) => {
     const cat = CATEGORY[i.category];
     const st = statusOf(i, now.getTime(), todayKey);
@@ -513,12 +632,6 @@ export default function CalendarPage() {
     );
   };
 
-  const longToday = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "Africa/Nairobi" }).format(now);
-  // Overdue first, then today's list; an item that is both (a reminder that passed an hour ago) shows once.
-  const briefingCards = Array.from(
-    new Map([...lateItems.slice(0, 2), ...todaysItems.filter((i) => !i.done || todaysItems.length <= 4)].map((i) => [i.key, i])).values()
-  ).slice(0, 8);
-
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       {/* Header */}
@@ -528,9 +641,9 @@ export default function CalendarPage() {
             <CalendarIcon className="h-3.5 w-3.5" />
             Execution & Chrono Planning
           </div>
-          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">Scheduler & Calendar</h1>
+          <h1 className="text-2xl lg:text-3xl font-bold tracking-tight text-white">Calendar</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            One timeline for events, reminders, tasks, university work, classes, maintenance and business deliverables.
+            Events, your planned focus blocks, deadlines, classes, bills and client work on one timeline.
           </p>
         </div>
 
@@ -543,61 +656,37 @@ export default function CalendarPage() {
         </button>
       </div>
 
-      {/* Today's briefing */}
-      {briefingOpen ? (
-        <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-4 sm:p-5 space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-blue-300 shrink-0" />
-                <span className="break-words">Briefing: {longToday}</span>
-              </h2>
-              <p className="text-[11px] text-slate-300 mt-1">
-                {todaysItems.length} on today
-                {lateItems.length > 0 && <span className="text-rose-300"> · {lateItems.length} overdue</span>}
-                {todaysItems.filter((i) => i.done).length > 0 && ` · ${todaysItems.filter((i) => i.done).length} done`}
-              </p>
-            </div>
-            <button onClick={closeBriefing} aria-label="Hide briefing" className="p-1 text-slate-400 hover:text-white shrink-0">
-              <X className="h-4 w-4" />
+      {message && <div className="p-3 rounded-2xl bg-emerald-400/10 border border-emerald-300/30 text-sm text-emerald-100">{message}</div>}
+
+      {/* Needs attention: one slim bar instead of a column, so the calendar gets the full width */}
+      {lateItems.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-rose-500/10 border border-rose-400/30">
+          <AlertTriangle className="h-4 w-4 text-rose-300 shrink-0" />
+          <span className="text-sm text-rose-50 font-medium">
+            {lateItems.length} overdue
+            <span className="text-rose-200/80 font-normal"> · oldest {lateLabel(lateItems.reduce((o, i) => (i.start < o ? i.start : o), lateItems[0].start), now)}</span>
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            {lateItems.filter((i) => MOVABLE.has(i.source)).length > 0 && (
+              <button
+                onClick={() => moveTomorrow(lateItems.filter((i) => MOVABLE.has(i.source)), "all")}
+                disabled={moving !== null}
+                className="px-3 py-1.5 rounded-full bg-slate-900/70 border border-white/15 text-xs text-slate-100 cursor-pointer disabled:opacity-50"
+              >
+                {moving === "all" ? "Moving…" : `Move ${lateItems.filter((i) => MOVABLE.has(i.source)).length} to tomorrow`}
+              </button>
+            )}
+            <button
+              onClick={() => setPanel("overdue")}
+              className="px-3 py-1.5 rounded-full bg-rose-500/25 border border-rose-300/40 text-xs text-rose-50 font-semibold cursor-pointer"
+            >
+              Review
             </button>
           </div>
-
-          {briefingCards.length === 0 ? (
-            <p className="text-xs text-slate-300 py-3 border-t border-slate-800/80">Nothing is scheduled today and nothing is overdue.</p>
-          ) : (
-            <div className="grid grid-flow-col auto-cols-[78%] sm:auto-cols-[44%] lg:auto-cols-[calc(25%-0.6rem)] gap-3 overflow-x-auto pb-1 pt-3 border-t border-slate-800/80">
-              {briefingCards.map((i) => {
-                const st = statusOf(i, now.getTime(), todayKey);
-                const cat = CATEGORY[i.category];
-                return (
-                  <div
-                    key={i.key}
-                    onClick={() => openItem(i)}
-                    className={`rounded-xl border p-3 space-y-1 bg-slate-950/50 ${st === "OVERDUE" ? "border-rose-500/40" : cat.card} ${
-                      i.href || i.url || i.canEdit ? "cursor-pointer hover:bg-slate-900/70" : ""
-                    } ${i.done || st === "PAST" ? "opacity-70" : ""}`}
-                  >
-                    <p className="text-[11px] font-mono">
-                      <span className="text-slate-300">{timeOf(i)}</span> <span className={`font-bold ${STATUS_CLASS[st]}`}>({st === "OVERDUE" ? `OVERDUE ${lateLabel(i.start, now)}` : st})</span>
-                    </p>
-                    <p className="text-xs font-bold text-slate-100 break-words">{i.title}</p>
-                    {i.subtitle && <p className="text-[11px] text-slate-400 break-words line-clamp-2">{i.subtitle}</p>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
-      ) : (
-        <button onClick={openBriefing} className="text-xs text-blue-300 hover:underline flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5" /> Show today&apos;s briefing
-        </button>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_20rem] gap-6 items-start">
-        {/* MAIN */}
-        <div className="space-y-4 min-w-0">
+      <div className="space-y-4 min-w-0">
           {/* Toolbar */}
           <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-3 sm:p-4 space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -682,7 +771,7 @@ export default function CalendarPage() {
                   return (
                     <div
                       key={k}
-                      onClick={() => setSelectedDay(k)}
+                      onClick={() => pickDay(k)}
                       className={`bg-slate-900/90 min-h-[4.5rem] sm:min-h-28 p-1.5 sm:p-2 transition-colors cursor-pointer flex flex-col gap-1 ${
                         isToday ? "ring-1 ring-blue-500/50 bg-blue-950/10" : ""
                       } ${isSelected ? "bg-slate-800/80 ring-2 ring-blue-500" : "hover:bg-slate-800/50"}`}
@@ -718,7 +807,7 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={k}
-                    onClick={() => setSelectedDay(k)}
+                    onClick={() => pickDay(k)}
                     className={`rounded-xl bg-slate-900/60 border p-2.5 space-y-2 min-h-24 cursor-pointer ${
                       isToday ? "border-blue-500/50" : "border-slate-800"
                     } ${k === selectedDay ? "ring-2 ring-blue-500" : ""}`}
@@ -773,79 +862,58 @@ export default function CalendarPage() {
               })()}
             </div>
           )}
+
+        {/* Phones and tablets: the chosen day right under the calendar */}
+        <div className="lg:hidden rounded-2xl bg-slate-900/60 border border-slate-800 p-4 space-y-3">
+          <DayHeader />
+          <DayList />
         </div>
+      </div>
 
-        {/* SIDEBAR */}
-        <aside className="space-y-4 min-w-0">
-          {lateItems.length > 0 && (
-            <div className="rounded-2xl bg-slate-900/60 border border-rose-500/30 p-4 space-y-3">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-rose-300" />
-                Needs attention ({lateItems.length})
-              </h2>
-              <div className="space-y-2">
-                {lateItems.slice(0, 6).map((i) => (
-                  <Row key={i.key} i={i} showDate />
-                ))}
-                {lateItems.length > 6 && <p className="text-[11px] text-slate-400">+{lateItems.length - 6} more overdue</p>}
-              </div>
-            </div>
-          )}
-
-          <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <h2 className="text-sm font-bold text-white">{dayLabel(selectedDay)}</h2>
-                <p className="text-[11px] text-slate-400">
-                  {selectedItems.length} scheduled · {new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(`${selectedDay}T12:00:00Z`))}
-                </p>
-              </div>
-              <button
-                onClick={() => openAdd(selectedDay)}
-                aria-label="Add to this day"
-                className="p-1.5 rounded-lg text-slate-200 hover:text-white bg-slate-800 border border-slate-700 shrink-0"
-              >
-                <Plus className="h-3.5 w-3.5" />
+      {/* Side panel (a full-height sheet on phones): the chosen day, or everything overdue */}
+      {panel && (
+        <>
+          <div className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px]" onClick={() => setPanel(null)} />
+          <aside className="fixed z-50 inset-x-0 bottom-0 top-16 sm:top-0 sm:inset-y-0 sm:left-auto sm:right-0 sm:w-[26rem] bg-slate-900/95 border-l border-white/10 rounded-t-3xl sm:rounded-none shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10">
+              {panel === "overdue" ? (
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-rose-300" /> Needs attention ({lateItems.length})
+                </h2>
+              ) : (
+                <DayHeader />
+              )}
+              <button onClick={() => setPanel(null)} aria-label="Close" className="p-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 shrink-0">
+                <X className="h-4 w-4" />
               </button>
             </div>
-            {selectedItems.length === 0 ? (
-              <p className="text-xs text-slate-300 py-6 text-center border border-dashed border-slate-800 rounded-xl">Nothing scheduled. A free day to get ahead.</p>
-            ) : (
-              <div className="space-y-2">
-                {selectedItems.map((i) => (
-                  <Row key={i.key} i={i} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-4 space-y-3">
-            <h2 className="text-sm font-bold text-white">What feeds this calendar</h2>
-            <div className="space-y-2 text-[11px] text-slate-300">
-              {[
-                { c: "EVENT" as const, t: "Events you schedule here", href: null },
-                { c: "TASK" as const, t: "Task deadlines", href: "/tasks" },
-                { c: "ACADEMIC" as const, t: "Assignments & CATs from your LMS", href: "/university" },
-                { c: "CLASS" as const, t: "Weekly timetable & live class links", href: "/university" },
-                { c: "REMINDER" as const, t: "Reminders", href: null },
-                { c: "MAINTENANCE" as const, t: "Maintenance due dates", href: "/maintenance" },
-                { c: "BUSINESS" as const, t: "Business deliverables", href: "/business" },
-              ].map((r) => (
-                <div key={r.c} className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full shrink-0 ${CATEGORY[r.c].dot}`} />
-                  <span className="flex-1 min-w-0 break-words">{r.t}</span>
-                  <span className="font-mono text-slate-400">{countsByCategory[r.c] || 0}</span>
-                  {r.href && (
-                    <Link href={r.href} className="text-blue-300 hover:underline whitespace-nowrap">
-                      Open
-                    </Link>
-                  )}
-                </div>
-              ))}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {panel === "overdue" ? (
+                lateItems.length === 0 ? (
+                  <p className="text-sm text-slate-300 py-10 text-center">All caught up. Nothing overdue.</p>
+                ) : (
+                  <>
+                    {lateItems.filter((i) => MOVABLE.has(i.source)).length > 0 && (
+                      <button
+                        onClick={() => moveTomorrow(lateItems.filter((i) => MOVABLE.has(i.source)), "all")}
+                        disabled={moving !== null}
+                        className="w-full mb-1 py-2 rounded-xl bg-slate-800 border border-slate-600 text-xs text-slate-100 font-medium cursor-pointer disabled:opacity-50"
+                      >
+                        {moving === "all" ? "Moving…" : `Move all ${lateItems.filter((i) => MOVABLE.has(i.source)).length} to tomorrow (same time)`}
+                      </button>
+                    )}
+                    {lateItems.map((i) => (
+                      <Row key={i.key} i={i} showDate />
+                    ))}
+                  </>
+                )
+              ) : (
+                <DayList />
+              )}
             </div>
-          </div>
-        </aside>
-      </div>
+          </aside>
+        </>
+      )}
 
       {/* ADD / EDIT MODAL */}
       {showAddModal && (
@@ -909,21 +977,28 @@ export default function CalendarPage() {
                     required
                   />
                 </div>
-                <div>
+                <div className={modalItemType === "EVENT" && isAllDay ? "hidden" : ""}>
                   <label className="text-slate-300 block mb-1 font-medium">{modalItemType === "EVENT" ? "Start Time" : "Due Time"}</label>
                   <input
                     type="time"
                     value={itemTime}
                     onChange={(e) => setItemTime(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-500 font-mono"
-                    required
+                    required={!(modalItemType === "EVENT" && isAllDay)}
                   />
                 </div>
               </div>
 
               {modalItemType === "EVENT" && (
+                <label className="flex items-center gap-2 text-slate-300 font-medium cursor-pointer">
+                  <input type="checkbox" checked={isAllDay} onChange={(e) => setIsAllDay(e.target.checked)} className="accent-blue-500" />
+                  All day
+                </label>
+              )}
+
+              {modalItemType === "EVENT" && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
+                  <div className={isAllDay ? "hidden" : ""}>
                     <label className="text-slate-300 block mb-1 font-medium">End Time</label>
                     <input
                       type="time"
@@ -993,6 +1068,12 @@ export default function CalendarPage() {
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-blue-500"
                 />
               </div>
+
+              {saveError && (
+                <p role="alert" className="text-xs text-rose-300 flex items-center gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" /> {saveError}
+                </p>
+              )}
 
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowAddModal(false)} className="px-4 py-2 rounded-xl text-slate-400 hover:text-slate-200">

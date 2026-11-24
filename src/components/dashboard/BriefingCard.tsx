@@ -55,13 +55,18 @@ function Group({ g }: { g: BriefGroup }) {
         <span className={`h-1.5 w-1.5 rounded-full ${tone.bar}`} />
         <h3 className={`text-[11px] font-bold uppercase tracking-wider ${tone.label}`}>{g.label}</h3>
         <span className="text-[11px] text-slate-400">{g.total}</span>
+        {g.key === "overdue" && (
+          <Link href="/calendar?review=overdue" className="ml-auto text-[11px] text-rose-200 hover:underline">
+            Review all
+          </Link>
+        )}
       </div>
       <div>
         {g.items.map((i) => (
           <Row key={i.key} item={i} late={g.key === "overdue"} />
         ))}
         {g.total > g.items.length && (
-          <Link href="/calendar" className="block px-2.5 py-1 text-[11px] text-blue-300 hover:underline">
+          <Link href={g.key === "overdue" ? "/calendar?review=overdue" : "/calendar"} className="block px-2.5 py-1 text-[11px] text-blue-300 hover:underline">
             +{g.total - g.items.length} more in the calendar
           </Link>
         )}

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { getAgenda } from "@/lib/agenda";
 import { zonedTime } from "@/lib/tz";
-import { serverError } from "@/lib/validate";
+import { badRequest, readBody, serverError } from "@/lib/validate";
+import { moveToTomorrow } from "@/lib/agendaMove";
+import { calendarExtras } from "@/lib/calendarExtras";
 
 export const dynamic = "force-dynamic";
 
@@ -45,9 +47,27 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const { items, overdue } = await getAgenda(user.id, from, to);
-    return NextResponse.json({ success: true, items, overdue }, { headers: noStore });
+    const [{ items, overdue }, extras] = await Promise.all([getAgenda(user.id, from, to), calendarExtras(user.id, from, to)]);
+    return NextResponse.json({ success: true, items: [...items, ...extras.items], overdue: [...overdue, ...extras.overdue] }, { headers: noStore });
   } catch (error) {
     return serverError("Failed to load the agenda", error, noStore);
+  }
+}
+
+/**
+ * POST /api/agenda  { action: "tomorrow", keys: ["TASK:<id>", "REMINDER:<id>", ...] }
+ * Moves those items to tomorrow (same time of day). The Calendar uses it for one item or for all overdue ones.
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401, headers: noStore });
+    const body = await readBody(req);
+    if (body.action !== "tomorrow" || !Array.isArray(body.keys)) return badRequest("Send action \"tomorrow\" and a list of keys", noStore);
+    const keys = body.keys.filter((k: unknown): k is string => typeof k === "string" && k.length < 120).slice(0, 300);
+    const moved = await moveToTomorrow(user.id, keys);
+    return NextResponse.json({ success: true, moved }, { headers: noStore });
+  } catch (error) {
+    return serverError("Could not move those items", error, noStore);
   }
 }
