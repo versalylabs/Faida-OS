@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Download, Smartphone, X, Share } from "lucide-react";
 
+import { Portal } from "@/components/ui/Portal";
 export function PWAInstallButton() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isIOS, setIsIOS] = useState(false);
@@ -84,7 +85,7 @@ export function PWAInstallButton() {
 
       {/* iOS Safari instructions modal */}
       {showIOSTip && (
-        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+        <Portal><div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
           <div className="relative w-full max-w-xs bg-slate-900 border border-slate-700 rounded-2xl p-5 space-y-3 shadow-2xl text-xs text-slate-200">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-white flex items-center gap-2">
@@ -110,7 +111,7 @@ export function PWAInstallButton() {
               Got it
             </button>
           </div>
-        </div>
+        </div></Portal>
       )}
     </>
   );

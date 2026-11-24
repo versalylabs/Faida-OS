@@ -6,6 +6,7 @@ import { offlineFetch } from "@/lib/offlineSync";
 import { formatKES } from "@/lib/utils";
 import { dateToInput, fieldCls, inputToIso, labelCls, todayInput, type FinAccount, type FinCategory, type FinTransaction } from "@/components/finance/shared";
 
+import { Portal } from "@/components/ui/Portal";
 /** Log or edit income and spending. The chosen account's balance moves with it, and the dialog shows how. */
 export function TransactionDialog({
   accounts,
@@ -86,7 +87,7 @@ export function TransactionDialog({
   };
 
   return (
-    <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+    <Portal><div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -194,6 +195,6 @@ export function TransactionDialog({
           </div>
         </form>
       </div>
-    </div>
+    </div></Portal>
   );
 }

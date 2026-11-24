@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { Portal } from "@/components/ui/Portal";
 /** Small building blocks shared by every business page, in the same slate/blue look as the rest of Faida OS. */
 
 export const inputCls =
@@ -109,7 +110,7 @@ export function Modal({
   wide?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <Portal><div className="fixed inset-0 modal-overlay z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`w-full ${wide ? "max-w-2xl" : "max-w-lg"} rounded-2xl bg-slate-900 border border-slate-700 p-5 sm:p-6 space-y-4 shadow-2xl`}>
         <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
           <h3 className="text-sm font-bold text-white min-w-0 break-words">{title}</h3>
@@ -119,7 +120,7 @@ export function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div></Portal>
   );
 }
 

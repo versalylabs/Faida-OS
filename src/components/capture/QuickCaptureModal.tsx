@@ -92,12 +92,12 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
   if (!isModalOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-8 sm:pt-20 px-3 sm:px-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
+    <div className="fixed inset-0 modal-overlay z-50 flex items-start justify-center pt-8 sm:pt-20 pb-6 px-3 sm:px-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-150">
       <div
         className="fixed inset-0"
         onClick={handleClose}
       />
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden z-10">
+      <div className="relative w-full max-w-2xl max-h-[calc(100dvh-4rem)] overflow-y-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl z-10">
         {/* Modal Top Bar */}
         <div className="flex items-center justify-between px-3.5 sm:px-4 py-2.5 sm:py-3 border-b border-slate-800 bg-slate-950/50 text-xs text-slate-400">
           <div className="flex items-center gap-2">

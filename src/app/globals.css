@@ -439,9 +439,11 @@ a[class*="rounded"]:active {
 .morph-in { animation: morph-in 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 
 /* Each page eases in when you navigate */
+/* A pure fade on purpose: animating transform or filter here would make the page wrapper the "box" for every
+   dialog on the page while it runs, so a dialog opened during the fade would be sized to the page, not the screen. */
 @keyframes page-enter {
-  from { opacity: 0; transform: translateY(8px) scale(0.995); filter: blur(5px); }
-  to { opacity: 1; transform: none; filter: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 /* "backwards", not "both": keeping the final keyframe would leave a transform/filter on the page wrapper, and that turns
    every position: fixed modal inside a page into one positioned relative to the page instead of the screen */
@@ -705,3 +707,25 @@ main .grid > * { min-width: 0; }
 
 /* Chips and buttons that use .link-chip / .btn-* never push past their container */
 .link-chip, .btn-primary, .btn-quiet { max-width: 100%; }
+
+/* ==========================================================================
+   Dialogs always cover the screen
+   A frosted card (backdrop-filter), or anything with transform / filter / isolation, becomes the "box"
+   for position: fixed content inside it and starts its own layer. A dialog opened from inside such a card
+   (Add bill in the Bills card, edit forms in lists...) would then be clipped to the card and painted under
+   the cards after it. While a dialog is open, every element that contains it drops those effects, so the
+   dialog is positioned against the screen and sits above everything. They come back when it closes.
+   ========================================================================== */
+:not(.fixed):has(> .fixed.inset-0, .fixed.inset-0, .fixed[role="dialog"]) {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  transform: none !important;
+  filter: none !important;
+  isolation: auto !important;
+  contain: none !important;
+  will-change: auto !important;
+}
+
+/* Spacing helpers (space-y-*, space-x-*) add margins to every child, including dialogs placed among them.
+   A margin on a full-screen layer shrinks it, so screen-covering layers never take those margins. */
+:is([class*="space-y-"], [class*="space-x-"]) > .fixed { margin: 0 !important; }

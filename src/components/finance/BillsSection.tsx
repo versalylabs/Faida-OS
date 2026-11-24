@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Loader2, Pencil, Plus, Receipt, Trash2, X } from "lucide-react";
 import { formatKES } from "@/lib/utils";
 
+import { Portal } from "@/components/ui/Portal";
 interface Bill {
   id: string;
   name: string;
@@ -287,7 +288,7 @@ export function BillsSection({ onChanged }: { onChanged?: () => void }) {
 
       {/* Mark paid */}
       {paying && (
-        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm" role="dialog" aria-label={`Pay ${paying.bill.name}`}>
+        <Portal><div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm" role="dialog" aria-label={`Pay ${paying.bill.name}`}>
           <div className="w-full max-w-sm p-5 rounded-3xl bg-slate-900 border border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-white">Paid: {paying.bill.name}</h3>
@@ -319,12 +320,12 @@ export function BillsSection({ onChanged }: { onChanged?: () => void }) {
               Log payment
             </button>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Add / edit */}
       {form && (
-        <div className="fixed inset-0 modal-overlay z-50 flex items-start sm:items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto" role="dialog" aria-label={form.id ? "Edit bill" : "Add bill"}>
+        <Portal><div className="fixed inset-0 modal-overlay z-50 flex items-start sm:items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto" role="dialog" aria-label={form.id ? "Edit bill" : "Add bill"}>
           <div className="w-full max-w-lg p-5 rounded-3xl bg-slate-900 border border-slate-700 space-y-3 my-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-white">{form.id ? "Edit bill" : "Add a bill"}</h3>
@@ -419,7 +420,7 @@ export function BillsSection({ onChanged }: { onChanged?: () => void }) {
               {form.id ? "Save changes" : "Add bill"}
             </button>
           </div>
-        </div>
+        </div></Portal>
       )}
     </section>
   );

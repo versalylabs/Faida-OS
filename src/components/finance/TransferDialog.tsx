@@ -6,6 +6,7 @@ import { offlineFetch } from "@/lib/offlineSync";
 import { formatKES } from "@/lib/utils";
 import { fieldCls, inputToIso, labelCls, todayInput, type FinAccount } from "@/components/finance/shared";
 
+import { Portal } from "@/components/ui/Portal";
 /** Move money between two of your accounts (cash to M-Pesa, bank to savings). It is not income or spending. */
 export function TransferDialog({
   accounts,
@@ -56,7 +57,7 @@ export function TransferDialog({
   };
 
   return (
-    <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+    <Portal><div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
       <div className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-800 pb-3">
           <h2 className="text-sm font-bold text-white flex items-center gap-2">
@@ -134,6 +135,6 @@ export function TransferDialog({
           </div>
         </form>
       </div>
-    </div>
+    </div></Portal>
   );
 }
