@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Faida OS",
     short_name: "Faida OS",
     description: "Personal second brain, execution engine, and digital assistant.",
-    start_url: "/today",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "portrait-primary",

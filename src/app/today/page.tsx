@@ -1,16 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
-  CalendarClock,
   CalendarDays,
   Check,
   CheckSquare,
   GraduationCap,
   Loader2,
-  Lock,
   Receipt,
   Smartphone,
   Sparkles,
@@ -19,30 +17,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { formatKES } from "@/lib/utils";
-import { offlineFetch } from "@/lib/offlineSync";
+import { RightNow, useToday } from "@/components/today/RightNow";
 
-interface Block {
-  id: string;
-  taskId: string | null;
-  title: string;
-  startMin: number;
-  endMin: number;
-  why: string | null;
-  part: { index: number; total: number } | null;
-}
-
-interface TodayData {
-  now: { minutes: number; hour: number };
-  plan: { locked: boolean; budgetMinutes: number; current: Block | null; next: Block | null; blocksLeft: number; blocksDone: number; dayOver: boolean };
-  timed: { key: string; title: string; subtitle: string | null; source: string; start: string; end: string | null; href: string | null; join: string | null }[];
-  tasks: { id: string; title: string; priority: string; dueDate: string; overdue: boolean }[];
-  tasksTotal: number;
-  overdue: number;
-  money: { toCheck: number; toCheckOut: number; spentToday: number; bills: { id: string; name: string; amount: number | null; days: number }[] };
-  meals: { mealType: string; title: string; isCompleted: boolean }[];
-}
-
-const clock = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 function greeting(hour: number) {
@@ -55,59 +31,22 @@ const priorityDot: Record<string, string> = { URGENT: "bg-rose-400", HIGH: "bg-a
 
 /** Today: what to do now, what's next, what's due, and what needs a look. One screen, one request. */
 export default function TodayPage() {
-  const [data, setData] = useState<TodayData | null>(null);
+  const { data, reload } = useToday();
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const res = await offlineFetch("/api/today", { cache: "no-store", cacheKey: "today" });
-      const json = await res.json();
-      if (json.success) setData(json);
-    } catch {
-      // offline with nothing cached: the loading state stays
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-    const t = setInterval(() => document.visibilityState === "visible" && load(), 60000);
-    return () => clearInterval(t);
-  }, [load]);
-
-  const flash = (text: string) => {
-    setMessage(text);
-    setTimeout(() => setMessage(null), 4000);
-  };
 
   const taskAction = async (taskId: string, action: "COMPLETE" | "DEFER", okText: string) => {
     setBusy(taskId);
     try {
       const res = await fetch("/api/effort", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, taskId, days: 1 }) });
       const json = await res.json();
-      flash(json.success ? okText : "That did not save. Try again.");
-      await load();
+      setMessage(json.success ? okText : "That did not save. Try again.");
+      await reload();
     } catch {
-      flash("You seem to be offline. Try again when you're back.");
+      setMessage("You seem to be offline. Try again when you're back.");
     } finally {
       setBusy(null);
-    }
-  };
-
-  const lockPlan = async () => {
-    if (!data) return;
-    setBusy("lock");
-    try {
-      const res = await fetch("/api/planner", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "lock", hours: data.plan.budgetMinutes / 60 }),
-      });
-      const json = await res.json();
-      flash(json.success ? "Locked in. You'll get a reminder as each block starts." : "That did not save. Try again.");
-      await load();
-    } finally {
-      setBusy(null);
+      setTimeout(() => setMessage(null), 4000);
     }
   };
 
@@ -119,11 +58,8 @@ export default function TodayPage() {
     );
   }
 
-  const { plan, money } = data;
-  const focus = plan.current ?? plan.next;
-  const isNow = Boolean(plan.current);
+  const { money } = data;
   const dueBills = money.bills.filter((b) => b.days <= 3);
-
   return (
     <div className="max-w-3xl mx-auto space-y-4">
       {/* Header */}
@@ -143,57 +79,7 @@ export default function TodayPage() {
       {message && <div className="p-3 rounded-2xl bg-emerald-400/10 border border-emerald-300/30 text-sm text-emerald-100">{message}</div>}
 
       {/* Now / next */}
-      <section className="p-5 rounded-3xl bg-gradient-to-br from-sky-500/15 to-indigo-500/10 border border-sky-300/30 space-y-3">
-        {focus ? (
-          <>
-            <div className="flex items-center gap-2 text-xs text-sky-200">
-              <CalendarClock className="h-3.5 w-3.5" />
-              {isNow ? `Now · until ${clock(focus.endMin)}` : `Up next · ${clock(focus.startMin)}`}
-              {focus.part && <span className="text-sky-300/80">· part {focus.part.index} of {focus.part.total}</span>}
-            </div>
-            <div className="text-xl font-semibold text-white break-words">{focus.title}</div>
-            {focus.why && <div className="text-xs text-amber-200">{focus.why}</div>}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              {focus.taskId && (
-                <>
-                  <button
-                    onClick={() => taskAction(focus.taskId!, "COMPLETE", `Done: ${focus.title}`)}
-                    disabled={busy !== null}
-                    className="press flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-500/25 border border-emerald-300/50 text-emerald-50 text-sm font-medium cursor-pointer disabled:opacity-50"
-                  >
-                    {busy === focus.taskId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Done
-                  </button>
-                  <button
-                    onClick={() => taskAction(focus.taskId!, "DEFER", `Moved to tomorrow: ${focus.title}`)}
-                    disabled={busy !== null}
-                    className="press px-4 py-2 rounded-full bg-slate-900/60 border border-white/15 text-slate-100 text-sm cursor-pointer disabled:opacity-50"
-                  >
-                    Tomorrow
-                  </button>
-                </>
-              )}
-              {!plan.locked && (
-                <button
-                  onClick={lockPlan}
-                  disabled={busy !== null}
-                  className="press flex items-center gap-1.5 px-4 py-2 rounded-full bg-slate-900/60 border border-sky-300/40 text-sky-50 text-sm cursor-pointer disabled:opacity-50"
-                >
-                  {busy === "lock" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />} Lock today&apos;s plan
-                </button>
-              )}
-              <Link href="/planner" className="text-xs text-sky-200 underline underline-offset-2 ml-auto">
-                {plan.blocksLeft} block{plan.blocksLeft === 1 ? "" : "s"} left{plan.blocksDone ? ` · ${plan.blocksDone} done` : ""}
-              </Link>
-            </div>
-          </>
-        ) : (
-          <div className="space-y-1">
-            <div className="text-xs text-sky-200">{plan.dayOver ? "Evening" : "Nothing planned"}</div>
-            <div className="text-lg font-semibold text-white">{plan.dayOver ? "The working day is done." : "No open work fits today."}</div>
-            <p className="text-sm text-slate-300">{plan.dayOver ? "What's left will be first in tomorrow's plan." : "Capture something, or enjoy the space."}</p>
-          </div>
-        )}
-      </section>
+      <RightNow data={data} reload={reload} />
 
       {/* Needs a look: money */}
       {(money.toCheck > 0 || dueBills.length > 0 || money.spentToday > 0) && (

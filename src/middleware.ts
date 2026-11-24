@@ -53,7 +53,7 @@ export function middleware(request: NextRequest) {
 
   // If already authenticated and navigating to /login, redirect to /
   if (sessionToken && isLoginPage) {
-    return NextResponse.redirect(new URL("/today", request.url));
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();

@@ -49,7 +49,7 @@ export default function LoginPage() {
       if (data.user?.id) setActiveOfflineUser(data.user.id);
 
       // Success: redirect to dashboard
-      router.push("/today");
+      router.push("/");
       router.refresh();
     } catch (err: unknown) {
       if (err instanceof Error) {

@@ -52,10 +52,12 @@ interface NavCategory {
 }
 
 /**
- * Eight entries: the four places used every day are one tap away, the rest fold into small groups.
+ * The Command Center (everything at a glance, with "right now" on top) and Today (just the day, for the phone)
+ * first; the places used every day are one tap away, the rest fold into small groups.
  * A group opens by itself when you are on one of its pages.
  */
 const navCategories: NavCategory[] = [
+  { id: "command", title: "Command Center", icon: LayoutDashboard, href: "/", items: [] },
   { id: "today", title: "Today", icon: Sun, href: "/today", items: [] },
   { id: "capture", title: "Capture", icon: Sparkles, href: "/capture", items: [] },
   {
@@ -92,16 +94,22 @@ const navCategories: NavCategory[] = [
     ],
   },
   {
+    id: "brain",
+    title: "Second Brain",
+    icon: Brain,
+    items: [
+      { name: "Projects", href: "/projects", icon: FolderGit2 },
+      { name: "Notes & Knowledge", href: "/notes", icon: BookOpen },
+      { name: "Learning Hub", href: "/learning", icon: GraduationCap },
+      { name: "Files & Assets", href: "/files", icon: FolderArchive },
+    ],
+  },
+  {
     id: "more",
     title: "More",
     icon: Ellipsis,
     items: [
       { name: "Weekly Review", href: "/review", icon: CalendarRange },
-      { name: "Projects", href: "/projects", icon: FolderGit2 },
-      { name: "Notes & Knowledge", href: "/notes", icon: BookOpen },
-      { name: "Learning Hub", href: "/learning", icon: Brain },
-      { name: "Files", href: "/files", icon: FolderArchive },
-      { name: "Overview dashboard", href: "/", icon: LayoutDashboard },
       { name: "Analytics & Journal", href: "/analytics", icon: BarChart3 },
       { name: "Developer Hub", href: "/developer", icon: Terminal },
     ],
@@ -164,7 +172,7 @@ export function Sidebar() {
       >
         {/* Brand Header */}
         <div className="h-16 px-5 flex items-center justify-between border-b border-white/10 shrink-0">
-          <FaidaLogo size="md" showText={true} showSubtitle={true} href="/today" />
+          <FaidaLogo size="md" showText={true} showSubtitle={true} href="/" />
 
           {/* Close button on mobile */}
           <button

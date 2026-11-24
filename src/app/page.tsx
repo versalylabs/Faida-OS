@@ -24,6 +24,7 @@ import Link from "next/link";
 import { formatKES } from "@/lib/utils";
 import { getActiveOfflineUser, getCachedOfflineData, offlineFetch } from "@/lib/offlineSync";
 import { BriefingCard } from "@/components/dashboard/BriefingCard";
+import { RightNowCard } from "@/components/today/RightNow";
 import { BusinessPulse } from "@/components/dashboard/BusinessPulse";
 import type { Briefing } from "@/lib/briefing";
 
@@ -483,6 +484,9 @@ export default function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Right now: the block to do (or next), and what needs a look today. Same as the Today page. */}
+      <RightNowCard />
 
       {/* Faida Intelligence Briefing: what needs attention now */}
       <BriefingCard briefing={briefing} loading={isLoading} />
