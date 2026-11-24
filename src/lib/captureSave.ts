@@ -24,6 +24,24 @@ export interface SavedCapture {
   undo: UndoRef;
 }
 
+/**
+ * Where captured money goes: "cash" in the text uses the Cash account (else the default account), and naming
+ * one of your businesses ("for Straten", "VersalyLabs client") files it under that business.
+ */
+async function moneyTarget(userId: string, input: string) {
+  const text = input.toLowerCase();
+  let accountId = await defaultAccountId(userId);
+  if (/\bcash\b/.test(text)) {
+    const cash = await prisma.financeAccount.findFirst({ where: { userId, name: { contains: "cash", mode: "insensitive" } }, select: { id: true } });
+    if (cash) accountId = cash.id;
+  }
+  const businesses = await prisma.business.findMany({ where: { userId }, select: { id: true, name: true, slug: true } });
+  const words = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const hay = ` ${words(text)} `;
+  const hit = businesses.find((b) => [b.name, b.slug].filter(Boolean).some((n) => n && words(n).length >= 3 && hay.includes(` ${words(n)} `)));
+  return { accountId, businessId: hit?.id ?? null, businessName: hit?.name ?? null };
+}
+
 export async function saveCapture(userId: string, input: string, parsed: ParsedEntityResult): Promise<SavedCapture> {
   const entity = await prisma.entity.create({
     data: {
@@ -113,14 +131,17 @@ export async function saveCapture(userId: string, input: string, parsed: ParsedE
     // An amount is needed to record money; without one nothing is added to the ledger
     if (parsed.amount && Math.abs(parsed.amount) > 0) {
       const income = parsed.transactionType === "INCOME";
+      const { accountId, businessId, businessName } = await moneyTarget(userId, input);
       const tx = await createEntry({
         userId,
         description: parsed.title,
         amount: income ? Math.abs(parsed.amount) : -Math.abs(parsed.amount),
         type: income ? "INCOME" : "EXPENSE",
         category: parsed.category || "General",
-        accountId: await defaultAccountId(userId),
+        accountId,
+        businessId,
       });
+      if (businessName) note = `Filed under ${businessName}`;
       kind = "finance";
       ids = [tx.id];
     } else {

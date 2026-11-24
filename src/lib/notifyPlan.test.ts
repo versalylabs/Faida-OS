@@ -25,6 +25,18 @@ const item = (o: Partial<AgendaItem>): AgendaItem => ({
 
 // Times below are UTC; Nairobi is UTC+3.
 describe("planNotifications", () => {
+  it("sends a reminder set for the small hours at the first run of the morning", () => {
+    const r = item({ key: "REMINDER:n", id: "n", source: "REMINDER", category: "REMINDER", title: "Take pills", start: "2026-11-23T22:30:00Z" }); // 01:30
+    expect(planNotifications([r], DEFAULT_PREFS, new Date("2026-11-24T02:05:00Z"), new Set())).toHaveLength(1); // 05:05
+    expect(planNotifications([r], DEFAULT_PREFS, new Date("2026-11-24T03:05:00Z"), new Set())).toHaveLength(0); // 06:05
+  });
+
+  it("catches a plan block up to 25 minutes after it starts", () => {
+    const b = item({ key: "PLAN:t:1", source: "PLAN", category: "TASK", title: "Essay", start: "2026-11-24T07:00:00Z" });
+    expect(planNotifications([b], DEFAULT_PREFS, new Date("2026-11-24T07:20:00Z"), new Set())).toHaveLength(1);
+    expect(planNotifications([b], DEFAULT_PREFS, new Date("2026-11-24T07:30:00Z"), new Set())).toHaveLength(0);
+  });
+
   it("sends one morning summary instead of a ping per all-day item", () => {
     const items = [
       item({ key: "TASK:a", title: "Essay draft", start: "2026-11-23T21:00:00Z", allDay: true }),
@@ -57,7 +69,7 @@ describe("planNotifications", () => {
     const at = (utc: string) => planNotifications([block], DEFAULT_PREFS, new Date(utc), new Set(["digest:2026-11-24"]));
     expect(at("2026-11-24T06:45:00Z")).toHaveLength(0);
     expect(at("2026-11-24T06:52:00Z")[0].title).toBe("Time to start: Essay draft");
-    expect(at("2026-11-24T07:12:00Z")).toHaveLength(0);
+    expect(at("2026-11-24T07:27:00Z")).toHaveLength(0);
   });
 
   it("never repeats something already sent", () => {
@@ -114,7 +126,7 @@ describe("close the day", () => {
     const now = new Date("2026-11-24T18:05:00Z");
     const open = planCloseDay({ done: 4, open: [{ title: "Essay" }, { title: "Call bank" }] }, now, new Set())!;
     expect(open.title).toBe("Close the day: 4 done, 2 still open");
-    expect(open.body).toBe("Essay, Call bank. Roll them to tomorrow morning?");
+    expect(open.body).toBe("Essay, Call bank. Roll them to tomorrow?");
     expect(open.actions).toEqual(["rollover"]);
     expect(planCloseDay({ done: 5, open: [] }, now, new Set())).toMatchObject({ title: "Day closed: 5 done, nothing left open", actions: [] });
     expect(planCloseDay({ done: 0, open: [] }, now, new Set())).toBeNull();

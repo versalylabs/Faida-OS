@@ -6,6 +6,7 @@ import { byPriorityThenNewest } from "@/lib/priority";
 import { zonedNow } from "@/lib/tz";
 import { touchProject } from "@/lib/projectActivity";
 import { spawnNextRecurrence } from "@/lib/recurrence";
+import { sameTimeLater } from "@/lib/agendaMove";
 import { estimateEnergy, evaluateTasks, pickLowEnergyBatch, type RawEffortTask } from "@/lib/effort";
 
 export const dynamic = "force-dynamic";
@@ -115,7 +116,7 @@ export async function GET(req: NextRequest) {
 /**
  * Actions that make Lazy Mode actually do something:
  *  CHECKIN  { level }                 remember how much energy you have (teaches it your daily curve)
- *  DEFER    { taskId, days? }         push a task out (default: tomorrow morning) and log the time kept free
+ *  DEFER    { taskId, days? }         push a task out (default: same time tomorrow, 09:00 if undated) and log the time kept free
  *  DROP     { taskId }                archive a task you will never do, and log it
  *  COMPLETE { taskId, kind? }         mark done; kind "BATCH" or "SPRINT" is counted as effort saved
  *  SPRINT   { taskId }                a 15-minute sprint was finished on a heavy task (task stays open)
@@ -144,9 +145,8 @@ export async function POST(req: NextRequest) {
 
     if (action === "DEFER") {
       const days = must(num(body.days ?? 1, { min: 1, max: 60, int: true, required: true }), "days must be 1 to 60");
-      const local = zonedNow();
-      // Nine in the morning, local time, that many days from today
-      const dueDate = new Date(local.startOfDay.getTime() + days * 86400000 + 9 * 3600000);
+      // Same time of day that many days from today (09:00 if it had no due date): one meaning of "Tomorrow"
+      const dueDate = sameTimeLater(task.dueDate, new Date(), days);
       await prisma.task.update({ where: { id: task.id }, data: { dueDate } });
       const event = await prisma.effortEvent.create({
         data: { userId: user.id, type: "DEFER", taskId: task.id, minutes: task.estimatedMinutes || 0 },

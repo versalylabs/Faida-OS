@@ -45,6 +45,31 @@ describe("parseWithHeuristics times", () => {
     expect(nairobiTime(parseWithHeuristics("text Brian this evening").dueDate)).toBe("18:00");
   });
 
+  it("understands a bare weekday and 'next' weekday", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-24T05:00:00Z")); // Tuesday 08:00 Nairobi
+    const day = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-CA", { timeZone: "Africa/Nairobi" }) : null);
+    expect(day(parseWithHeuristics("submit the report Friday").dueDate)).toBe("2026-11-27");
+    expect(day(parseWithHeuristics("gym on Tuesday").dueDate)).toBe("2026-11-24");
+    expect(day(parseWithHeuristics("team sync next Tuesday").dueDate)).toBe("2026-12-01");
+  });
+
+  it("leaves a task with no day or time undated", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-24T05:00:00Z"));
+    const r = parseWithHeuristics("finish essay draft");
+    expect(r.type).toBe("TASK");
+    expect(r.dueDate ?? null).toBeNull();
+  });
+
+  it("moves a reminder whose time already passed today to tomorrow", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-24T08:00:00Z")); // 11:00 Nairobi
+    const r = parseWithHeuristics("call bank 10am");
+    expect(r.type).toBe("REMINDER");
+    expect(r.dueDate).toBe("2026-11-25T07:00:00.000Z"); // 10:00 Nairobi tomorrow
+  });
+
   it("drops when-words from reminder titles", () => {
     expect(parseWithHeuristics("remind me to submit CAT form tomorrow at 9am").title).toBe("Submit CAT form");
   });

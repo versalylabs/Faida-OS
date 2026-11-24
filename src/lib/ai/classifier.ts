@@ -37,25 +37,38 @@ export interface ParsedEntityResult {
  * Works out the day and time in the app's time zone (Africa/Nairobi by default). The server runs in
  * UTC, so plain Date.setHours() would put "at 3pm" at 3 pm UTC, which is 6 pm in Nairobi.
  */
-function parseRelativeDateTime(text: string, now: Date = new Date()): { dueDate?: Date; startTime?: Date; endTime?: Date } {
+export interface ParsedWhen {
+  dueDate: Date;
+  startTime: Date;
+  endTime: Date;
+  /** A day was named (today, tonight, tomorrow, a weekday, "this evening"...). */
+  explicitDay: boolean;
+  /** A time was named ("3pm", "at 10", "tonight", "this afternoon"...). */
+  explicitTime: boolean;
+}
+
+export function parseRelativeDateTime(text: string, now: Date = new Date()): ParsedWhen {
   const lower = text.toLowerCase();
   const today = zonedNow(now);
   let addDays = 0;
+  let explicitDay = /\b(today|tonight|this (?:morning|afternoon|evening))\b/.test(lower);
 
   // Check tomorrow
-  if (lower.includes("tomorrow")) addDays = 1;
+  if (/\btomorrow\b/.test(lower)) {
+    addDays = 1;
+    explicitDay = true;
+  }
 
-  // Check next weekday (e.g., "next friday", "on monday")
+  // A weekday: "Friday", "on Friday", "this Friday" = the coming one (today if it is that day);
+  // "next Friday" = the one after today, never today.
   const weekdays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-  for (let i = 0; i < weekdays.length; i++) {
-    const dayName = weekdays[i];
-    if (lower.includes(`next ${dayName}`) || lower.includes(`on ${dayName}`)) {
-      const currentDay = (today.dayOfWeek + addDays) % 7;
-      let diff = i - currentDay;
-      if (diff <= 0) diff += 7;
-      addDays += diff;
-      break;
-    }
+  const wd = lower.match(/\b(next\s+|on\s+|this\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/);
+  if (wd && addDays === 0) {
+    const target = weekdays.indexOf(wd[2]);
+    let diff = target - today.dayOfWeek;
+    if (diff < 0 || (diff === 0 && wd[1]?.trim() === "next")) diff += 7;
+    addDays = diff;
+    explicitDay = true;
   }
 
   // Calendar day in the app's zone (noon UTC keeps date arithmetic clear of midnight edges)
@@ -64,11 +77,13 @@ function parseRelativeDateTime(text: string, now: Date = new Date()): { dueDate?
   // Check specific time: e.g. "at 3pm", "at 3:30pm", "at 15:00", "at 3"
   // Default time if none is given: 09:00, or the part of the day that was named
   let hours = /\btonight\b/.test(lower) ? 20 : /\bevening\b/.test(lower) ? 18 : /\bafternoon\b/.test(lower) ? 14 : 9;
+  let explicitTime = /\b(tonight|evening|afternoon)\b/.test(lower);
   let minutes = 0;
   // "at 3pm", "at 3:30", "@ 15:00", or a bare "3pm" / "3:30 pm" (a bare number needs am/pm)
   const timeMatch =
     lower.match(/(?:\bat|@)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i) || lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (timeMatch) {
+    explicitTime = true;
     hours = parseInt(timeMatch[1], 10);
     minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
     const meridian = timeMatch[3]?.toLowerCase();
@@ -88,7 +103,19 @@ function parseRelativeDateTime(text: string, now: Date = new Date()): { dueDate?
     dueDate: targetDate,
     startTime: start,
     endTime: end,
+    explicitDay,
+    explicitTime,
   };
+}
+
+/**
+ * For reminders and events: a time that has already passed today, with no day named ("call bank 10am" said at
+ * 11am), means tomorrow at that time. Otherwise it would be in the past and never remind anyone.
+ */
+function upcoming(when: ParsedWhen, now: Date = new Date()): ParsedWhen {
+  if (when.explicitDay || when.startTime.getTime() > now.getTime()) return when;
+  const shift = (d: Date) => new Date(d.getTime() + 86400000);
+  return { ...when, dueDate: shift(when.dueDate), startTime: shift(when.startTime), endTime: shift(when.endTime) };
 }
 
 // -------------------------------------------------------------
@@ -176,7 +203,7 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
     lower.startsWith("sync with") ||
     lower.startsWith("interview with")
   ) {
-    const { startTime, endTime } = parseRelativeDateTime(trimmed);
+    const { startTime, endTime } = upcoming(parseRelativeDateTime(trimmed));
     return {
       type: "EVENT",
       title: trimmed.charAt(0).toUpperCase() + trimmed.slice(1),
@@ -190,7 +217,7 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
   // 4. REMINDER: "remind me to...", "remember to...", or a quick action with a time ("call John 3pm")
   const timedAction =
     /^(call|ring|phone|text|sms|whatsapp|email|message|ping|pay|send)\b/i.test(lower) &&
-    /(\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\bat\s+\d{1,2}|\btomorrow\b|\btonight\b|\bthis (morning|afternoon|evening)\b)/i.test(lower);
+    /(\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\bat\s+\d{1,2}|\btomorrow\b|\btonight\b|\bthis (morning|afternoon|evening)\b|\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b)/i.test(lower);
   if (
     lower.startsWith("remind me to") ||
     lower.startsWith("remember to") ||
@@ -200,10 +227,10 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
     // Drop the "when" words from the end ("... tomorrow at 9am"), however many there are
     let cleanTitle = trimmed.replace(/^(remind me to|remember to|reminder:)\s+/i, "");
     for (let i = 0; i < 3; i++) {
-      cleanTitle = cleanTitle.replace(/\s+(next \w+day|on \w+day|this (?:morning|afternoon|evening)|tomorrow|tonight|today|at \d.*|\d{1,2}(:\d{2})?\s*(am|pm))$/i, "").trim();
+      cleanTitle = cleanTitle.replace(/\s+(next \w+day|on \w+day|this \w+day|monday|tuesday|wednesday|thursday|friday|saturday|sunday|this (?:morning|afternoon|evening)|tomorrow|tonight|today|at \d.*|\d{1,2}(:\d{2})?\s*(am|pm))$/i, "").trim();
     }
 
-    const { dueDate } = parseRelativeDateTime(trimmed);
+    const { dueDate } = upcoming(parseRelativeDateTime(trimmed));
 
     return {
       type: "REMINDER",
@@ -263,7 +290,8 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
   // Extract project hint e.g., "for Melio", "in Faida OS"
   let projectHint: string | undefined;
   const projectMatch = trimmed.match(/(?:for|in|project:?)\s+([A-Za-z0-9_-]+)/i);
-  if (projectMatch && !["tomorrow", "today", "friday", "the", "a"].includes(projectMatch[1].toLowerCase())) {
+  const notProjects = ["tomorrow", "today", "tonight", "the", "a", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+  if (projectMatch && !notProjects.includes(projectMatch[1].toLowerCase())) {
     projectHint = projectMatch[1];
   }
 
@@ -277,7 +305,10 @@ export function parseWithHeuristics(input: string): ParsedEntityResult {
     estimatedMinutes = hours * 60 + mins;
   }
 
-  const { dueDate } = parseRelativeDateTime(trimmed);
+  // A task only gets a due date when a day or a time was named: "essay draft" stays undated instead of
+  // becoming due today (and overdue tomorrow).
+  const when = parseRelativeDateTime(trimmed);
+  const dueDate = when.explicitDay || when.explicitTime ? when.dueDate : null;
 
   return {
     type: "TASK",

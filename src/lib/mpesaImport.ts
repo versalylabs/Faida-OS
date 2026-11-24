@@ -155,3 +155,7 @@ export async function rememberMerchant(userId: string, description: string, cate
   });
   return true;
 }
+/** "MPESA", "M-PESA", "mpesa" all count; anything else (a phone number, another name) does not. */
+export function isMpesaSender(sender: string): boolean {
+  return sender.toUpperCase().replace(/[^A-Z0-9]/g, "") === "MPESA";
+}

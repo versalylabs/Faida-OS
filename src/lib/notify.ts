@@ -1,7 +1,7 @@
 import * as webpush from "web-push";
 import { prisma } from "@/lib/db";
 import { getAgenda, type AgendaItem } from "@/lib/agenda";
-import { zonedDateKey, zonedTime } from "@/lib/tz";
+import { zonedDateKey, zonedNow, zonedTime } from "@/lib/tz";
 import { formatClock, type DayPlan } from "@/lib/planner/scheduler";
 import { ACTION_LABELS, DEFAULT_PREFS, closeDayWindow, planBills, planCloseDay, planNotifications, planReview, planWeekly, weeklyReviewWindow, type NotifyPrefs, type PlannedNotification } from "@/lib/notifyPlan";
 import { buildWeeklyReview, reviewHeadline, weekStartKey } from "@/lib/weeklyReview";
@@ -137,7 +137,10 @@ export async function runNotifications(opts: { now?: Date; userId?: string; send
     const prefs = await getPrefs(userId);
     if (!prefs.enabled) continue;
 
-    const { items, overdue } = await getAgenda(userId, new Date(now.getTime() - 3600000), new Date(now.getTime() + 40 * 3600000), now);
+    // Before 06:00, look back to midnight so reminders set for the small hours (when no run happens) still go off.
+    const local = zonedNow(now);
+    const from = local.hour < 6 ? local.startOfDay : new Date(now.getTime() - 3600000);
+    const { items, overdue } = await getAgenda(userId, from, new Date(now.getTime() + 40 * 3600000), now);
     const planItems = await lockedPlanItems(userId, now);
     const firstPass = planNotifications([...items, ...planItems], prefs, now, new Set(), overdue);
     // The morning summary offers to lock in today's plan, unless one is locked already.

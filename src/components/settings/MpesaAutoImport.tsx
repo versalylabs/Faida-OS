@@ -113,6 +113,10 @@ export function MpesaAutoImport() {
             <li>Install <b>MacroDroid</b> from the Play Store and allow it to read SMS when asked.</li>
             <li>Add Macro → Trigger: <b>SMS Received</b> → From: <b>MPESA</b> (any content).</li>
             <li>Action: <b>HTTP Request</b> → method <b>POST</b>, the URL above, add the header above, body type <b>Text</b>, body = the magic text <b>[sms_message]</b>.</li>
+            <li>
+              Optional, safer: add a second header <b>X-SMS-Sender: [sms_number]</b>. Faida then ignores any message whose sender is not MPESA, so a
+              look-alike SMS can&rsquo;t log money.
+            </li>
             <li>Save the macro, then send yourself a small amount (or wait for the next M-Pesa SMS) and check Finance.</li>
           </ol>
         </div>

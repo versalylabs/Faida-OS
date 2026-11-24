@@ -9,11 +9,11 @@ import { lockPlan, usualBudgetMinutes } from "@/lib/planner/daily";
 import { rollOpenToTomorrow } from "@/lib/closeDay";
 import { formatClock } from "@/lib/planner/scheduler";
 import { zonedDateKey } from "@/lib/tz";
+import { sameTimeLater } from "@/lib/agendaMove";
 
 export const dynamic = "force-dynamic";
 
 const HOUR = 3600000;
-const DAY = 24 * HOUR;
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 /**
@@ -23,7 +23,7 @@ const NO_STORE = { "Cache-Control": "private, no-store" };
  * without opening the app. Every change is limited to the signed-in user's own records.
  *   done      finish it (a repeating task lines up its next one)
  *   snooze    remind again in an hour (a reminder moves; a task or client work gets a one-off reminder)
- *   tomorrow  move the due date one day later
+ *   tomorrow  same time tomorrow (09:00 if it had no time), as everywhere else in Faida
  */
 export async function POST(req: NextRequest) {
   try {
@@ -38,11 +38,11 @@ export async function POST(req: NextRequest) {
     const source = rawSource === "PLAN" ? "TASK" : rawSource;
     if (!id || !["done", "snooze", "tomorrow", "confirm", "paid", "lockplan", "rollover"].includes(action)) return badRequest("Unknown notification action");
 
-    // Close the day: move today's open work to tomorrow morning
+    // Close the day: move today's open work to the same time tomorrow
     if (rawSource === "closeday" && action === "rollover") {
       const moved = await rollOpenToTomorrow(user.id);
       return NextResponse.json(
-        { success: true, confirm: true, message: moved ? `Moved ${moved} task${moved === 1 ? "" : "s"} to tomorrow 09:00. Sleep well.` : "Nothing left to move. Sleep well." },
+        { success: true, confirm: true, message: moved ? `Moved ${moved} item${moved === 1 ? "" : "s"} to tomorrow, same time (09:00 if it had none). Sleep well.` : "Nothing left to move. Sleep well." },
         { headers: NO_STORE }
       );
     }
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
         }
         message = `Done: ${task.title}`;
       } else if (action === "tomorrow") {
-        const due = task.dueDate ? new Date(task.dueDate.getTime() + DAY) : new Date(now.getTime() + DAY);
+        const due = sameTimeLater(task.dueDate, now);
         await prisma.task.update({ where: { id }, data: { dueDate: due } });
         // Logged like the planner's "Move to tomorrow", so today's plan drops it too.
         await prisma.effortEvent.create({ data: { userId: user.id, type: "DEFER", taskId: id, minutes: task.estimatedMinutes || 0 } });
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
         }
         message = `Done: ${reminder.title}`;
       } else {
-        const dueAt = action === "snooze" ? new Date(now.getTime() + HOUR) : new Date(Math.max(reminder.dueAt.getTime(), now.getTime()) + DAY);
+        const dueAt = action === "snooze" ? new Date(now.getTime() + HOUR) : sameTimeLater(reminder.dueAt, now);
         await prisma.reminder.update({ where: { id }, data: { dueAt, isCompleted: false } });
         message = action === "snooze" ? `Snoozed for an hour: ${reminder.title}` : `Moved to tomorrow: ${reminder.title}`;
       }
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         await prisma.businessDeliverable.update({ where: { id }, data: { status: "COMPLETED", completedAt: now } });
         message = `Delivered: ${work.title}`;
       } else if (action === "tomorrow") {
-        const due = work.dueDate ? new Date(work.dueDate.getTime() + DAY) : new Date(now.getTime() + DAY);
+        const due = sameTimeLater(work.dueDate, now);
         await prisma.businessDeliverable.update({ where: { id }, data: { dueDate: due } });
         message = `Moved to tomorrow: ${work.title}`;
       } else {

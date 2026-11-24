@@ -188,7 +188,7 @@ export function planCloseDay(
     kind: "closeday",
     itemKey: key,
     title: `Close the day: ${doneText}, ${n} still open`,
-    body: `${names}. Roll ${n === 1 ? "it" : "them"} to tomorrow morning?`,
+    body: `${names}. Roll ${n === 1 ? "it" : "them"} to tomorrow?`,
     url: "/planner",
     tag: key,
     actions: ["rollover"],
@@ -339,16 +339,19 @@ export function planNotifications(
     const dayKey = zonedDateKey(new Date(item.start));
     const detail = (extra: string) => [item.subtitle, extra].filter(Boolean).join(" · ");
 
-    // A block of the plan you locked in: "time to start", around the block's start (the sender runs every
-    // ~15 minutes, so the window is wide enough to be caught once).
+    // A block of the plan you locked in: "time to start", from 10 minutes before the block's start to 25 minutes
+    // after (the sender runs every ~15 minutes and can run late, so the window is wide enough to be caught once).
     if (item.source === "PLAN") {
-      if (nowMs >= start - 10 * 60000 && nowMs < start + 10 * 60000) add(item, "due", `Time to start: ${item.title}`, detail(clock(item.start)));
+      if (nowMs >= start - 10 * 60000 && nowMs < start + 25 * 60000) add(item, "due", `Time to start: ${item.title}`, detail(clock(item.start)));
       continue;
     }
 
-    // Your own reminders go off at the time you set, even in quiet hours.
+    // Your own reminders go off at the time you set, even in quiet hours. The sender only runs from 05:00, so a
+    // reminder set between midnight and 05:00 goes off at the first run of the morning (until 06:00) instead.
     if (item.source === "REMINDER") {
-      if (nowMs >= start && nowMs - start < HOUR) add(item, "due", `Reminder: ${item.title}`, detail(clock(item.start)));
+      const dayStart = zonedTime(dayKey, "00:00").getTime();
+      const overnight = start >= dayStart && start < dayStart + 5 * HOUR && nowMs < dayStart + 6 * HOUR;
+      if (nowMs >= start && (nowMs - start < HOUR || overnight)) add(item, "due", `Reminder: ${item.title}`, detail(clock(item.start)));
       continue;
     }
 
