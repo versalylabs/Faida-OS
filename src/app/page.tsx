@@ -835,7 +835,7 @@ export default function DashboardPage() {
                         {item.title}
                       </span>
                       <span
-                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded border shrink-0 ${
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border shrink-0 ${
                           item.type === "EVENT"
                             ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
                             : "bg-amber-500/10 text-amber-400 border-amber-500/30"
@@ -943,7 +943,7 @@ export default function DashboardPage() {
                         {item.name}
                       </span>
                       {item.quantity && item.quantity !== "1" && (
-                        <span className="text-[10px] text-slate-400 font-mono px-1 py-0.2 rounded bg-slate-800 shrink-0">
+                        <span className="text-[10px] text-slate-400 font-mono px-1 py-0.5 rounded bg-slate-800 shrink-0">
                           x{item.quantity}
                         </span>
                       )}

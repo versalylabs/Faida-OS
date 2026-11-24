@@ -138,7 +138,7 @@ export function MpesaAutoImport() {
           </button>
         )}
         {status && status.pending > 0 && (
-          <a href="/finance#review" className="text-xs text-amber-200 underline underline-offset-2">
+          <a href="/finance#review" className="link-chip is-alert">
             {status.pending} to check on the Finance page
           </a>
         )}

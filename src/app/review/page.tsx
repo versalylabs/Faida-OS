@@ -19,9 +19,9 @@ function minutesLabel(total: number) {
 function Card({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
   return (
     <section className="p-4 sm:p-5 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-3">
-      <h2 className="text-sm font-semibold text-white flex items-center gap-2">
-        {icon}
-        {title}
+      <h2 className="text-sm font-semibold text-white flex items-center gap-2 min-w-0">
+        <span className="shrink-0">{icon}</span>
+        <span className="min-w-0">{title}</span>
       </h2>
       {children}
     </section>
@@ -33,6 +33,7 @@ const Empty = ({ children }: { children: React.ReactNode }) => <p className="tex
 /** The weekly review: what this week produced, where the money went, what stalled, KPIs, and next week. */
 export default function ReviewPage() {
   const [review, setReview] = useState<WeeklyReview | null>(null);
+  const [showAllStalled, setShowAllStalled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,7 +105,7 @@ export default function ReviewPage() {
             ))}
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="lg:columns-2 gap-4 [&>*]:break-inside-avoid [&>*]:mb-4">
             <Card icon={<CheckCircle2 className="h-4 w-4 text-emerald-300" />} title={`Finished this week (${r.finished.tasks} tasks, ${r.finished.deliverables} client jobs)`}>
               {r.finished.recent.length === 0 ? (
                 <Empty>Nothing marked done yet this week.</Empty>
@@ -123,7 +124,7 @@ export default function ReviewPage() {
             </Card>
 
             <Card icon={<Wallet className="h-4 w-4 text-sky-300" />} title="Money this week">
-              <div className="flex gap-6 text-sm">
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
                 <div>
                   <div className="text-xs text-slate-400">In</div>
                   <div className="font-semibold text-emerald-200 tabular-nums">{formatKES(r.money.in)}</div>
@@ -144,11 +145,11 @@ export default function ReviewPage() {
                   <div className="text-xs text-slate-400">Where it went</div>
                   {r.money.topSpending.map((s) => (
                     <div key={s.category} className="flex items-center gap-2 text-sm">
-                      <span className="flex-1 text-slate-200 truncate">{s.category}</span>
-                      <div className="w-24 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                      <span className="flex-1 min-w-0 text-slate-200 truncate">{s.category}</span>
+                      <div className="hidden sm:block w-24 h-1.5 rounded-full bg-white/5 overflow-hidden shrink-0">
                         <div className="h-full bg-rose-300/70" style={{ width: `${Math.max(6, Math.round((s.amount / Math.max(r.money.out, 1)) * 100))}%` }} />
                       </div>
-                      <span className="tabular-nums text-slate-300 w-24 text-right">{formatKES(s.amount)}</span>
+                      <span className="tabular-nums text-slate-300 shrink-0 whitespace-nowrap text-right">{formatKES(s.amount)}</span>
                     </div>
                   ))}
                 </div>
@@ -163,7 +164,7 @@ export default function ReviewPage() {
                 </div>
               )}
               {r.money.billsPaid.length > 0 && <div className="text-xs text-slate-300">Bills paid: {r.money.billsPaid.join(", ")}</div>}
-              <Link href="/finance" className="text-xs text-sky-300 underline underline-offset-2">
+              <Link href="/finance" className="link-chip self-start">
                 Open Finance
               </Link>
             </Card>
@@ -207,7 +208,7 @@ export default function ReviewPage() {
                   {r.nextWeek.tasksDue > 0 && (
                     <li className="text-xs text-slate-300">
                       Plus {r.nextWeek.tasksDue} task{r.nextWeek.tasksDue === 1 ? "" : "s"} due next week.{" "}
-                      <Link href="/tasks" className="text-sky-300 underline underline-offset-2">
+                      <Link href="/tasks" className="link-chip ml-1">
                         See tasks
                       </Link>
                     </li>
@@ -255,35 +256,54 @@ export default function ReviewPage() {
               {r.stalled.length === 0 ? (
                 <Empty>Every active project moved in the last 7 days.</Empty>
               ) : (
-                <ul className="space-y-1.5 text-sm">
-                  {r.stalled.map((p) => (
-                    <li key={p.id} className="flex items-center gap-2">
-                      <Link href={`/projects/${p.id}`} className="flex-1 text-slate-100 underline-offset-2 hover:underline truncate">
-                        {p.name}
-                      </Link>
-                      <span className="text-[11px] text-rose-200 shrink-0">{p.days} days still</span>
-                    </li>
-                  ))}
-                  <li className="text-xs text-slate-400">Give each one a next step, pause it, or let it go.</li>
-                </ul>
+                <>
+                  <p className="text-xs text-slate-300">No movement for a week or more. Give each a next step, pause it, or let it go.</p>
+                  <ul className="divide-y divide-white/5">
+                    {(showAllStalled ? r.stalled : r.stalled.slice(0, 6)).map((p) => (
+                      <li key={p.id}>
+                        <Link
+                          href={`/projects/${p.id}`}
+                          className="flex items-center gap-3 py-2.5 px-1 rounded-xl hover:bg-white/5 transition-colors"
+                        >
+                          <span className="flex-1 min-w-0 truncate text-sm text-slate-100">{p.name}</span>
+                          <span className="shrink-0 px-2.5 py-0.5 rounded-full bg-rose-500/12 border border-rose-300/30 text-xs text-rose-100 tabular-nums">
+                            {p.days} days idle
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                  {r.stalled.length > 6 && (
+                    <button onClick={() => setShowAllStalled((v) => !v)} className="link-chip">
+                      {showAllStalled ? "Show fewer" : `Show all ${r.stalled.length}`}
+                    </button>
+                  )}
+                </>
               )}
             </Card>
 
             <Card icon={<Receipt className="h-4 w-4 text-slate-300" />} title="Before Monday">
-              <ul className="text-sm text-slate-200 space-y-1.5 list-disc pl-4">
-                <li>Clear Finance → “To check” so the month’s numbers are right.</li>
-                <li>Move or drop anything overdue; tomorrow’s plan starts cleaner.</li>
-                <li>Pick next week’s one big thing and add it as a high-priority task.</li>
+              <ul className="space-y-2.5">
+                {[
+                  { text: "Clear Finance \u2192 To check, so the month\u2019s numbers are right.", href: "/finance#review", label: "Finance" },
+                  { text: "Move or drop anything overdue, so tomorrow\u2019s plan starts clean.", href: "/calendar?review=overdue", label: "Overdue" },
+                  { text: "Pick next week\u2019s one big thing and add it as a high-priority task.", href: "/tasks", label: "Tasks" },
+                ].map((step) => (
+                  <li key={step.href} className="flex items-start gap-3">
+                    <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-emerald-300 shrink-0" />
+                    <span className="flex-1 text-sm text-slate-200 leading-relaxed">{step.text}</span>
+                    <Link href={step.href} className="link-chip shrink-0">
+                      {step.label}
+                    </Link>
+                  </li>
+                ))}
               </ul>
-              <div className="flex gap-3 text-xs">
-                <Link href="/planner" className="text-sky-300 underline underline-offset-2">
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Link href="/planner" className="link-chip">
                   Planner
                 </Link>
-                <Link href="/tasks" className="text-sky-300 underline underline-offset-2">
-                  Tasks
-                </Link>
-                <Link href="/analytics" className="text-sky-300 underline underline-offset-2 inline-flex items-center gap-1">
-                  <BarChart3 className="h-3 w-3" /> Analytics
+                <Link href="/analytics" className="link-chip">
+                  <BarChart3 /> Analytics
                 </Link>
               </div>
             </Card>

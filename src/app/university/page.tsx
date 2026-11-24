@@ -723,7 +723,7 @@ export default function UniversityPage() {
               <GraduationCap className="h-6 w-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <h1 className="text-2xl font-bold tracking-tight text-slate-100">Academic Command Center</h1>
                 <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
                   BSc Applied Computing
@@ -780,8 +780,8 @@ export default function UniversityPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Next Class Countdown Pill */}
         <div className="md:col-span-2 rounded-xl bg-slate-900 border border-slate-800 p-4 relative overflow-hidden flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <div className="space-y-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1083,7 +1083,7 @@ export default function UniversityPage() {
                                 )}
                                 {a.estimatedMinutes && <span>⏱ ~{a.estimatedMinutes}m effort</span>}
                                 <span
-                                  className={`px-1.5 py-0.2 rounded text-[10px] font-semibold ${
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
                                     a.priority === "URGENT"
                                       ? "bg-red-500/10 text-red-400 border border-red-500/20"
                                       : a.priority === "HIGH"
@@ -2251,7 +2251,7 @@ export default function UniversityPage() {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-slate-400 block mb-1">Day</label>
                   <select

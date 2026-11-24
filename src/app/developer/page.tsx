@@ -362,7 +362,7 @@ export default function DeveloperHubPage() {
                         {c.serviceName}
                       </span>
                       <span
-                        className={`text-[9px] font-mono px-1.5 py-0.2 rounded border uppercase ${
+                        className={`text-[9px] font-mono px-1.5 py-0.5 rounded border uppercase ${
                           c.environment === "production"
                             ? "bg-rose-500/15 text-rose-400 border-rose-500/30"
                             : c.environment === "staging"
@@ -373,7 +373,7 @@ export default function DeveloperHubPage() {
                         {c.environment}
                       </span>
                       {c.project && (
-                        <span className="text-[10px] text-slate-400 px-1.5 py-0.2 rounded bg-slate-800">
+                        <span className="text-[10px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800">
                           {c.project.name}
                         </span>
                       )}

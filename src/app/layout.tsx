@@ -1,19 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans, Bricolage_Grotesque } from "next/font/google";
+import { Quicksand } from "next/font/google";
 import { preload } from "react-dom";
 import "./globals.css";
 
 import { AppShell } from "@/components/layout/AppShell";
 
-const uiFont = Plus_Jakarta_Sans({
+// One rounded family for everything: Quicksand reads friendly and calm on the glass.
+const uiFont = Quicksand({
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-ui",
-  display: "swap",
-});
-
-const displayFont = Bricolage_Grotesque({
-  subsets: ["latin"],
-  variable: "--font-display-face",
   display: "swap",
 });
 
@@ -54,7 +50,7 @@ export default function RootLayout({
   preload("/bg/scene.webp", { as: "image" });
 
   return (
-    <html lang="en" className={`dark ${uiFont.variable} ${displayFont.variable}`}>
+    <html lang="en" className={`dark ${uiFont.variable}`}>
       <body className="text-slate-100 flex min-h-screen antialiased">
         <div className="scene" aria-hidden="true">
           <div className="scene-grade" />

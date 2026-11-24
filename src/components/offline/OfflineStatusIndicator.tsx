@@ -143,7 +143,7 @@ export function OfflineStatusIndicator() {
             <WifiOff className="h-3 w-3" />
             <span>Offline</span>
             {queuedMutations.length > 0 && (
-              <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.2 rounded-full text-[9px]">
+              <span className="bg-amber-500 text-slate-950 font-bold px-1.5 py-0.5 rounded-full text-[9px]">
                 {queuedMutations.length}
               </span>
             )}

@@ -302,7 +302,7 @@ export function FaidaAIChatDrawer() {
                 <div>
                   <div className="text-xs font-bold text-slate-100 flex items-center gap-1.5 sm:gap-2">
                     Faida AI Copilot
-                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
                       Live Context
                     </span>
                   </div>

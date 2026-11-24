@@ -1248,7 +1248,7 @@ export default function MenuPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
                     <label className="text-[11px] font-semibold text-slate-400 block mb-1">
                       Prep Time (mins)
@@ -1395,7 +1395,7 @@ export default function MenuPage() {
                               {idea.tags.split(",").map((t, i) => (
                                 <span
                                   key={i}
-                                  className="text-[9px] px-1.5 py-0.2 rounded bg-slate-950 border border-slate-800 text-slate-400"
+                                  className="text-[9px] px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-400"
                                 >
                                   {t.trim()}
                                 </span>

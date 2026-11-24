@@ -275,7 +275,7 @@ export function BillsSection({ onChanged }: { onChanged?: () => void }) {
           <ul className="mt-2 space-y-1">
             {finished.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-2">
-                <span>{b.name}</span>
+                <span className="min-w-0 truncate">{b.name}</span>
                 <button onClick={() => remove(b)} className="text-rose-300 cursor-pointer">
                   Delete
                 </button>
@@ -287,7 +287,7 @@ export function BillsSection({ onChanged }: { onChanged?: () => void }) {
 
       {/* Mark paid */}
       {paying && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm" role="dialog" aria-label={`Pay ${paying.bill.name}`}>
+        <div className="fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm" role="dialog" aria-label={`Pay ${paying.bill.name}`}>
           <div className="w-full max-w-sm p-5 rounded-3xl bg-slate-900 border border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-white">Paid: {paying.bill.name}</h3>
@@ -324,7 +324,7 @@ export function BillsSection({ onChanged }: { onChanged?: () => void }) {
 
       {/* Add / edit */}
       {form && (
-        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto" role="dialog" aria-label={form.id ? "Edit bill" : "Add bill"}>
+        <div className="fixed inset-0 modal-overlay z-50 flex items-start sm:items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto" role="dialog" aria-label={form.id ? "Edit bill" : "Add bill"}>
           <div className="w-full max-w-lg p-5 rounded-3xl bg-slate-900 border border-slate-700 space-y-3 my-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold text-white">{form.id ? "Edit bill" : "Add a bill"}</h3>

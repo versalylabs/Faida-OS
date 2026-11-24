@@ -504,7 +504,7 @@ export default function ShoppingPage() {
           }`}
         >
           <span>All Items</span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-black/30">
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-black/30">
             {items.length}
           </span>
         </button>
@@ -532,7 +532,7 @@ export default function ShoppingPage() {
               />
               <span>{cat.name}</span>
               {count > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-slate-800/80 text-slate-300">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-slate-800/80 text-slate-300">
                   {count}
                 </span>
               )}
@@ -707,7 +707,7 @@ export default function ShoppingPage() {
                           {item.name}
                         </span>
                         {item.quantity && item.quantity !== "1" && (
-                          <span className="text-[10px] text-slate-400 font-mono px-1.5 py-0.2 rounded bg-slate-800">
+                          <span className="text-[10px] text-slate-400 font-mono px-1.5 py-0.5 rounded bg-slate-800">
                             x{item.quantity}
                           </span>
                         )}

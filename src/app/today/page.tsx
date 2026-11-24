@@ -154,10 +154,10 @@ export default function TodayPage() {
 
         {/* Due */}
         <section className="p-4 rounded-3xl bg-slate-900/60 border border-slate-800 space-y-2.5">
-          <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-white flex flex-wrap items-center gap-2">
             <CheckSquare className="h-4 w-4 text-emerald-300" /> Due today
             {data.overdue > 0 && (
-              <Link href="/calendar?review=overdue" className="text-xs font-normal text-rose-200 underline underline-offset-2">
+              <Link href="/calendar?review=overdue" className="link-chip is-alert ml-auto">
                 {data.overdue} overdue · review
               </Link>
             )}
@@ -190,7 +190,7 @@ export default function TodayPage() {
               ))}
               {data.tasksTotal > data.tasks.length && (
                 <li>
-                  <Link href="/tasks" className="text-xs text-sky-300 underline underline-offset-2">
+                  <Link href="/tasks" className="link-chip">
                     {data.tasksTotal - data.tasks.length} more in Tasks
                   </Link>
                 </li>

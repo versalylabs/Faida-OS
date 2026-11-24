@@ -457,11 +457,11 @@ export default function FilesPage() {
                         <span className="text-xs font-bold text-slate-100 truncate">
                           {file.name}
                         </span>
-                        <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 uppercase shrink-0">
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 uppercase shrink-0">
                           {file.fileType}
                         </span>
                         {file.project && (
-                          <span className="text-[10px] text-blue-400 px-1.5 py-0.2 rounded bg-blue-500/10 border border-blue-500/20 shrink-0">
+                          <span className="text-[10px] text-blue-400 px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20 shrink-0">
                             {file.project.name}
                           </span>
                         )}

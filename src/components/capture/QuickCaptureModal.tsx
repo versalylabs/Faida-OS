@@ -103,7 +103,7 @@ export function QuickCaptureModal({ isOpen: controlledIsOpen, onClose, onCapture
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-blue-400" />
             <span className="font-semibold text-slate-200">Universal Capture</span>
-            <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.2 rounded font-mono">
+            <span className="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-mono">
               AI
             </span>
           </div>

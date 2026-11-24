@@ -108,7 +108,7 @@ export default function BusinessOverviewPage() {
                       <div className="text-[11px] text-slate-500 mt-1">No target set yet</div>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-1 min-[420px]:grid-cols-3 gap-2 text-center">
                     {[
                       { label: "Active clients", value: active },
                       { label: "Open work", value: open },

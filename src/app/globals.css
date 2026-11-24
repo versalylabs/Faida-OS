@@ -23,7 +23,13 @@
   --font-sans: var(--font-ui), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   /* No code-style type for labels: numbers stay aligned with tabular figures instead */
   --font-mono: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-display-face), var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+
+  /* Quicksand is light on dark glass: every weight steps up one notch so text stays crisp */
+  --font-weight-normal: 500;
+  --font-weight-medium: 600;
+  --font-weight-semibold: 700;
+  --font-weight-bold: 700;
 
   /* Text greys, tuned for AA on the dark glass */
   --color-slate-50: #f6f8fd;
@@ -89,7 +95,8 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  letter-spacing: -0.003em;
+  font-weight: 500;
+  letter-spacing: 0.002em;
 }
 
 
@@ -125,7 +132,8 @@ body::after {
 
 h1, h2 {
   font-family: var(--font-display);
-  letter-spacing: -0.02em;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 /* Page titles and intros sit straight on the photo, so give them a soft halo for legibility */
@@ -535,3 +543,165 @@ input[type="range"] { accent-color: #8d9bff; }
     margin-block: auto;
   }
 }
+
+
+/* ==========================================================================
+   Consistency layer (Quicksand + green glass)
+   One heading scale, a floor on tiny text, one primary action style, one link style.
+   Unlayered on purpose: these win over per-page utility classes, so every page matches.
+   ========================================================================== */
+
+/* Page titles: one size everywhere, scaling with the screen */
+main h1 {
+  font-size: clamp(1.55rem, 1.12rem + 1.35vw, 2.05rem);
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+}
+main h1 + p { font-size: 0.875rem; line-height: 1.55; max-width: 62ch; }
+
+/* Rounded type needs a little more size at the small end: nothing below 11.5px */
+.text-\[9px\], .text-\[10px\] { font-size: 0.72rem; line-height: 1.35; }
+.text-\[11px\] { font-size: 0.75rem; line-height: 1.45; }
+.text-xs { line-height: 1.5; }
+
+/* Primary actions: soft aqua-to-sky glass (the look of the Right now card and Done button).
+   Applies to every primary button style already in the app, so they all match. */
+:is(button, a)[class*="bg-blue-600"]:not([class*="bg-blue-600/"]),
+:is(button, a)[class*="bg-emerald-600"]:not([class*="bg-emerald-600/"]),
+:is(button, a)[class*="from-blue-600"],
+:is(button, a)[class*="from-emerald-600"],
+:is(button, a)[class*="bg-sky-600"]:not([class*="bg-sky-600/"]),
+:is(button, a)[class*="bg-purple-600"]:not([class*="bg-purple-600/"]),
+.btn-primary {
+  background: linear-gradient(135deg, rgba(110, 231, 208, 0.42), rgba(96, 165, 250, 0.26)), rgba(8, 26, 38, 0.38) !important;
+  border: 1px solid rgba(165, 245, 225, 0.55) !important;
+  color: #effffb !important;
+  text-shadow: 0 1px 1px rgba(2, 30, 34, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -8px 16px rgba(110, 231, 208, 0.08),
+    0 8px 20px -12px rgba(110, 231, 208, 0.55) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+}
+:is(button, a)[class*="bg-blue-600"]:not([class*="bg-blue-600/"]):hover:not(:disabled),
+:is(button, a)[class*="bg-emerald-600"]:not([class*="bg-emerald-600/"]):hover:not(:disabled),
+:is(button, a)[class*="from-blue-600"]:hover,
+:is(button, a)[class*="from-emerald-600"]:hover,
+:is(button, a)[class*="bg-sky-600"]:not([class*="bg-sky-600/"]):hover:not(:disabled),
+:is(button, a)[class*="bg-purple-600"]:not([class*="bg-purple-600/"]):hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.12) saturate(1.08);
+}
+
+/* Secondary action: quiet glass */
+.btn-quiet {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04)), rgba(10, 16, 32, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #eaf0fa;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 6px 14px -10px rgba(0, 0, 0, 0.6);
+}
+.btn-quiet:hover:not(:disabled) { border-color: rgba(165, 245, 225, 0.45); }
+
+/* Shared shape for buttons that use the classes above */
+.btn-primary, .btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  padding: 0.5rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.btn-primary:disabled, .btn-quiet:disabled { opacity: 0.5; cursor: default; }
+
+/* The highlight card: green-ish light glass, for the one thing on a page that matters most right now */
+.glass-hero {
+  position: relative;
+  isolation: isolate;
+  background: linear-gradient(135deg, rgba(110, 231, 208, 0.16), rgba(96, 165, 250, 0.1) 55%, rgba(125, 141, 252, 0.08)), rgba(10, 22, 38, 0.34);
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  border: 1px solid rgba(165, 245, 225, 0.32);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.38),
+    inset 0 0 30px rgba(110, 231, 208, 0.05),
+    0 24px 54px -28px rgba(0, 0, 0, 0.7);
+}
+
+/* Links that lead somewhere get a small glass chip instead of bare underlined text */
+.link-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #d9fff5;
+  white-space: nowrap;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03)), rgba(10, 18, 34, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.17);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  text-decoration: none;
+  transition: border-color 0.2s, background 0.2s, color 0.2s, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.link-chip:hover { border-color: rgba(165, 245, 225, 0.55); background: linear-gradient(180deg, rgba(110, 231, 208, 0.16), rgba(110, 231, 208, 0.05)), rgba(10, 18, 34, 0.32); color: #ffffff; }
+.link-chip svg { width: 0.85rem; height: 0.85rem; flex-shrink: 0; }
+.link-chip.is-alert { color: #ffe3e7; border-color: rgba(253, 164, 175, 0.4); }
+.link-chip.is-alert:hover { border-color: rgba(253, 164, 175, 0.7); background: rgba(244, 63, 94, 0.14); }
+
+/* Plain inline text links inside content: no hanging underline, a calm accent that lights up */
+main a:is(.text-blue-300, .text-blue-400, .text-sky-200, .text-sky-300, .text-sky-400, .text-emerald-400, .text-indigo-400):not([class*="bg-"]) {
+  color: #9ff0dc;
+  text-decoration: none;
+  font-weight: 600;
+}
+main a:is(.text-blue-300, .text-blue-400, .text-sky-200, .text-sky-300, .text-sky-400, .text-emerald-400, .text-indigo-400):not([class*="bg-"]):hover {
+  color: #ffffff;
+  text-decoration: underline;
+  text-decoration-color: rgba(159, 240, 220, 0.6);
+  text-underline-offset: 3px;
+}
+
+/* The selected option of a segmented control (Month / Week / Agenda, Event / Reminder…) is "lit", not a call to
+   action: same glass as the active sidebar item, so only real actions wear the green primary look. */
+[class*="bg-slate-950"] > :is(button, a):is([class*="bg-blue-600"], [class*="bg-purple-600"], [class*="bg-emerald-600"], [class*="bg-sky-600"]) {
+  background: linear-gradient(135deg, rgba(125, 141, 252, 0.34), rgba(110, 231, 208, 0.18)), rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(180, 196, 255, 0.4) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 6px 16px -10px rgba(125, 141, 252, 0.45) !important;
+  color: #ffffff !important;
+  text-shadow: none;
+}
+
+/* Page headers: the small line above every title and the line under it look the same on every page */
+main div:has(+ h1):not(:has(*:is(button, a, input))) {
+  color: #bff5e8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-bottom: 0.3rem;
+}
+main h1 ~ p, main div:has(> h1) ~ p { font-size: 0.875rem; line-height: 1.55; max-width: 62ch; }
+
+/* Form fields: one focus colour everywhere (the aqua of the primary action) */
+main :is(input, select, textarea):focus, .fixed :is(input, select, textarea):focus {
+  border-color: rgba(110, 231, 208, 0.7);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(110, 231, 208, 0.14), inset 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Dialog headers: a long name wraps beside the close button instead of pushing it off the edge */
+.fixed div[class*="justify-between"] { column-gap: 0.75rem; }
+.fixed div[class*="justify-between"] > :is(h2, h3, span):first-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* Grid cells may shrink below their content, so long titles truncate or wrap instead of widening the page */
+main .grid > * { min-width: 0; }
+
+/* Chips and buttons that use .link-chip / .btn-* never push past their container */
+.link-chip, .btn-primary, .btn-quiet { max-width: 100%; }

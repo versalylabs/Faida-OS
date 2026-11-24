@@ -102,7 +102,7 @@ export function RightNow({ data, reload, compact = false }: { data: TodayData; r
   const dueToday = data.tasksTotal;
 
   return (
-    <section className="p-5 rounded-3xl bg-gradient-to-br from-sky-500/15 to-indigo-500/10 border border-sky-300/30 space-y-3">
+    <section className="glass-hero p-5 sm:p-6 rounded-3xl space-y-3">
       {message && <div className="p-2.5 rounded-xl bg-emerald-400/10 border border-emerald-300/30 text-sm text-emerald-100">{message}</div>}
 
       <div className={compact ? "flex flex-col lg:flex-row lg:items-start gap-4" : ""}>
@@ -144,8 +144,9 @@ export function RightNow({ data, reload, compact = false }: { data: TodayData; r
                     {busy === "lock" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />} Lock today&apos;s plan
                   </button>
                 )}
-                <Link href="/planner" className="text-xs text-sky-200 underline underline-offset-2 ml-auto">
-                  {plan.blocksLeft} block{plan.blocksLeft === 1 ? "" : "s"} left{plan.blocksDone ? ` · ${plan.blocksDone} done` : ""}
+                <Link href="/planner" className="link-chip sm:ml-auto" title="Open the Daily Planner">
+                  <CalendarClock />
+                  {plan.blocksLeft} block{plan.blocksLeft === 1 ? "" : "s"} left{plan.blocksDone ? `, ${plan.blocksDone} done` : ""}
                 </Link>
               </div>
             </>
@@ -191,8 +192,8 @@ export function RightNow({ data, reload, compact = false }: { data: TodayData; r
                 </span>
               </Link>
             ))}
-            <Link href="/today" className="flex items-center gap-1 px-3 py-1 text-xs text-sky-200 underline underline-offset-2">
-              Open Today <ArrowRight className="h-3 w-3" />
+            <Link href="/today" className="link-chip self-start">
+              Open Today <ArrowRight />
             </Link>
           </div>
         )}
